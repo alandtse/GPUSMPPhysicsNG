@@ -4,6 +4,7 @@
 
 #include "Globals.h"
 #include "Utils/D3D.h"
+#include "Features/Wind/Wind.h"
 #include "plugin/BoneUploadHook.h"
 #include "plugin/Instance.h"
 #include "plugin/Settings.h"
@@ -52,6 +53,7 @@ namespace
 			break;
 		case SKSE::MessagingInterface::kDataLoaded:
 			BindGameGlobals();
+			globals::features::wind.ConnectCommunityShaders();
 			Instance().DataLoaded();
 			PluginUi::Register();
 			break;
