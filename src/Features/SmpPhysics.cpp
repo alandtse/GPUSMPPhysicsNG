@@ -12,6 +12,7 @@
 #include "Utils/HiggsInterface.h"
 #include "Utils/MathUtils.h"
 #include "Utils/StringUtils.h"
+#include "Utils/TestBench/TestCrowd.h"
 #include "engine/ReadyWeaponGate.h"
 #include "smp/CardVertices.h"
 
@@ -225,6 +226,7 @@ std::pair<std::string, std::vector<std::string>> SmpPhysicsFeature::GetFeatureSu
 
 void SmpPhysicsFeature::DataLoaded()
 {
+	TestBench::GetCrowd().AddHooks(&crowdWigs);
 	SmpPhysics::ReadyWeaponGate::Install();
 }
 
@@ -335,6 +337,96 @@ void SmpPhysicsFeature::ReloadVisualShaders()
 {
 	gpuSkinning.InvalidateShader();
 	debugLines.InvalidateShaders();
+}
+
+void SmpPhysicsFeature::RegisterUxActions()
+{
+	FEATURE_QUERY("nodeWorld", "World position and rotation (three rows) of named nodes below an actor's 3D, whether hdtSMP64 or this feature simulates them, so a bone's motion can be compared between the two. Args: actorFormID (number), contains (string, case-insensitive part of the node name; SMP renames a cloak's bones per armor, so \"CB 01 6\" matches where an exact name does not).",
+		[](const Feature*, const json& a_args) -> json { return NodeWorldJson(a_args); });
+	FEATURE_QUERY("status", "Report the hdtSMP64 link source, whether the GPU solver is available and how many claims it holds, the live claims with their bone and collision counts, step cost, wind exposure and whether the GPU solver took them, the weather wind they are pushed by, and the physics files this feature declined. In VR it also reports the strand grip (grip grab: HIGGS, per hand whether the grip is squeezed, strands in reach and held, and whether HIGGS is kept from the hand; controller pulses sent; whether the player's weapon is drawn) and the debug line counts of the strand renderer.",
+		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->BuildStatusJson(); });
+	FEATURE_QUERY("solverBones", "Read, per claim, the pose the GPU solver last returned for each simulated bone in its kinematic root's frame: finite flag, local position, distance from the root, the reach limit that distance is checked against, and exceedsReach. A claim whose pose passes its reach is restarted; divergenceRestarts counts how often. Use it to see why hair is stretched. Args: actorFormID (number, optional; all claims when absent).",
+		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->SolverBonesJson(a_args); });
+	FEATURE_COMMAND("windProbe", "Queue rays from an actor's head and read their hits with windProbeResult, to see what the wind shelter test would meet. Args: actorFormID (number), elevations (array of degrees above the horizontal, negative aims down, default the shelter set), azimuth (degrees, world heading of the rays, default toward the wind), reach (units, default 3000). The rays run on the next frame.",
+		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->QueueWindProbe(a_args); });
+	FEATURE_QUERY("windProbeResult", "The hits of the last windProbe: per ray its elevation, how far it travelled (negative when clear), and the reference, form type and name it hit (reference 0 is terrain or other unowned geometry), or pending until it has run.",
+		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->WindProbeResult(); });
+	FEATURE_QUERY("sampleBones", "Read the pose of every node of an actor whose name starts with a prefix, in the frame of a reference node (default the head), so SMP-driven and claimed hair can be compared. Args: actorFormID (number), prefix (string), reference (string, optional).",
+		[](const Feature*, const json& a_args) -> json { return SampleBonesJson(a_args); });
+	FEATURE_COMMAND("reloadShaders", "Drop the compiled skinning and debug line shaders so they recompile from Data/Shaders on the next frame, for iterating on them without restarting the game.",
+		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->ReloadVisualShaders(); });
+	FEATURE_COMMAND("recordBones", "Capture, once per frame right after hair is stepped, the head-frame pose of an actor's nodes whose names start with a prefix. Args: actorFormID (number), prefix (string), frames (number, default 300), world (bool, also record each node's world position and rotation matrix, for the tuning bench), extraNodes (array of exact node names to record as well, e.g. the head), joints (bool, also record each simulated joint's angles, Euler XYZ in radians in the joint frame the solver limits, of the claim whose physics file contains jointFilter, a string, default the first claim of the actor).",
+		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->StartBoneRecording(a_args); });
+	FEATURE_QUERY("recordedBones", "Return the frames captured by recordBones: active flag, node names, and per frame the time, head world position and node head-frame positions; with joints, jointInfo (the claim's file, each joint's child and parent bone and its lower and upper limits) and per frame the joint angles in the same order.",
+		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->RecordedBonesJson(); });
+	FEATURE_COMMAND("probeBodyContact", "Hang a test capsule below a claimed actor's first kinematic hair bone, as if another body stood there, so hair contact with other bodies can be checked without arranging two actors. Args: actorFormID (number), enabled (bool, default true), offset ([x, y, z] game units from the bone, default zero), length (number, how far the capsule reaches straight down, default 40), radius (number, default 6). The claim status lists the capsules in use under externalCapsules.",
+		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->SetBodyContactProbe(a_args); });
+	FEATURE_COMMAND("setTestCrowdHairColor", "Set the hair colour on every base the test crowd (see spawnTestCrowd) is made from, which overrides their natural colour, and refresh the characters standing now, so every wig can be checked in each colour; later spawns wear it too. Args: color (string, a name from testCrowdHairColors, or a hair colour form ID as a number or 0x string). Read the outcome from testCrowdReport.",
+		[](Feature* a_self, const json& a_args) {
+			const json& color = a_args.contains("color") ? a_args["color"] : json();
+			std::string text = color.is_number_integer() ? std::to_string(color.get<std::uint64_t>()) : color.is_string() ? color.get<std::string>() :
+			                                                                                                                std::string{};
+			if (auto* task = SKSE::GetTaskInterface()) {
+				task->AddTask([self = static_cast<SmpPhysicsFeature*>(a_self), text = std::move(text)] {
+					self->crowdWigs.SetHairColorNow(TestBench::GetCrowd(), text);
+				});
+			}
+		});
+	FEATURE_QUERY("testCrowdHairColors", "The vanilla hair colours setTestCrowdHairColor knows by name, darkest first, with each colour's form ID.",
+		[](const Feature*, const json&) -> json {
+			json rows = json::array();
+			for (const SmpPhysics::HairColorChoice& color : SmpPhysics::TestCrowdHairColors())
+				rows.push_back({ { "name", std::string(color.name) }, { "formId", color.formId } });
+			return rows;
+		});
+	FEATURE_COMMAND("restoreTestCrowdHairColors", "Put back the natural hair colour of every base setTestCrowdHairColor changed, so each test character can be compared with its own colour again, and refresh the characters standing now. Read the outcome from testCrowdReport.",
+		[](Feature* a_self, const json&) {
+			if (auto* task = SKSE::GetTaskInterface()) {
+				task->AddTask([self = static_cast<SmpPhysicsFeature*>(a_self)] {
+					self->crowdWigs.RestoreNaturalColorsNow(TestBench::GetCrowd());
+				});
+			}
+		});
+	FEATURE_QUERY("testCrowdBakedHair", "Report, per standing test character, each hair head-part node of its base: the editor ID, whether the actor's 3D has that node, and whether the node is hidden. Use it to check that baked hair is hidden under the wigs; a head part without an editor ID is listed as (unnamed).",
+		[](const Feature*, const json&) -> json {
+			json rows = json::array();
+			for (const RE::ObjectRefHandle& handle : TestBench::GetCrowd().Standing()) {
+				auto reference = handle.get();
+				auto* actor = reference ? reference->As<RE::Actor>() : nullptr;
+				if (!actor)
+					continue;
+				json nodes = json::array();
+				for (const SmpPhysics::BakedHairNode& node : SmpPhysics::BakedHairNodes(*actor))
+					nodes.push_back({ { "editorId", node.editorId }, { "found", node.found }, { "hidden", node.hidden } });
+				const char* name = actor->GetName();
+				rows.push_back({ { "actorFormID", actor->GetFormID() }, { "name", name && *name ? name : "unnamed" }, { "nodes", std::move(nodes) } });
+			}
+			return rows;
+		});
+	FEATURE_QUERY("poseCheck", "Per claim, how far the simulated hair bones are from where the animation alone would put them (the bone's rest pose carried by its tree's current root): maxSolvedFromRest and meanSolvedFromRest in game units, zero while the hair hangs at rest, maxSolvedFromSag and meanSolvedFromSag, the same against where the claim predicted the rest would settle under gravity (see collisionAudit's retargetSagMaxMove), and maxSolvedFromNode, how far the solver pose is from the engine node, which is the animation pose until the solver writes back. Args: actorFormID (number, only that actor's claims).",
+		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->PoseCheckJson(a_args); });
+	FEATURE_COMMAND("holdStrand", "Hold one strand of a claimed actor's hair toward a fixed world point, as a closed hand would, so the pin can be checked on the CPU and GPU solvers without a headset. Args: actorFormID (number), count (number of chains to hold, default 1), bone (rig bone index to hold first; otherwise the dynamic bones farthest from the bone their chain hangs from, one per chain), offset (array of three numbers, world units from that bone's current position, default 15 along +X), enabled (bool, false releases). Read heldStrands in the status query.",
+		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->SetStrandProbe(a_args); });
+	FEATURE_COMMAND("reevaluate", "Ask hdtSMP64 to re-run claiming for every loaded actor, so the current settings take effect.",
+		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->ReevaluateAllActors(); });
+	FEATURE_COMMAND("setClaimEnabled", "Switch one actor's physics file off or on for testing: off, this feature declines the file for that actor and hdtSMP64 is asked to simulate it, so the same hair can be compared in both solvers; the settings menu lists the same switches. Args: actorFormID (number), file (string, the physics file as status lists it, compared without regard to case), enabled (bool, default true).",
+		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->SetClaimEnabled(a_args.value("actorFormID", 0u), a_args.value("file", std::string{}), a_args.value("enabled", true)); });
+	FEATURE_COMMAND("setClaimSolver", "Pick the solver for one actor's physics file, as the claims table's Solver column does. Args: actorFormID (number), file (string, the physics file as status lists it, compared without regard to case), solver (\"smp\" hands the file to hdtSMP64, \"chain\" or \"rigid\" steps it on the GPU with that solver). Read each claim's rigid flag in the status query.",
+		[](Feature* a_self, const json& a_args) {
+			const std::string solver = a_args.value("solver", std::string("chain"));
+			const int mode = solver == "smp" ? 0 : (solver == "rigid" ? 2 : 1);
+			static_cast<SmpPhysicsFeature*>(a_self)->SetClaimSolver(a_args.value("actorFormID", 0u), a_args.value("file", std::string{}), mode);
+		});
+	FEATURE_COMMAND("reevaluatePlayer", "Ask hdtSMP64 to re-run claiming for the player only.",
+		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->ReevaluatePlayer(); });
+	FEATURE_QUERY("kinematicCheck", "Measure, for a claimed mesh, how far the engine's skinning matrices for the bones the solver does not simulate are from matrices rebuilt from the world poses recorded when the solver stepped: engineVsStepPoseMax near float rounding means those bones could be built once per frame after the solver step. Call with arm true, move the actor or camera for a few seconds, then call with arm false to read samples, staticBones, engineVsBindPoseMax, engineVsStepPoseMax and stepVsBindTranslationMax. Args: actorFormID (number), mesh (string), arm (boolean).",
+		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->KinematicCheckJson(a_args); });
+	FEATURE_QUERY("skinPaletteCheck", "Compare the skinning matrices bound for a claimed mesh with the engine's own, bone by bone: bones the solver does not simulate must match exactly, simulated bones should differ only by the solver's newer pose. Each call requests a fresh capture and answers with the one the previous call requested. Args: actorFormID (number), mesh (string).",
+		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->SkinPaletteCheckJson(a_args); });
+	FEATURE_QUERY("collisionAudit", "Report, on demand, the collision proxies this feature built for an actor: per claim, how many spheres it has and how many of those start inside a collider and are exempt from it, then every collider's type, its driver node, its radius, whether it was fitted to the worn meshes or left at a default, and how many skinned body vertices the fit used; per claim, spheresBehindFace counts the spheres whose centre sits behind the nearest one-sided armor face by more than the allowance and skin, deepestBehindFace is the deepest of them, retargetBehindSpheres, retargetResidualSpheres, retargetedJoints, retargetKeptAuthored, retargetMaxAngle, retargetMaxBoneMove and retargetSagMaxMove say what the claim-time rest retarget did about spheres that settle behind a worn surface once the rest sags under gravity, and spheresInsideShell (with insideShellBones per hair bone) counts the spheres now inside a worn shell by the retarget's own measure, the distance straight out from the body axis to the face the hair would exit through, so the two agree when the hair settled where the retarget predicted; spheresBehindOutwardFace how many of those faces point away from the body axis (an outer plate rather than an inner lining), behindFaceDepthBuckets counts them at up to 1, 2, 4, 8, 16 and more units behind, behindFaceBones counts them per hair bone, behindFaceSurfaces counts them per surface as [outward-facing, inward-facing] lists over the same depth buckets, and behindBySphere lists each sphere's distance behind its nearest face, so a run before and after a pull shows which spheres ended up under the armor; every posed collision surface adds its triangle count, margin, penetration allowances and world-space bounds next to the head driver. Args: actorFormID (number), optionally with hairMesh and targetMesh together, which also measures how deep the hair mesh sinks into the target mesh, skinning both with the nodes' current world transforms so hdtSMP64-driven and claimed hair can be compared. When any hair vertex lies behind the target it also reports insideBounds (low/high corners in the head frame), insideByHeight (counts per 10 unit bucket of head-frame height) and insideByBone (the hair bones owning most of those vertices, with their mean depth).",
+		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->CollisionAuditJson(a_args); });
+	FEATURE_QUERY("surfaceCheck", "Copy back a submitted frame's GPU collision-surface pass and compare it with the CPU reference for the same driver poses, answering with the check the previous call requested (call twice, a frame apart), reporting how many triangle and node records were compared, the largest component error of each and how many records, node boxes and node topologies differ; no mismatches and a zero error means the GPU pass reproduces the reference exactly up to float rounding, and the check needs a submitted frame with the GPU backend active.",
+		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->SurfaceCheckJson(); });
 }
 
 void SmpPhysicsFeature::OnDeferredGeometryEnd()

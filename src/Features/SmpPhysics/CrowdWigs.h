@@ -1,0 +1,70 @@
+#pragma once
+
+#include "CrowdStyles.h"
+
+#include "Utils/TestBench/TestCrowd.h"
+
+#include <cstddef>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+namespace SmpPhysics
+{
+	/** @brief One node a character's baked hair draws, with what the actor's 3D has of it. */
+	struct BakedHairNode
+	{
+		std::string editorId;  ///< The head part's editor ID, or "(unnamed)" for a part without one.
+		bool found = false;    ///< Whether the actor's 3D has a node with that editor ID.
+		bool hidden = false;   ///< Whether that node has the hidden flag set.
+	};
+
+	/** @brief The nodes of an actor's baked hair: every hair head part of its base and each part's extras, in traversal order. */
+	[[nodiscard]] std::vector<BakedHairNode> BakedHairNodes(RE::Actor& a_actor);
+
+	/**
+	 * @brief What GPU SMP Physics adds to the test crowd: each character wears a different hair-slot wig, its own hair is hidden under it,
+	 *        and the crowd's hair colour can be changed.
+	 */
+	class CrowdWigs final : public TestBench::CrowdHooks
+	{
+	public:
+		void BeforeSpawn(std::size_t a_count) override;
+		void Dress(RE::Actor& a_actor, std::size_t a_index) override;
+		[[nodiscard]] bool KeepWhenStripped(const RE::TESBoundObject& a_object) const override;
+		void AfterRefresh(RE::Actor& a_actor) override;
+		/**
+		 * @brief Hides the baked hair of every character still being watched after Dress, once per frame.
+		 * @details A new character has no 3D yet and a wig rebuilds it a few frames later, so hiding at Dress is not enough. Game thread only.
+		 */
+		void Tick();
+		[[nodiscard]] std::string DescribeSpawn() const override;
+		/** @brief Draws the crowd's hair colour control: the colour to set, Apply, and Restore natural colours. UI thread only. */
+
+		/**
+		 * @brief Sets the hair colour of every base the crowd is made from, then refreshes the characters standing now.
+		 * @param a_color A name from TestCrowdHairColors(), or a BGSColorForm ID written as a decimal or 0x-prefixed number.
+		 * @details Game thread only. The outcome goes to the crowd's report.
+		 */
+		void SetHairColorNow(TestBench::TestCrowd& a_crowd, const std::string& a_color);
+
+		/**
+		 * @brief Puts back the natural hair colour of every base SetHairColorNow changed, then refreshes the characters standing now.
+		 * @details Game thread only. The outcome goes to the crowd's report.
+		 */
+		void RestoreNaturalColorsNow(TestBench::TestCrowd& a_crowd);
+
+	private:
+		/** @brief A wig wearer watched for its own hair showing: frames left to watch and whether any hair was ever hidden. */
+		struct BakedHairWatch
+		{
+			RE::ObjectRefHandle handle;
+			int framesLeft = 0;
+			bool everHidden = false;
+		};
+		std::vector<RE::TESObjectARMO*> chosen;                           ///< The wigs picked for the last spawn, one per distinct style.
+		std::size_t requested = 0;                                        ///< How many characters the last spawn asked for.
+		std::vector<BakedHairWatch> watches;                              ///< Game thread only.
+		std::unordered_map<RE::FormID, RE::BGSColorForm*> naturalColors;  ///< Each base's own hair colour, recorded before the first change. Game thread only.
+	};
+}

@@ -6,6 +6,7 @@
 #include "Globals.h"
 #include "Utils/D3D.h"
 #include "plugin/BoneUploadHook.h"
+#include "plugin/DevBench.h"
 #include "plugin/Instance.h"
 #include "plugin/Settings.h"
 #include "plugin/UiModel.h"
@@ -56,6 +57,7 @@ namespace
 			globals::features::wind.ConnectCommunityShaders();
 			Instance().DataLoaded();
 			PluginUi::Register();
+			DevBench::Install();
 			break;
 		default:
 			break;

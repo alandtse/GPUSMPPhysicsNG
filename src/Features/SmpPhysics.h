@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Features/SmpPhysics/CrowdWigs.h"
+
 #include "Feature.h"
 #include "d3d/GpuSolver.h"
 #include "engine/DebugLines.h"
@@ -112,6 +114,7 @@ struct SmpPhysicsFeature final : Feature
 	virtual void ClearShaderCache() override;
 	/** @brief Drops the compiled skinning and debug line shaders only, leaving the solver running, so edited shader files take effect. */
 	void ReloadVisualShaders();
+	virtual void RegisterUxActions() override;
 	virtual bool WantsBoneUploadHook() const override { return true; }
 	/** @brief Draws the debug overlay's lines into the deferred G-buffer. */
 	virtual void OnDeferredGeometryEnd() override;
@@ -606,4 +609,5 @@ private:
 	MeshOwner meshOwner{ *this };
 	FrameListener frameListener{ *this };
 	FrameSyncListener frameSyncListener{ *this };
+	SmpPhysics::CrowdWigs crowdWigs;  ///< What this feature adds to the test crowd.
 };

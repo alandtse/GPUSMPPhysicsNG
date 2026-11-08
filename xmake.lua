@@ -72,11 +72,14 @@ add_files(
     "src/engine/*.cpp",
     "src/plugin/*.cpp",
     "src/Features/*.cpp",
+    "src/Features/SmpPhysics/*.cpp",
     "src/Features/Wind/*.cpp",
+    "src/Utils/TestBench/*.cpp",
+    "vendor/include/devbench/DevBenchAPI.cpp",
     "src/Utils/*.cpp|D3D.cpp"
 )
 add_headerfiles("src/**.h")
-add_includedirs("src", "vendor/include")
+add_includedirs("src", "vendor/include", "vendor/include/devbench")
 add_syslinks("d3dcompiler", "shell32")
 set_pcxxheader("src/pch.h")
 

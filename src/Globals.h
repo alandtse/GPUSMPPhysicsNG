@@ -32,7 +32,8 @@ struct State
 
 namespace globals
 {
-	inline State* state = nullptr;
+	inline State defaultState;
+	inline State* state = &defaultState;
 
 	namespace game
 	{
