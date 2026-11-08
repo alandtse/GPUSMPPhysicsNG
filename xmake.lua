@@ -19,6 +19,10 @@ set_policy("package.requires_lock", true)
 add_rules("mode.debug", "mode.releasedbg")
 set_defaultmode("releasedbg")
 
+-- Local package repo: pins the SKSE Menu Framework client header to an exact upstream version.
+add_repositories("gsp-pkgs xmake-pkgs")
+
+add_requires("skse-menu-framework-api 3.7.0")
 add_requires("catch2", "nlohmann_json", "thread-pool", "directxtk", "microsoft-detours")
 
 -- Engine-free solver core: rig building, packing, collision, skinning math.
@@ -41,9 +45,20 @@ add_defines("WIN32_LEAN_AND_MEAN", "NOMINMAX", { public = true })
 add_syslinks("d3dcompiler", "d3d11", "dxgi", "windowsapp")
 target_end()
 
+-- Settings page, PCH-free so the SKSE Menu Framework client header never meets the plugin's own imgui types.
+target("GPUSMPPhysicsNG-UI")
+set_kind("static")
+set_warnings("all")
+add_deps("commonlibsse-ng")
+add_packages("skse-menu-framework-api")
+add_defines("_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING", "UNICODE", "_UNICODE", "SMP_USE_SKSE_LOG")
+add_files("src/ui/UI.cpp")
+add_includedirs("src")
+target_end()
+
 -- The SKSE plugin: engine-coupled layer plus plugin glue. Built against CommonLibVR (NG branch).
 target("GPUSMPPhysicsNG")
-add_deps("commonlibsse-ng", "GPUSMPPhysicsNG-D3D")
+add_deps("commonlibsse-ng", "GPUSMPPhysicsNG-D3D", "GPUSMPPhysicsNG-UI")
 add_packages("thread-pool", "nlohmann_json", "directxtk", "microsoft-detours")
 set_basename("GPUSMPPhysicsNG")
 add_defines("SMP_USE_SKSE_LOG")

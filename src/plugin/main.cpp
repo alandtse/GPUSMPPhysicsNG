@@ -7,6 +7,7 @@
 #include "plugin/BoneUploadHook.h"
 #include "plugin/Instance.h"
 #include "plugin/Settings.h"
+#include "plugin/UiModel.h"
 
 #include <fstream>
 
@@ -52,6 +53,7 @@ namespace
 		case SKSE::MessagingInterface::kDataLoaded:
 			BindGameGlobals();
 			Instance().DataLoaded();
+			PluginUi::Register();
 			break;
 		default:
 			break;

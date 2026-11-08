@@ -31,6 +31,19 @@ namespace Util::BodyCapsules
 	struct Capsule;
 }
 
+/** @brief Bounds of the user-facing settings, shared by the settings page and the feature's own clamping. */
+namespace SmpPhysicsLimits
+{
+	constexpr float kMinSimulationDistance = 100.0f;
+	constexpr float kMaxSimulationDistance = 20000.0f;
+	constexpr int kMinClaims = 1;
+	constexpr int kMaxClaims = 256;
+	constexpr float kMinScale = 0.0f;
+	constexpr float kMaxScale = 10.0f;
+	constexpr float kMaxWindStrength = 100.0f;
+	constexpr float kMaxScreenSizePercent = 50.0f;
+}
+
 /** @brief An engine node transform as the solver sees it. The engine's scale is dropped: a Skyrim actor is not scaled. */
 [[nodiscard]] inline SmpPhysics::Transform ToSolverTransform(const RE::NiTransform& a_transform) noexcept
 {
@@ -140,6 +153,16 @@ struct SmpPhysicsFeature final : Feature
 	void SetClaimSolver(RE::FormID a_actorFormID, const std::string& a_file, int a_solver);
 	/** @brief Steps every claim with the chain or the rigid-body solver, dropping the per-file choices made with SetClaimSolver. */
 	void SetDefaultSolver(bool a_rigid);
+
+	/** @brief What the settings page shows beside the controls. */
+	struct UiStatus
+	{
+		bool linked{};
+		std::string linkStatus;
+		std::size_t claimCount{};
+		double stepMilliseconds{};
+	};
+	[[nodiscard]] UiStatus GetUiStatus() const;
 
 	/** @brief Link state, live claims and declined physics files, for the devbench status query. */
 	[[nodiscard]] json BuildStatusJson() const;

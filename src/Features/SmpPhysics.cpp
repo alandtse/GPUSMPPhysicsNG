@@ -64,15 +64,11 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	ShowSkeletonDebug,
 	BatchSkinPalette)
 
+using namespace SmpPhysicsLimits;
+
 namespace
 {
 	constexpr std::uint32_t kMaxPhysicsFileBytes = 4u * 1024u * 1024u;
-	constexpr float kMinSimulationDistance = 100.0f;
-	constexpr float kMaxSimulationDistance = 20000.0f;
-	constexpr int kMinClaims = 1;
-	constexpr int kMaxClaims = 256;
-	constexpr float kMinScale = 0.0f;
-	constexpr float kMaxWindStrength = 100.0f;
 	/** @brief Seconds between reads of the weather, as in hdtSMP64. */
 	constexpr float kWindTick = 0.5f;
 	constexpr float kWindExposureEasing = 0.05f;
@@ -95,7 +91,6 @@ namespace
 	constexpr std::array<std::uint32_t, 20> kNotExteriorWorlds{ 0x69857u, 0x1EE62u, 0x20DCBu, 0x1FAE2u, 0x34240u,
 		0x50015u, 0x2C965u, 0x29AB7u, 0x4F838u, 0x3A9D6u, 0x243DEu, 0xC97EBu, 0xC350Du, 0x1CDD3u, 0x1CDD9u,
 		0x21EDBu, 0x1E49Du, 0x2B101u, 0x2A9D8u, 0x20BFEu };
-	constexpr float kMaxScale = 10.0f;
 	/** Translation jump above which the kinematic root is moved by teleport, so the solver is reset instead of dragged after it. */
 	constexpr float kTeleportDistance = 150.0f;
 	/** A bone's reach from its kinematic root is its rest strand length times this plus kBoneReachMargin; a solver pose past it restarts the claim. */
@@ -107,7 +102,6 @@ namespace
 	constexpr float kOffscreenMargin = 600.0f;        ///< A claim farther outside the view than this counts as out of view.
 	constexpr float kOffscreenResumeMargin = 300.0f;  ///< A culled claim resumes within this of the view; at or above kOffscreenMargin it would resume and re-cull in turn.
 	constexpr float kHairScreenRadius = 80.0f;        ///< The reach of a claim's hair from its first kinematic bone, in game units, for the screen size test.
-	constexpr float kMaxScreenSizePercent = 50.0f;
 	constexpr float kBodyContactRange = 1000.0f;           ///< Bodies and hands farther than this from the camera are not tracked for hair.
 	constexpr float kBodyContactReach = 8.0f;              ///< How far past a claim's hair a body capsule still matters, in game units.
 	constexpr float kReleasedHandClearance = 1.0f;         ///< How far a hand that let go must be from the hair it held before it pushes it again, in game units.
@@ -634,6 +628,12 @@ json SmpPhysicsFeature::BuildStatusJson() const
 			result["declined"].push_back({ { "file", entry.first }, { "reason", entry.second } });
 	}
 	return result;
+}
+
+SmpPhysicsFeature::UiStatus SmpPhysicsFeature::GetUiStatus() const
+{
+	const std::scoped_lock lock(stateMutex);
+	return { linked.load(std::memory_order_relaxed), linkStatus, claims.size(), totalStepMicroseconds / 1000.0 };
 }
 
 json SmpPhysicsFeature::SurfaceCheckJson() const
