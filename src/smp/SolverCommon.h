@@ -1,0 +1,202 @@
+#pragma once
+
+#include "Collision.h"
+#include "Math.h"
+#include "SkinnedSurface.h"
+#include "SmpRig.h"
+#include "WindDrag.h"
+
+#include <array>
+#include <cstddef>
+#include <vector>
+
+namespace SmpPhysics
+{
+	/** @brief Seconds the gust clock runs before it wraps, as in hdtSMP64. */
+	inline constexpr float kWindClockWrap = 4096.0f;
+
+	/** @brief The scales, wind and substep policy the compute solver runs a rig with. */
+	struct SolverParams
+	{
+		float gravity{ 687.7193f };  ///< Skyrim units per second squared (9.8 / 0.01425)
+		float gravityScale{ 1.0f };
+		float stiffnessScale{ 1.0f };
+		float dampingScale{ 1.0f };
+		float bodyScale{ 1.0f };  ///< The rig nodes' world scale: hdtSMP64 scales a body's mass by its cube and its inertia and angular springs by its fifth power
+		float fixedStep{ 1.0f / 60.0f };
+		int maxSubSteps{ 4 };
+		float maxFrameTime{ 0.1f };
+		float maxAngularSpeed{ 60.0f };  ///< rad/s
+		Vec3 wind{};                     ///< World wind velocity in Skyrim units per second; zero switches wind off
+		float windTime{};                ///< Gust clock in seconds, advanced once per frame by the caller
+		float windFactor{ 1.0f };        ///< The actor's wind exposure, 0 fully sheltered to 1 fully exposed
+		bool windChainLoad{ true };      ///< Whether a joint also carries the wind load of every bone below it
+		bool subtreeLoading{ true };     ///< Whether a joint carries the gravity, acceleration load and inertia of the bones below it
+		bool chainTies{ true };          ///< Whether the rig's cross-chain joints hold neighbouring chains within their authored limits
+	};
+
+	/** @brief hdtSMP64's Bullet world is the Skyrim world scaled by this; its gust phases are laid out in Bullet units. */
+	inline constexpr float kBulletPerSkyrimUnit = 0.01425f;
+	/** @brief Wind speed, in Skyrim units per second, that one unit of wind strength gives at full sky wind speed. */
+	inline constexpr float kWindSpeedPerStrength = 300.0f;
+	/** @brief Fastest wind a bone is exposed to, so a transient blast cannot overpower the joints. */
+	inline constexpr float kMaxWindSpeed = 900.0f;
+	/**
+	 * @brief Drag force per unit of exposed area and squared relative speed.
+	 * @details Sized so a 20 by 4 unit segment of mass 0.1 at the default wind leans about a fifth of gravity.
+	 */
+	inline constexpr float kWindDrag = 1.0e-6f;
+	/** @brief Largest wind acceleration, in Skyrim units per second squared, a bone feels whatever its area; gravity is about 688. */
+	inline constexpr float kMaxWindAcceleration = 400.0f;
+	/** @brief Gust phase travel speed per unit of wind speed, and its bounds in Bullet units per second. */
+	inline constexpr float kGustSpeedPerAcceleration = 0.05f;
+	inline constexpr float kMinGustSpeed = 180.0f;
+	inline constexpr float kMaxGustSpeed = 1200.0f;
+
+	/**
+	 * @brief The force of wind drag on a bone's hair segment.
+	 * @details The force is quadratic drag from the wind relative to the bone, using only the part across the
+	 *          segment, on the area the segment presents, so wide, light hair is pushed more than narrow, heavy
+	 *          hair and a bone moving with the wind feels less. It is capped at kMaxWindAcceleration times the
+	 *          bone's mass. The Wind feature's field carries the gusts, so only hdtSMP64's fine flutter is added.
+	 * @param a_area Segment length times width, from ComputeBoneWindGeometry.
+	 * @param a_axis Unit vector along the segment, in the world frame.
+	 * @param a_origin The bone's world position, Skyrim units.
+	 * @param a_velocity The bone's world linear velocity, Skyrim units per second.
+	 * @param a_boneFactor The bone's own <wind-factor>, times the actor's exposure.
+	 * @note Mirrored by HairChainSolver::WindForce in package/Shaders/Common/HairChainSolver.hlsli.
+	 */
+	[[nodiscard]] Vec3 WindForce(const SolverParams& a_params, float a_boneFactor, float a_mass, float a_area, const Vec3& a_axis,
+		const Vec3& a_origin, const Vec3& a_velocity) noexcept;
+
+	/** @brief The substeps one frame is split into. A count below one means the frame is not stepped at all. */
+	struct SubStepPlan
+	{
+		int count{};
+		float step{};
+	};
+
+	/**
+	 * @brief Contact spring stiffness, in force units per unit of penetration.
+	 * @details Sized so a resting contact settles at a depth of |torque| / (J * k), which for the hair XMLs'
+	 *          mass 0.1 and 16 inertia is about 0.02 units against gravity's own torque.
+	 * @note Mirrored by its namesake in package/Shaders/Common/HairChainSolver.hlsli, which
+	 *       test_smpphysics_gpurig.cpp checks these values against.
+	 */
+	inline constexpr float kContactStiffness = 4000.0f;
+	/** @brief Contact damping, in torque units per radian per second. Critical for the same reference inertia: 2 * sqrt(kContactStiffness * 16). */
+	inline constexpr float kContactDamping = 506.0f;
+	/**
+	 * @brief How far, in Skyrim units, in front of a surface a hair sphere's contact already engages.
+	 * @details About one substep's fall under gravity, so a bone resting on a surface keeps its contact between
+	 *          substeps instead of losing it, falling back and chattering. Passed to the shader in TreeInput.
+	 */
+	inline constexpr float kContactSkin = 0.1f;
+	/**
+	 * @brief Stiffness of the pin that holds a grabbed strand to a hand, in force units per unit of distance.
+	 * @note Mirrored by the grab term in ChainSolverCS.hlsl, which takes it from the tree's input.
+	 */
+	inline constexpr float kGrabStiffness = 1500.0f;
+	/**
+	 * @brief Stiffness of the spring that holds a bone inside the linear limits of a joint to a neighbouring chain, in force units per unit of distance.
+	 * @note Mirrored by kTieStiffness in ChainSolverCS.hlsl, which takes it from the tree's input.
+	 */
+	inline constexpr float kTieStiffness = 1500.0f;
+	/**
+	 * @brief Farthest, in Skyrim units, a pin pulls from, so a hand far from its strand cannot overpower the joints.
+	 * @note Mirrored by kMaxGrabPull in package/Shaders/Common/HairChainSolver.hlsli.
+	 */
+	inline constexpr float kMaxGrabPull = 25.0f;
+	/**
+	 * @brief Fastest, in radians per second, a joint beyond its limit returns inside it.
+	 * @details A held strand frees the joints above the hand from their limits; letting go moves them back at this rate instead of snapping them in one step.
+	 * @note Mirrored by kLimitReturnRate in package/Shaders/Common/HairChainSolver.hlsli.
+	 */
+	inline constexpr float kLimitReturnRate = 8.0f;
+	/** @brief Distance under which a pin does nothing, so its pull has a direction. Mirrored by kMinGrabDistance in HairChainSolver.hlsli. */
+	inline constexpr float kMinGrabDistance = 1.0e-3f;
+
+	/** @brief A strand held by a hand: a point on the bone is pulled toward the target like a contact that pushes it there. */
+	struct Grab
+	{
+		int bone{ -1 };  ///< The rig bone the hand holds, or -1 for none.
+		Vec3 local{};    ///< The held point in the bone's own frame. A bone's origin is its joint, so a point along the strand is what a pull can move.
+		Vec3 target{};   ///< World position the hand wants that point at.
+		float stiffness{ kGrabStiffness };
+	};
+
+	/** @brief How hard and which way a pin pulls a bone, shaped like a contact: depth is the distance to the target up to kMaxGrabPull. */
+	struct GrabPull
+	{
+		float depth{};
+		Vec3 normal{};
+	};
+
+	/** @brief The pin's pull on a bone at a_position, or depth 0 when it is at the target or either point is not finite. */
+	[[nodiscard]] GrabPull ComputeGrabPull(const Vec3& a_position, const Vec3& a_target) noexcept;
+	/**
+	 * @brief Slack a bone's bound sphere carries when it decides whether the whole bone can be skipped.
+	 * @details Covers the bound's own enlargement not being an exact Euclidean distance for an ellipsoid proxy.
+	 * @note Mirrored by kBoundCullPad in package/Shaders/Common/HairChainSolver.hlsli.
+	 */
+	inline constexpr float kBoundCullPad = 0.5f;
+	/** @brief How far from a one-sided face a diagnostic probe still measures which side a sphere is on. */
+	inline constexpr float kProbeBehindReach = 8.0f;
+	/** @brief Distance behind a one-sided face past which a probe counts the sphere as behind it, a little over the armor allowance and skin. */
+	inline constexpr float kProbeLostBehind = 0.5f;
+
+	/** @brief The substeps the compute solver takes for a_dt: the fixed-step policy, with a count below one meaning the frame is not stepped. */
+	[[nodiscard]] SubStepPlan PlanSubSteps(float a_dt, const SolverParams& a_params) noexcept;
+
+	/**
+	 * @brief hdtSMP64's frame-to-step policy: SkyrimPhysicsWorld::doUpdate and SkinnedMeshWorld::stepSimulation.
+	 * @details Frames accumulate until more than half a tick has passed, then run whole ticks plus a variable
+	 *          remainder, so the step sizes follow the frame times rather than splitting them evenly.
+	 */
+	class SmpStepClock
+	{
+	public:
+		/** @brief The steps one frame runs and the time they cover; an empty list means the frame is skipped. */
+		struct Frame
+		{
+			std::array<float, 64> steps{};
+			int count{};
+			float total{};
+		};
+
+		/** @brief Adds a_interval seconds and returns the steps to run now. */
+		[[nodiscard]] Frame Advance(float a_interval) noexcept;
+		/** @brief Forgets the accumulated time and restarts the interval average at one tick. */
+		void Reset() noexcept;
+
+	private:
+		float averageInterval{ 1.0f / 60.0f };
+		float accumulated{};
+	};
+
+	/** @brief a_params with every non-finite or out-of-range value replaced by one the solver can run with. */
+	[[nodiscard]] SolverParams SanitizeParams(SolverParams a_params) noexcept;
+
+	/** @brief One collision sphere as placed by a set of bone poses, and the deepest collider it penetrates. */
+	struct SphereProbe
+	{
+		int bone{};
+		Vec3 center{};
+		float radius{};
+		float depth{};
+		int collider{ -1 };
+		float behind{};           ///< how far the centre sits behind the nearest one-sided face it projects onto, zero when it is in front of every one
+		bool behindOutward{};     ///< that face points away from the body's axis under the head, so it is an outer shell rather than an inner lining
+		int behindSurface{ -1 };  ///< index of the surface that face belongs to
+		float insideShell{};      ///< how deep inside a worn shell the centre sits, measured out from the body axis (TriangleGrid::RadialDepthInside), zero when it is not
+	};
+
+	/**
+	 * @brief Places every collision sphere with the bone poses the caller supplies, such as those the GPU solver returned, and reports its penetration, for diagnostics.
+	 * @param a_spheres One sphere list per rig bone, in the bone's frame.
+	 * @param a_colliders The proxies, each driven by an entry of a_driverWorld; a surface's contact index is the collider count plus its position in a_surfaces.
+	 * @details Builds its own surface grids from a_driverWorld. Leaves a_out empty when there are no spheres or the bone count does not match.
+	 */
+	void ProbeSpheres(const std::vector<std::vector<BoneSphere>>& a_spheres, const std::vector<Collider>& a_colliders, const std::vector<SkinnedSurface>& a_surfaces,
+		const std::vector<Transform>& a_boneWorld, const std::vector<Transform>& a_driverWorld, std::vector<SphereProbe>& a_out);
+}
