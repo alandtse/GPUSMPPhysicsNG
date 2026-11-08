@@ -33,7 +33,8 @@ private:
 
 #define CS_GPU_PASS_CONCAT_INNER(a, b) a##b
 #define CS_GPU_PASS_CONCAT(a, b) CS_GPU_PASS_CONCAT_INNER(a, b)
-#define CS_GPU_PASS(name) ScopedGpuPass CS_GPU_PASS_CONCAT(cs_gpu_pass_, __LINE__){ name }
+#define CS_GPU_PASS(name) \
+	ScopedGpuPass CS_GPU_PASS_CONCAT(cs_gpu_pass_, __LINE__) { name }
 
 #ifndef ZoneScopedN
 #	define ZoneScopedN(name)

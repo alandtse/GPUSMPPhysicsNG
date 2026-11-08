@@ -1,10 +1,10 @@
 // Runs the rigid-body compute kernels (RigidSolverCS.hlsl) on a WARP device and compares every body they produce
 // with the CPU reference's result for the same recorded step.
 
-#include "smp/RigidGpuPacking.h"
-#include "smp/RigidReference.h"
 #include "rigid_gpu_harness.h"
 #include "rigid_trace_loader.h"
+#include "smp/RigidGpuPacking.h"
+#include "smp/RigidReference.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
@@ -217,7 +217,7 @@ TEST_CASE("The GPU rigid solver reproduces the CPU reference", "[smpphysics][rig
 			const float linearVelocity = Length(Sub(produced.linearVelocity, expected.linearVelocity));
 			const float angularVelocity = Length(Sub(produced.angularVelocity, expected.angularVelocity));
 			INFO(fixture.name << " step " << stepIndex << " body " << body << ": position " << position << " rotation " << rotation
-							  << " linear velocity " << linearVelocity << " angular velocity " << angularVelocity);
+			                  << " linear velocity " << linearVelocity << " angular velocity " << angularVelocity);
 			REQUIRE(std::isfinite(position));
 			REQUIRE(std::isfinite(rotation));
 			REQUIRE(position < kPositionTolerance);
@@ -234,7 +234,7 @@ TEST_CASE("The GPU rigid solver reproduces the CPU reference", "[smpphysics][rig
 	}
 
 	INFO(fixture.name << ": position " << worst.position << " rotation " << worst.rotation << " linear velocity "
-					  << worst.linearVelocity << " angular velocity " << worst.angularVelocity << " over " << worst.bodies << " body steps");
+	                  << worst.linearVelocity << " angular velocity " << worst.angularVelocity << " over " << worst.bodies << " body steps");
 	CHECK(worst.bodies == bodyCount * fixture.steps.size());
 }
 
@@ -281,7 +281,7 @@ TEST_CASE("The GPU rigid solver reproduces the CPU reference's contact rows", "[
 			const float linearVelocity = Length(Sub(produced.linearVelocity, expected.linearVelocity));
 			const float angularVelocity = Length(Sub(produced.angularVelocity, expected.angularVelocity));
 			INFO("step " << stepIndex << " body " << body << " of " << packed.contacts.size() << " contacts: position " << position
-						 << " rotation " << rotation << " linear velocity " << linearVelocity << " angular velocity " << angularVelocity);
+			             << " rotation " << rotation << " linear velocity " << linearVelocity << " angular velocity " << angularVelocity);
 			REQUIRE(std::isfinite(position));
 			REQUIRE(position < kPositionTolerance);
 			REQUIRE(rotation < kRotationTolerance);
@@ -297,8 +297,8 @@ TEST_CASE("The GPU rigid solver reproduces the CPU reference's contact rows", "[
 	}
 
 	WARN("skirt contacts, GPU vs reference: position " << worst.position << " rotation " << worst.rotation << " linear velocity "
-													   << worst.linearVelocity << " angular velocity " << worst.angularVelocity << " over " << worst.bodies << " body steps, "
-													   << contactSteps << " steps with contacts");
+	                                                   << worst.linearVelocity << " angular velocity " << worst.angularVelocity << " over " << worst.bodies << " body steps, "
+	                                                   << contactSteps << " steps with contacts");
 	CHECK(contactSteps > 0);
 }
 
@@ -339,7 +339,7 @@ TEST_CASE("The GPU rigid solver reproduces the CPU reference against bodies outs
 			const float linearVelocity = Length(Sub(produced.linearVelocity, expected.linearVelocity));
 			const float angularVelocity = Length(Sub(produced.angularVelocity, expected.angularVelocity));
 			INFO("step " << stepIndex << " body " << body << ": position " << position << " rotation " << rotation
-						 << " linear velocity " << linearVelocity << " angular velocity " << angularVelocity);
+			             << " linear velocity " << linearVelocity << " angular velocity " << angularVelocity);
 			REQUIRE(std::isfinite(position));
 			REQUIRE(position < kPositionTolerance);
 			REQUIRE(rotation < kRotationTolerance);
@@ -359,8 +359,8 @@ TEST_CASE("The GPU rigid solver reproduces the CPU reference against bodies outs
 	}
 
 	WARN("wig outside contacts, GPU vs reference: position " << worst.position << " rotation " << worst.rotation << " linear velocity "
-															 << worst.linearVelocity << " angular velocity " << worst.angularVelocity << "; coloured position " << coloredPosition
-															 << " over " << worst.bodies << " body steps");
+	                                                         << worst.linearVelocity << " angular velocity " << worst.angularVelocity << "; coloured position " << coloredPosition
+	                                                         << " over " << worst.bodies << " body steps");
 	CHECK(worst.bodies == bodyCount * fixture.steps.size());
 }
 
@@ -400,8 +400,8 @@ TEST_CASE("The coloured GPU rigid solve stays near the CPU reference", "[smpphys
 			const float linearVelocity = Length(Sub(produced.linearVelocity, expected.linearVelocity));
 			const float angularVelocity = Length(Sub(produced.angularVelocity, expected.angularVelocity));
 			INFO(fixture.name << " step " << stepIndex << " body " << body << ": position " << position << " rotation " << rotation
-							  << " linear velocity " << linearVelocity << " angular velocity " << angularVelocity
-							  << " over " << packed.islands.size() << " islands, " << colors.maximum << " colours");
+			                  << " linear velocity " << linearVelocity << " angular velocity " << angularVelocity
+			                  << " over " << packed.islands.size() << " islands, " << colors.maximum << " colours");
 			REQUIRE(std::isfinite(position));
 			REQUIRE(std::isfinite(rotation));
 			REQUIRE(position < kColoredPositionTolerance);
@@ -418,7 +418,7 @@ TEST_CASE("The coloured GPU rigid solve stays near the CPU reference", "[smpphys
 			const float orderedPosition = Length(Sub(produced.worldTransform.origin, ordered.bodies[body].worldTransform.origin));
 			const float orderedVelocity = Length(Sub(produced.linearVelocity, ordered.bodies[body].linearVelocity));
 			INFO(fixture.name << " step " << stepIndex << " body " << body << " against the colour-ordered reference: position "
-							  << orderedPosition << " linear velocity " << orderedVelocity);
+			                  << orderedPosition << " linear velocity " << orderedVelocity);
 			REQUIRE(orderedPosition < kOrderedPositionTolerance);
 			REQUIRE(orderedVelocity < kOrderedVelocityTolerance);
 			worstOrdered.position = std::max(worstOrdered.position, orderedPosition);
@@ -435,9 +435,9 @@ TEST_CASE("The coloured GPU rigid solve stays near the CPU reference", "[smpphys
 	}
 
 	WARN(fixture.name << " coloured vs stored order: position " << worst.position << " rotation " << worst.rotation << " linear velocity "
-					  << worst.linearVelocity << " angular velocity " << worst.angularVelocity << " over " << worst.bodies << " body steps, "
-					  << fixture.preStep.constraints.size() << " constraints in " << colors.islands << " islands, max " << colors.maximum
-					  << " colours, mean " << colors.mean);
+	                  << worst.linearVelocity << " angular velocity " << worst.angularVelocity << " over " << worst.bodies << " body steps, "
+	                  << fixture.preStep.constraints.size() << " constraints in " << colors.islands << " islands, max " << colors.maximum
+	                  << " colours, mean " << colors.mean);
 	WARN(fixture.name << " coloured vs colour order: position " << worstOrdered.position << " velocity " << worstOrdered.velocity);
 	CHECK(worst.bodies == bodyCount * fixture.steps.size());
 }

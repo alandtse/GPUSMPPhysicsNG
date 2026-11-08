@@ -115,7 +115,7 @@ namespace SmpPhysics::RigidGpuTest
 			code.GetAddressOf(), errors.GetAddressOf());
 		if (errors) {
 			INFO("D3DCompileFromFile(" << a_entry << "): "
-									   << std::string(static_cast<const char*>(errors->GetBufferPointer()), errors->GetBufferSize()));
+			                           << std::string(static_cast<const char*>(errors->GetBufferPointer()), errors->GetBufferSize()));
 		}
 		INFO("D3DCompileFromFile(" << a_entry << ") returned " << Hex(result));
 		REQUIRE(result == S_OK);

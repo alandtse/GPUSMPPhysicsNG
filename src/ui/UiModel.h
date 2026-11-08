@@ -35,9 +35,9 @@ namespace SettingsUi
 	struct Model
 	{
 		std::vector<Row> rows;
-		std::function<std::string()> status;      ///< Text shown above the controls, refreshed every frame.
-		std::function<void()> onSave;             ///< Writes Settings.json.
-		std::function<void()> onReevaluate;       ///< Asks hdtSMP64 to offer every actor's meshes again.
+		std::function<std::string()> status;  ///< Text shown above the controls, refreshed every frame.
+		std::function<void()> onSave;         ///< Writes Settings.json.
+		std::function<void()> onReevaluate;   ///< Asks hdtSMP64 to offer every actor's meshes again.
 	};
 
 	/** @brief Registers the page with SKSE Menu Framework; a no-op when it is not installed. The model must outlive the game session. */

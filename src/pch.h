@@ -28,8 +28,8 @@
 #include <winrt/base.h>
 #include <wrl/client.h>
 
-#include <Tracy/Tracy.hpp>
 #include <SimpleMath.h>
+#include <Tracy/Tracy.hpp>
 #include <nlohmann/json.hpp>
 
 namespace stl

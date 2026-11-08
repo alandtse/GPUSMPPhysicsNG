@@ -1,10 +1,8 @@
 #include "Features/SmpPhysics.h"
 
-#include "smp/CardVertices.h"
-#include "engine/ReadyWeaponGate.h"
 #include "Features/Wind/Wind.h"
-#include "Globals.h"
 #include "Features/Wind/WindShelterQuery.h"
+#include "Globals.h"
 #include "Utils/ActorUtils.h"
 #include "Utils/BodyCapsules.h"
 #include "Utils/D3D.h"
@@ -14,6 +12,8 @@
 #include "Utils/HiggsInterface.h"
 #include "Utils/MathUtils.h"
 #include "Utils/StringUtils.h"
+#include "engine/ReadyWeaponGate.h"
+#include "smp/CardVertices.h"
 
 #include <algorithm>
 #include <array>
@@ -98,10 +98,10 @@ namespace
 	constexpr float kBoneReachMargin = 5.0f;
 	/** @brief Consecutive frames a claim's actor may be missing before the claim is dropped. */
 	constexpr std::uint32_t kStaleClaimFrames = 180;
-	constexpr float kOffscreenKeepDistance = 500.0f;  ///< Hair this close to the camera is always simulated, as hdtSMP64's minCullingDistance does.
-	constexpr float kOffscreenMargin = 600.0f;        ///< A claim farther outside the view than this counts as out of view.
-	constexpr float kOffscreenResumeMargin = 300.0f;  ///< A culled claim resumes within this of the view; at or above kOffscreenMargin it would resume and re-cull in turn.
-	constexpr float kHairScreenRadius = 80.0f;        ///< The reach of a claim's hair from its first kinematic bone, in game units, for the screen size test.
+	constexpr float kOffscreenKeepDistance = 500.0f;       ///< Hair this close to the camera is always simulated, as hdtSMP64's minCullingDistance does.
+	constexpr float kOffscreenMargin = 600.0f;             ///< A claim farther outside the view than this counts as out of view.
+	constexpr float kOffscreenResumeMargin = 300.0f;       ///< A culled claim resumes within this of the view; at or above kOffscreenMargin it would resume and re-cull in turn.
+	constexpr float kHairScreenRadius = 80.0f;             ///< The reach of a claim's hair from its first kinematic bone, in game units, for the screen size test.
 	constexpr float kBodyContactRange = 1000.0f;           ///< Bodies and hands farther than this from the camera are not tracked for hair.
 	constexpr float kBodyContactReach = 8.0f;              ///< How far past a claim's hair a body capsule still matters, in game units.
 	constexpr float kReleasedHandClearance = 1.0f;         ///< How far a hand that let go must be from the hair it held before it pushes it again, in game units.
@@ -296,7 +296,6 @@ void SmpPhysicsFeature::RestoreDefaultSettings()
 	settings = {};
 }
 
-
 /** @brief World pose of named nodes below an actor's 3D, so the motion of a bone can be compared whoever simulates it. */
 static json NodeWorldJson(const json& a_args)
 {
@@ -325,7 +324,6 @@ static json NodeWorldJson(const json& a_args)
 	return { { "nodes", rows } };
 }
 
-
 void SmpPhysicsFeature::ClearShaderCache()
 {
 	gpuSolver.InvalidateShaders();
@@ -346,7 +344,6 @@ void SmpPhysicsFeature::OnDeferredGeometryEnd()
 
 	debugLines.Render();
 }
-
 
 void SmpPhysicsFeature::OnBoneMatricesUploaded(RE::NiSkinInstance* a_skin)
 {
@@ -2128,7 +2125,6 @@ json SmpPhysicsFeature::GripReportJson() const
 	}
 	return result;
 }
-
 
 void SmpPhysicsFeature::SetStrandProbe(const json& a_args)
 {

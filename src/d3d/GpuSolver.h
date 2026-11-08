@@ -1,11 +1,11 @@
 #pragma once
 
 #include "Buffer.h"
+#include "RigidGpuSolver.h"
+#include "Utils/LazyShader.h"
 #include "smp/GpuRigPacking.h"
 #include "smp/Math.h"
-#include "RigidGpuSolver.h"
 #include "smp/SmpRig.h"
-#include "Utils/LazyShader.h"
 
 #include <BS_thread_pool.hpp>
 

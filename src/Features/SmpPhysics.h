@@ -1,10 +1,10 @@
 #pragma once
 
 #include "Feature.h"
-#include "smp/Collision.h"
+#include "d3d/GpuSolver.h"
 #include "engine/DebugLines.h"
 #include "engine/GpuSkinning.h"
-#include "d3d/GpuSolver.h"
+#include "smp/Collision.h"
 #include "smp/SelfWindShelter.h"
 #include "smp/SkinnedSurface.h"
 #include "smp/SmpRig.h"

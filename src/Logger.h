@@ -31,13 +31,25 @@ namespace smplog
 	}
 
 	template <class... Args>
-	void debug(std::format_string<Args...> a_format, Args&&... a_args) { Log(Level::Debug, a_format, std::forward<Args>(a_args)...); }
+	void debug(std::format_string<Args...> a_format, Args&&... a_args)
+	{
+		Log(Level::Debug, a_format, std::forward<Args>(a_args)...);
+	}
 	template <class... Args>
-	void info(std::format_string<Args...> a_format, Args&&... a_args) { Log(Level::Info, a_format, std::forward<Args>(a_args)...); }
+	void info(std::format_string<Args...> a_format, Args&&... a_args)
+	{
+		Log(Level::Info, a_format, std::forward<Args>(a_args)...);
+	}
 	template <class... Args>
-	void warn(std::format_string<Args...> a_format, Args&&... a_args) { Log(Level::Warn, a_format, std::forward<Args>(a_args)...); }
+	void warn(std::format_string<Args...> a_format, Args&&... a_args)
+	{
+		Log(Level::Warn, a_format, std::forward<Args>(a_args)...);
+	}
 	template <class... Args>
-	void error(std::format_string<Args...> a_format, Args&&... a_args) { Log(Level::Error, a_format, std::forward<Args>(a_args)...); }
+	void error(std::format_string<Args...> a_format, Args&&... a_args)
+	{
+		Log(Level::Error, a_format, std::forward<Args>(a_args)...);
+	}
 }
 
 #ifndef SMP_USE_SKSE_LOG

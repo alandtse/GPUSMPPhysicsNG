@@ -2,10 +2,10 @@
 // device and compares every bone's merged contact with the CPU's QueryColliders and ContactMerge, then checks which
 // trees each pass serves.
 
+#include "rigid_gpu_harness.h"
 #include "smp/Collision.h"
 #include "smp/GpuRigPacking.h"
 #include "smp/SolverCommon.h"
-#include "rigid_gpu_harness.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>

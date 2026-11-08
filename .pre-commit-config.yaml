@@ -36,4 +36,4 @@ repos:
       - id: prettier
         additional_dependencies: ["prettier@3.1.0"]
         files: \.(json|md|yml|yaml)$
-        exclude: ^lib/
+        exclude: ^(lib/|tests/fixtures/)

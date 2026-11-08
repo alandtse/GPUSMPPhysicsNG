@@ -1,8 +1,8 @@
 #pragma once
 
+#include "Utils/LazyShader.h"
 #include "smp/Math.h"
 #include "smp/SkinPalette.h"
-#include "Utils/LazyShader.h"
 
 #include <array>
 #include <cstdint>

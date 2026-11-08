@@ -2,9 +2,9 @@
 
 #include "pch.h"
 
+#include "Features/Wind/Wind.h"
 #include "Globals.h"
 #include "Utils/D3D.h"
-#include "Features/Wind/Wind.h"
 #include "plugin/BoneUploadHook.h"
 #include "plugin/Instance.h"
 #include "plugin/Settings.h"
@@ -68,10 +68,18 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	SKSE::Init(a_skse);
 	smplog::GetSink() = [](smplog::Level a_level, const std::string& a_message) {
 		switch (a_level) {
-		case smplog::Level::Debug: logger::debug("{}", a_message); break;
-		case smplog::Level::Info: logger::info("{}", a_message); break;
-		case smplog::Level::Warn: logger::warn("{}", a_message); break;
-		case smplog::Level::Error: logger::error("{}", a_message); break;
+		case smplog::Level::Debug:
+			logger::debug("{}", a_message);
+			break;
+		case smplog::Level::Info:
+			logger::info("{}", a_message);
+			break;
+		case smplog::Level::Warn:
+			logger::warn("{}", a_message);
+			break;
+		case smplog::Level::Error:
+			logger::error("{}", a_message);
+			break;
 		}
 	};
 	SKSE::AllocTrampoline(64);

@@ -2,9 +2,9 @@
 
 #include "Globals.h"
 #include "GpuPass.h"
+#include "Utils/D3D.h"
 #include "smp/GpuViews.h"
 #include "smp/RigidRigBuilder.h"
-#include "Utils/D3D.h"
 
 #include <algorithm>
 #include <cstring>

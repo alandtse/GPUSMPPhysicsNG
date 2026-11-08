@@ -3,9 +3,9 @@
 #include "Globals.h"
 #include "Logger.h"
 
+#include <cstdint>
 #include <d3d11.h>
 #include <d3dcompiler.h>
-#include <cstdint>
 #include <format>
 #include <stdexcept>
 #include <string>

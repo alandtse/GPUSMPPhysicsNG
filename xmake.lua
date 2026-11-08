@@ -68,7 +68,13 @@ add_rules("commonlibsse-ng.plugin", {
     author = "alandtse",
     description = "GPU SMP physics for hair and cloth, a companion to hdtSMP64",
 })
-add_files("src/engine/*.cpp", "src/plugin/*.cpp", "src/Features/*.cpp", "src/Features/Wind/*.cpp", "src/Utils/*.cpp|D3D.cpp")
+add_files(
+    "src/engine/*.cpp",
+    "src/plugin/*.cpp",
+    "src/Features/*.cpp",
+    "src/Features/Wind/*.cpp",
+    "src/Utils/*.cpp|D3D.cpp"
+)
 add_headerfiles("src/**.h")
 add_includedirs("src", "vendor/include")
 add_syslinks("d3dcompiler", "shell32")

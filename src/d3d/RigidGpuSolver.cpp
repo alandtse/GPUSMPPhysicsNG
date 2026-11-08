@@ -2,8 +2,8 @@
 
 #include "Globals.h"
 #include "GpuPass.h"
-#include "smp/GpuViews.h"
 #include "Utils/D3D.h"
+#include "smp/GpuViews.h"
 
 #include <algorithm>
 #include <cstring>
