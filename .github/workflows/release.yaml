@@ -95,12 +95,13 @@ jobs:
         run: |
           set -euo pipefail
           tag="${{ needs.semantic-release.outputs.new_release_git_tag }}"
-          stage="HelmetOverlaysNG-${tag}"
-          # The INI stays out of the archive: the in-game menu rewrites it, so an
-          # update must not clobber a user's config. The documented template lives
-          # in the repo. The overlay art ships in its own mods.
-          mkdir -p "$stage/SKSE/Plugins"
-          cp bin/HelmetOverlaysNG.dll bin/HelmetOverlaysNG.pdb "$stage/SKSE/Plugins/"
+          stage="GPUSMPPhysicsNG-${tag}"
+          # Settings.json stays out of the archive: the plugin writes it on first run and
+          # the in-game menu rewrites it, so an update must not clobber a user's config.
+          # The HLSL sources ship because the plugin compiles them on the user's machine.
+          mkdir -p "$stage/SKSE/Plugins/GPUSMPPhysicsNG"
+          cp -r shaders "$stage/SKSE/Plugins/GPUSMPPhysicsNG/Shaders"
+          cp bin/GPUSMPPhysicsNG.dll bin/GPUSMPPhysicsNG.pdb "$stage/SKSE/Plugins/"
           7z a -t7z -mx=9 "${stage}.7z" "$stage"
           echo "archive=${stage}.7z" >> "$GITHUB_OUTPUT"
           echo "Built ${stage}.7z:"

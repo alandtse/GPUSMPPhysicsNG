@@ -1,4 +1,4 @@
-# Reusable build: compiles HelmetOverlaysNG.dll with xmake (releasedbg) and uploads
+# Reusable build: compiles GPUSMPPhysicsNG.dll with xmake (releasedbg) and uploads
 # the binaries as an artifact. Called by build.yaml (CI) and release.yaml
 # (packaging), so the toolchain is defined in exactly one place.
 name: "_build"
@@ -9,7 +9,7 @@ on:
       artifact-name:
         description: "Name for the uploaded binaries artifact."
         type: string
-        default: HelmetOverlaysNG-binaries
+        default: GPUSMPPhysicsNG-binaries
       ref:
         description: "Git ref to build. Empty = the triggering commit (CI default)."
         type: string
@@ -59,15 +59,15 @@ jobs:
         run: xmake config --mode=releasedbg --yes --verbose
 
       - name: Build
-        run: xmake build --yes HelmetOverlaysNG
+        run: xmake build --yes GPUSMPPhysicsNG
 
       - name: Stage binaries
         shell: pwsh
         run: |
           $out = "build/windows/x64/releasedbg"
           New-Item -ItemType Directory -Force -Path staging | Out-Null
-          Copy-Item "$out/HelmetOverlaysNG.dll" staging/
-          Copy-Item "$out/HelmetOverlaysNG.pdb" staging/
+          Copy-Item "$out/GPUSMPPhysicsNG.dll" staging/
+          Copy-Item "$out/GPUSMPPhysicsNG.pdb" staging/
 
       - name: Upload binaries
         uses: actions/upload-artifact@v7

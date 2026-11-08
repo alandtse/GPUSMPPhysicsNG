@@ -1,4 +1,4 @@
-# PR title lint: HelmetOverlaysNG uses Conventional Commits, and PRs are
+# PR title lint: GPUSMPPhysicsNG uses Conventional Commits, and PRs are
 # squash-merged, so the PR title becomes the commit subject. Validate it the same
 # way Open Shaders and devbench do.
 name: "PR: Lint"

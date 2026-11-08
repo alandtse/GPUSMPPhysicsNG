@@ -10,7 +10,7 @@
 # The comparison is on artefact identity (sha256 of bytes), not mtime: mtime moves on a
 # no-op relink and does not move when a build is skipped, so it is wrong in both directions.
 #
-# The test suite is built explicitly because target("HelmetOverlaysNG-Tests") is
+# The test suite is built explicitly because target("GPUSMPPhysicsNG-Tests") is
 # set_default(false) in xmake.lua -- a plain `xmake` does NOT build it, so "rebuilt plugin
 # beside an unbuilt suite" is the normal state otherwise.
 #
@@ -24,8 +24,8 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
 BIN=build/windows/x64/releasedbg
-DLL=$BIN/HelmetOverlaysNG.dll
-TESTS=$BIN/HelmetOverlaysNG-Tests.exe
+DLL=$BIN/GPUSMPPhysicsNG.dll
+TESTS=$BIN/GPUSMPPhysicsNG-Tests.exe
 EXPECT_CHANGE=0
 START_STAMP=""
 
@@ -57,7 +57,7 @@ if ! xmake; then
 fi
 
 echo "building tests..."
-if ! xmake build HelmetOverlaysNG-Tests; then
+if ! xmake build GPUSMPPhysicsNG-Tests; then
     echo "build.sh: the tests build FAILED. Any test exe in $BIN is from an earlier build." >&2
     exit 1
 fi

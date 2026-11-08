@@ -1,5 +1,5 @@
 name: Feature request
-description: Something the overlays, sound, or settings should do
+description: Something the hair and cloth physics or settings should do
 labels: [enhancement]
 body:
   - type: textarea
