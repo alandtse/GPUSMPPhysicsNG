@@ -20,7 +20,8 @@ namespace SettingsUi
 {
 	namespace
 	{
-		Model* model = nullptr;
+		constexpr std::size_t kMaxPages = 6;
+		std::vector<Model*> models;
 
 		void Tip(const std::string& a_text)
 		{
@@ -28,7 +29,7 @@ namespace SettingsUi
 				ImGuiMCP::SetTooltip("%s", a_text.c_str());
 		}
 
-		void RenderPage()
+		void RenderPage(Model* model)
 		{
 			if (!model)
 				return;
@@ -57,12 +58,61 @@ namespace SettingsUi
 					ImGuiMCP::SeparatorText(row.label.c_str());
 					break;
 				case Row::Kind::Note:
-					ImGuiMCP::TextDisabled("%s", row.label.c_str());
+					ImGuiMCP::TextDisabled("%s", (row.textFn ? row.textFn() : row.label).c_str());
+					break;
+				case Row::Kind::Button:
+					if (row.sameLine)
+						ImGuiMCP::SameLine(0.0f, -1.0f);
+					changed = ImGuiMCP::Button(id.c_str(), { 0, 0 });
+					Tip(row.tooltip);
+					break;
+				case Row::Kind::Combo:
+					{
+						if (row.joinedItems.empty()) {
+							if (row.items.empty() && row.itemsFn)
+								row.items = row.itemsFn();
+							for (const std::string& item : row.items) {
+								row.joinedItems += item;
+								row.joinedItems.push_back('\0');
+							}
+							if (row.joinedItems.empty())
+								row.joinedItems.assign("(none)", 7);
+						}
+						ImGuiMCP::SetNextItemWidth(300.0f);
+						changed = ImGuiMCP::Combo(id.c_str(), row.intValue, row.joinedItems.c_str(), -1);
+						Tip(row.tooltip);
+					}
 					break;
 				}
 				if (changed && row.onChanged)
 					row.onChanged();
 			}
+			if (model->claims) {
+				const std::vector<ClaimLine> lines = model->claims();
+				if (lines.empty())
+					ImGuiMCP::TextDisabled("Nothing is claimed.");
+				std::string joined;
+				for (const std::string& name : model->solverNames) {
+					joined += name;
+					joined.push_back('\0');
+				}
+				for (const ClaimLine& line : lines) {
+					if (line.solver < 0) {
+						ImGuiMCP::TextDisabled("%s", line.text.c_str());
+						continue;
+					}
+					ImGuiMCP::PushID(static_cast<int>(line.id));
+					ImGuiMCP::SetNextItemWidth(160.0f);
+					int solver = line.solver;
+					if (ImGuiMCP::Combo("##solver", &solver, joined.c_str(), -1) && model->onSolver)
+						model->onSolver(line.id, solver);
+					ImGuiMCP::SameLine(0.0f, -1.0f);
+					ImGuiMCP::TextUnformatted(line.text.c_str());
+					ImGuiMCP::PopID();
+				}
+			}
+			if (!model->showFooter)
+				return;
 			ImGuiMCP::Separator();
 			if (model->onReevaluate && ImGuiMCP::Button("Re-evaluate actors##gsp_reevaluate", { 0, 0 }))
 				model->onReevaluate();
@@ -74,17 +124,30 @@ namespace SettingsUi
 		HMODULE menuFramework = nullptr;
 	}
 
-	void Register(Model* a_model)
+	namespace
+	{
+		template <std::size_t N>
+		void RenderNth()
+		{
+			RenderPage(N < models.size() ? models[N] : nullptr);
+		}
+		constexpr void (*kRenderers[kMaxPages])() = { RenderNth<0>, RenderNth<1>, RenderNth<2>, RenderNth<3>, RenderNth<4>, RenderNth<5> };
+	}
+
+	void Register(const std::vector<Model*>& a_models)
 	{
 		if (!SKSEMenuFramework::IsInstalled()) {
 			logger::info("SKSE Menu Framework not installed; in-game settings disabled.");
 			return;
 		}
-		model = a_model;
+		models = a_models;
+		if (models.size() > kMaxPages)
+			models.resize(kMaxPages);
 		// The header caches the module handle in a static initialised when this DLL loads, which is null if SKSEMenuFramework.dll loads after us.
 		menuFramework = GetModuleHandle(L"SKSEMenuFramework");
 		SKSEMenuFramework::SetSection("GPU SMP Physics NG");
-		SKSEMenuFramework::AddSectionItem("Settings", RenderPage);
+		for (std::size_t page = 0; page < models.size(); ++page)
+			SKSEMenuFramework::AddSectionItem(models[page]->title, kRenderers[page]);
 		logger::info("Registered SMF page (framework v{:.1f}).", SKSEMenuFramework::GetMenuFrameworkVersion());
 	}
 }

@@ -133,13 +133,13 @@ namespace
 
 void DevBench::Install()
 {
+	Instance().RegisterUxActions();
+	TestBench::RegisterUxActions();
 	auto* devbench = DevBenchAPI::GetDevBenchInterface001();
 	if (!devbench) {
 		logger::info("devbench is not loaded; the {} tool is not registered", kToolName);
 		return;
 	}
-	Instance().RegisterUxActions();
-	TestBench::RegisterUxActions();
 	devbench->RegisterTool(kToolName, kToolDescriptor, &ActionsHandler, nullptr);
 	logger::info("Registered the {} devbench tool (devbench build {})", kToolName, devbench->GetBuildNumber());
 }

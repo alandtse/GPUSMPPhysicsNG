@@ -341,6 +341,18 @@ void SmpPhysicsFeature::ReloadVisualShaders()
 
 void SmpPhysicsFeature::RegisterUxActions()
 {
+	FEATURE_QUERY("settings", "The plugin's settings as Settings.json holds them, with the values in force now.",
+		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->settings; });
+	FEATURE_COMMAND("setSettings", "Change settings for this session without saving them. Args: any keys of the settings query, for example Enabled, ClaimArmor or WindStrength; values are clamped as on load. A change to Enabled, ClaimHeadParts, ClaimArmor or CollisionEnabled makes hdtSMP64 offer every actor's meshes again.",
+		[](Feature* a_self, const json& a_args) {
+			auto* self = static_cast<SmpPhysicsFeature*>(a_self);
+			const auto before = self->settings;
+			json merged = self->settings;
+			merged.update(a_args, true);
+			self->LoadSettings(merged);
+			if (before.Enabled != self->settings.Enabled || before.ClaimHeadParts != self->settings.ClaimHeadParts || before.ClaimArmor != self->settings.ClaimArmor || before.CollisionEnabled != self->settings.CollisionEnabled)
+				self->ReevaluateAllActors();
+		});
 	FEATURE_QUERY("nodeWorld", "World position and rotation (three rows) of named nodes below an actor's 3D, whether hdtSMP64 or this feature simulates them, so a bone's motion can be compared between the two. Args: actorFormID (number), contains (string, case-insensitive part of the node name; SMP renames a cloak's bones per armor, so \"CB 01 6\" matches where an exact name does not).",
 		[](const Feature*, const json& a_args) -> json { return NodeWorldJson(a_args); });
 	FEATURE_QUERY("status", "Report the hdtSMP64 link source, whether the GPU solver is available and how many claims it holds, the live claims with their bone and collision counts, step cost, wind exposure and whether the GPU solver took them, the weather wind they are pushed by, and the physics files this feature declined. In VR it also reports the strand grip (grip grab: HIGGS, per hand whether the grip is squeezed, strands in reach and held, and whether HIGGS is kept from the hand; controller pulses sent; whether the player's weapon is drawn) and the debug line counts of the strand renderer.",
@@ -405,6 +417,10 @@ void SmpPhysicsFeature::RegisterUxActions()
 		});
 	FEATURE_QUERY("poseCheck", "Per claim, how far the simulated hair bones are from where the animation alone would put them (the bone's rest pose carried by its tree's current root): maxSolvedFromRest and meanSolvedFromRest in game units, zero while the hair hangs at rest, maxSolvedFromSag and meanSolvedFromSag, the same against where the claim predicted the rest would settle under gravity (see collisionAudit's retargetSagMaxMove), and maxSolvedFromNode, how far the solver pose is from the engine node, which is the animation pose until the solver writes back. Args: actorFormID (number, only that actor's claims).",
 		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->PoseCheckJson(a_args); });
+	FEATURE_COMMAND("placeCrowdHairAtHand", "Move a test character so one strand of its claimed hair lies in the middle of the cast HIGGS makes from a player hand's palm along the palm normal, so a grip squeezed on that hand (for example through an injected OpenVR controller state) has hair to take. Needs the VR hand nodes. Args: hand (\"left\" or \"right\", default right), index (which test character, default 0), away (number, game units to hold the hair off the cast axis, sideways, default 0). Read the outcome from testCrowdReport.",
+		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->PlaceCrowdHairAtHand(a_args); });
+	FEATURE_QUERY("skinProbe", "Report a skinned mesh's NiSkinInstance (matrix counts, frame id, the engine's CPU copies of the bone matrices) next to the matrices the skinning shader would build from the bones' world transforms and skinToBone, for the first few bones. Args: actorFormID (number), mesh (string), bones (number, default 3).",
+		[](const Feature*, const json& a_args) -> json { return SmpPhysicsFeature::SkinProbeJson(a_args); });
 	FEATURE_COMMAND("holdStrand", "Hold one strand of a claimed actor's hair toward a fixed world point, as a closed hand would, so the pin can be checked on the CPU and GPU solvers without a headset. Args: actorFormID (number), count (number of chains to hold, default 1), bone (rig bone index to hold first; otherwise the dynamic bones farthest from the bone their chain hangs from, one per chain), offset (array of three numbers, world units from that bone's current position, default 15 along +X), enabled (bool, false releases). Read heldStrands in the status query.",
 		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->SetStrandProbe(a_args); });
 	FEATURE_COMMAND("reevaluate", "Ask hdtSMP64 to re-run claiming for every loaded actor, so the current settings take effect.",
@@ -725,6 +741,40 @@ SmpPhysicsFeature::UiStatus SmpPhysicsFeature::GetUiStatus() const
 	return { linked.load(std::memory_order_relaxed), linkStatus, claims.size(), totalStepMicroseconds / 1000.0 };
 }
 
+void SmpPhysicsFeature::ApplyCrowdHairColor(std::string a_color)
+{
+	if (auto* task = SKSE::GetTaskInterface())
+		task->AddTask([this, color = std::move(a_color)] {
+			if (color.empty())
+				crowdWigs.RestoreNaturalColorsNow(TestBench::GetCrowd());
+			else
+				crowdWigs.SetHairColorNow(TestBench::GetCrowd(), color);
+		});
+}
+
+std::vector<SmpPhysicsFeature::ClaimRow> SmpPhysicsFeature::GetClaimRows() const
+{
+	const std::scoped_lock lock(stateMutex);
+	std::vector<ClaimRow> rows;
+	for (const auto& entry : claims)
+		rows.push_back({ entry.second.actorFormID, entry.second.physicsFile, entry.second.boneCount, entry.second.gpuRegistered, true, ClaimUsesRigid(entry.second), entry.first });
+	for (const auto& entry : disabledClaims)
+		rows.push_back(entry.second);
+	return rows;
+}
+
+std::vector<std::string> SmpPhysicsFeature::GetDeclinedLines() const
+{
+	const std::scoped_lock lock(stateMutex);
+	std::vector<std::string> lines;
+	for (const auto& entry : declinedFiles) {
+		if (lines.size() >= kMaxDeclinedRows)
+			break;
+		lines.push_back(entry.first + ": " + entry.second);
+	}
+	return lines;
+}
+
 json SmpPhysicsFeature::SurfaceCheckJson() const
 {
 	const SmpPhysics::GpuSolver::SurfacePrepCheckResult check = gpuSolver.LastSurfacePrepCheck();
@@ -894,6 +944,7 @@ RE::BSEventNotifyControl SmpPhysicsFeature::FrameListener::ProcessEvent(
 RE::BSEventNotifyControl SmpPhysicsFeature::FrameSyncListener::ProcessEvent(
 	const hdt::PluginFrameSyncEvent*, RE::BSTEventSource<hdt::PluginFrameSyncEvent>*)
 {
+	feature.crowdWigs.Tick();
 	feature.StepClaims();
 	feature.RecordBoneFrame();
 	return RE::BSEventNotifyControl::kContinue;
@@ -2216,6 +2267,66 @@ json SmpPhysicsFeature::GripReportJson() const
 																																  "none" } });
 	}
 	return result;
+}
+
+void SmpPhysicsFeature::PlaceCrowdHairAtHand(const json& a_args)
+{
+	const bool left = a_args.value("hand", std::string("right")) == "left";
+	const auto index = static_cast<std::size_t>(std::max(a_args.value("index", 0), 0));
+	const float away = a_args.value("away", 0.0f);
+	auto* task = SKSE::GetTaskInterface();
+	if (!task)
+		return;
+	task->AddTask([this, left, index, away] {
+		const RE::NiAVObject* handNode = Util::BodyCapsules::GetTracker().GetHandNode(left);
+		if (!handNode) {
+			TestBench::GetCrowd().SetReport("The player's hand nodes were not found, so there is no hand to place hair against.");
+			return;
+		}
+		const PalmCastFrame cast = PalmCastOf(*handNode, left);
+		const std::vector<RE::ObjectRefHandle> standing = TestBench::GetCrowd().Standing();
+		auto reference = index < standing.size() ? standing[index].get() : nullptr;
+		auto* actor = reference ? reference->As<RE::Actor>() : nullptr;
+		if (!actor) {
+			TestBench::GetCrowd().SetReport(std::format("There is no test character number {}.", index));
+			return;
+		}
+		std::optional<SmpPhysics::Vec3> strand;
+		{
+			const std::scoped_lock lock(stateMutex);
+			for (const auto& entry : claims) {
+				const Claim& claim = entry.second;
+				if (claim.actorFormID != actor->GetFormID() || !claim.parsed)
+					continue;
+				const SmpPhysics::SmpRig& rig = claim.parsed->rig;
+				const auto positions = claim.BonePositions();
+				for (std::size_t bone = 0; bone < rig.bones.size() && !strand; ++bone) {
+					SmpPhysics::Vec3 start;
+					SmpPhysics::Vec3 end;
+					if (!rig.bones[bone].kinematic && StrandSegmentOf(positions, rig, bone, start, end))
+						strand = (start + end) * 0.5f;
+				}
+				if (strand)
+					break;
+			}
+		}
+		if (!strand) {
+			TestBench::GetCrowd().SetReport(std::format("Test character {} has no claimed hair to place at the hand.", index));
+			return;
+		}
+		const SmpPhysics::Vec3 aim = cast.origin + cast.normal * (SmpPhysics::kHiggsSelectDistance * 0.5f) - *strand;
+		RE::NiPoint3 offset{ aim.x, aim.y, aim.z };
+		if (away != 0.0f) {
+			SmpPhysics::Vec3 side = SmpPhysics::Cross(cast.normal, { 0.0f, 0.0f, 1.0f });
+			if (SmpPhysics::Length(side) < kParallelAxisEpsilon)
+				side = SmpPhysics::Cross(cast.normal, { 1.0f, 0.0f, 0.0f });
+			side = SmpPhysics::Normalized(side) * away;
+			offset += RE::NiPoint3{ side.x, side.y, side.z };
+		}
+		actor->SetPosition(actor->GetPosition() + offset, true);
+		actor->Update3DPosition(true);
+		TestBench::GetCrowd().SetReport(std::format("Placed test character {}'s hair at the {} hand.", index, left ? "left" : "right"));
+	});
 }
 
 void SmpPhysicsFeature::SetStrandProbe(const json& a_args)

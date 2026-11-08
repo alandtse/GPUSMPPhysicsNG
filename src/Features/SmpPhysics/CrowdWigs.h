@@ -39,7 +39,6 @@ namespace SmpPhysics
 		 */
 		void Tick();
 		[[nodiscard]] std::string DescribeSpawn() const override;
-		/** @brief Draws the crowd's hair colour control: the colour to set, Apply, and Restore natural colours. UI thread only. */
 
 		/**
 		 * @brief Sets the hair colour of every base the crowd is made from, then refreshes the characters standing now.

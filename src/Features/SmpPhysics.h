@@ -166,6 +166,12 @@ struct SmpPhysicsFeature final : Feature
 		double stepMilliseconds{};
 	};
 	[[nodiscard]] UiStatus GetUiStatus() const;
+	/** @brief Sets the test crowd's hair colour from the game thread, or puts back the natural colours when a_color is empty. */
+	void ApplyCrowdHairColor(std::string a_color);
+	/** @brief The live claims and the files switched off for testing, one row each, for the Claims page. */
+	[[nodiscard]] std::vector<ClaimRow> GetClaimRows() const;
+	/** @brief Up to the first few declined physics files, each as "file: reason". */
+	[[nodiscard]] std::vector<std::string> GetDeclinedLines() const;
 
 	/** @brief Link state, live claims and declined physics files, for the devbench status query. */
 	[[nodiscard]] json BuildStatusJson() const;
@@ -189,6 +195,7 @@ struct SmpPhysicsFeature final : Feature
 	/** @brief Reports, on demand, the collision proxies this feature built for an actor and how deep its hair mesh sinks into a target mesh. Args: actorFormID, optionally with hairMesh and targetMesh together. */
 	[[nodiscard]] json CollisionAuditJson(const json& a_args) const;
 	/** @brief Arms a per-frame capture of those poses, taken right after the claims are stepped. Args: actorFormID, prefix, frames. */
+	void PlaceCrowdHairAtHand(const json& a_args);
 	void StartBoneRecording(const json& a_args);
 	/** @brief The frames captured so far by StartBoneRecording. */
 	[[nodiscard]] json RecordedBonesJson() const;
