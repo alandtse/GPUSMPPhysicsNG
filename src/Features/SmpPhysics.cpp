@@ -335,6 +335,7 @@ void SmpPhysicsFeature::ClearShaderCache()
 
 void SmpPhysicsFeature::ReloadVisualShaders()
 {
+	Util::ClearShaderFailures();
 	gpuSkinning.InvalidateShader();
 	debugLines.InvalidateShaders();
 }
@@ -343,12 +344,14 @@ void SmpPhysicsFeature::RegisterUxActions()
 {
 	FEATURE_QUERY("settings", "The plugin's settings as Settings.json holds them, with the values in force now.",
 		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->settings; });
-	FEATURE_COMMAND("setSettings", "Change settings for this session without saving them. Args: any keys of the settings query, for example Enabled, ClaimArmor or WindStrength; values are clamped as on load. A change to Enabled, ClaimHeadParts, ClaimArmor or CollisionEnabled makes hdtSMP64 offer every actor's meshes again.",
+	FEATURE_COMMAND("setSettings", "Change settings for this session without saving them. Args: any keys of the settings query, for example Enabled, ClaimArmor or WindStrength, and developerMode (bool) for the debug overlay; values are clamped as on load. A change to Enabled, ClaimHeadParts, ClaimArmor or CollisionEnabled makes hdtSMP64 offer every actor's meshes again.",
 		[](Feature* a_self, const json& a_args) {
 			auto* self = static_cast<SmpPhysicsFeature*>(a_self);
 			const auto before = self->settings;
 			json merged = self->settings;
 			merged.update(a_args, true);
+			if (a_args.contains("developerMode") && a_args["developerMode"].is_boolean())
+				globals::state->developerMode = a_args["developerMode"].get<bool>();
 			self->LoadSettings(merged);
 			if (before.Enabled != self->settings.Enabled || before.ClaimHeadParts != self->settings.ClaimHeadParts || before.ClaimArmor != self->settings.ClaimArmor || before.CollisionEnabled != self->settings.CollisionEnabled)
 				self->ReevaluateAllActors();

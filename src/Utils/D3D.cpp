@@ -87,6 +87,12 @@ namespace Util
 		compileFailures.clear();
 	}
 
+	void ClearShaderFailures()
+	{
+		std::lock_guard lock(failureMutex);
+		compileFailures.clear();
+	}
+
 	const std::wstring& GetShaderRoot()
 	{
 		return shaderRoot;
@@ -161,5 +167,81 @@ namespace Util
 		}
 		SetResourceName(shader, "%s:%s", WStringToString(FilePath).c_str(), Program);
 		return shader;
+	}
+
+	FullscreenPassScope::FullscreenPassScope(ID3D11DeviceContext* a_context, UINT a_psSRVCount, UINT a_psCBStart, UINT a_psCBCount, UINT a_psSamplerCount) :
+		ctx(a_context),
+		psSRVCount(a_psSRVCount),
+		psCBStart(a_psCBStart),
+		psCBCount(a_psCBCount),
+		psSamplerCount(a_psSamplerCount)
+	{
+		assert(ctx && psSRVCount <= D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT &&
+			   psCBStart <= D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT &&
+			   psCBCount <= D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT - psCBStart &&
+			   psSamplerCount <= D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT);
+		// Save all MRT slots, not just slot 0 — a caller may enter with multiple RTVs bound.
+		ctx->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, savedRTV, &savedDSV);
+		ctx->RSGetViewports(&numVP, savedVP);
+		ctx->OMGetBlendState(&savedBlend, savedBlendFactor, &savedSampleMask);
+		ctx->OMGetDepthStencilState(&savedDSState, &savedStencilRef);
+		ctx->VSGetShader(&savedVS, nullptr, nullptr);
+		ctx->PSGetShader(&savedPS, nullptr, nullptr);
+		ctx->GSGetShader(&savedGS, nullptr, nullptr);
+		ctx->HSGetShader(&savedHS, nullptr, nullptr);
+		ctx->DSGetShader(&savedDS, nullptr, nullptr);
+		ctx->RSGetState(&savedRS);
+		ctx->PSGetSamplers(0, psSamplerCount, savedPSSamplers);
+		ctx->PSGetShaderResources(0, psSRVCount, savedPSSRVs);
+		ctx->PSGetConstantBuffers(psCBStart, psCBCount, savedPSCBs);
+		ctx->IAGetInputLayout(&savedIL);
+		ctx->IAGetVertexBuffers(0, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT, savedVB, savedVBStride, savedVBOffset);
+		ctx->IAGetIndexBuffer(&savedIB, &savedIBFormat, &savedIBOffset);
+		ctx->IAGetPrimitiveTopology(&savedTopology);
+	}
+
+	FullscreenPassScope::~FullscreenPassScope()
+	{
+		// Restore targets before SRVs so an outgoing target cannot suppress a saved input.
+		ID3D11ShaderResourceView* nullSRVs[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
+		ctx->PSSetShaderResources(0, psSRVCount, nullSRVs);
+
+		ctx->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, savedRTV, savedDSV);
+		ctx->PSSetShaderResources(0, psSRVCount, savedPSSRVs);
+		ctx->RSSetViewports(numVP, savedVP);
+		ctx->OMSetBlendState(savedBlend, savedBlendFactor, savedSampleMask);
+		ctx->OMSetDepthStencilState(savedDSState, savedStencilRef);
+		ctx->VSSetShader(savedVS, nullptr, 0);
+		ctx->PSSetShader(savedPS, nullptr, 0);
+		ctx->GSSetShader(savedGS, nullptr, 0);
+		ctx->HSSetShader(savedHS, nullptr, 0);
+		ctx->DSSetShader(savedDS, nullptr, 0);
+		ctx->RSSetState(savedRS);
+		ctx->PSSetSamplers(0, psSamplerCount, savedPSSamplers);
+		ctx->PSSetConstantBuffers(psCBStart, psCBCount, savedPSCBs);
+		ctx->IASetInputLayout(savedIL);
+		ctx->IASetVertexBuffers(0, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT, savedVB, savedVBStride, savedVBOffset);
+		ctx->IASetIndexBuffer(savedIB, savedIBFormat, savedIBOffset);
+		ctx->IASetPrimitiveTopology(savedTopology);
+
+		SafeReleaseArray(savedRTV);
+		SafeRelease(savedDSV);
+		SafeRelease(savedBlend);
+		SafeRelease(savedDSState);
+		SafeRelease(savedVS);
+		SafeRelease(savedPS);
+		SafeRelease(savedGS);
+		SafeRelease(savedHS);
+		SafeRelease(savedDS);
+		SafeRelease(savedRS);
+		for (UINT i = 0; i < psSamplerCount; ++i)
+			SafeRelease(savedPSSamplers[i]);
+		for (UINT i = 0; i < psSRVCount; ++i)
+			SafeRelease(savedPSSRVs[i]);
+		for (UINT i = 0; i < psCBCount; ++i)
+			SafeRelease(savedPSCBs[i]);
+		SafeRelease(savedIL);
+		SafeReleaseArray(savedVB);
+		SafeRelease(savedIB);
 	}
 }

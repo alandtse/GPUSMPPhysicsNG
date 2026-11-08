@@ -43,6 +43,7 @@ namespace globals
 		inline RE::PlayerCamera* playerCamera = nullptr;
 		inline RE::BSGraphics::RendererShadowState* shadowState = nullptr;
 		inline RE::BSGraphics::Renderer* renderer = nullptr;
+		inline REL::Relocation<ID3D11Buffer**> perFrame;  ///< The engine's per-frame constant buffer slot.
 	}
 }
 

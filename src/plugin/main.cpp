@@ -7,6 +7,7 @@
 #include "Utils/D3D.h"
 #include "plugin/BoneUploadHook.h"
 #include "plugin/DevBench.h"
+#include "plugin/OverlayHook.h"
 #include "plugin/Instance.h"
 #include "plugin/Settings.h"
 #include "plugin/UiModel.h"
@@ -29,6 +30,7 @@ namespace
 		playerCamera = RE::PlayerCamera::GetSingleton();
 		shadowState = RE::BSGraphics::RendererShadowState::GetSingleton();
 		renderer = RE::BSGraphics::Renderer::GetSingleton();
+		perFrame = REL::Relocation<ID3D11Buffer**>{ REL::RelocationID(524768, 411384) };
 		deltaTime = reinterpret_cast<float*>(REL::RelocationID(523660, 410199).address());
 		globals::d3d::device = Util::AsReal(renderer->GetRuntimeData().forwarder);
 		globals::d3d::context = Util::AsReal(renderer->GetRuntimeData().context);
@@ -51,6 +53,7 @@ namespace
 		case SKSE::MessagingInterface::kPostPostLoad:
 			Util::SetShaderRoot(PluginSettings::ShaderRoot().wstring());
 			BoneUploadHook::Install();
+			OverlayHook::Install();
 			break;
 		case SKSE::MessagingInterface::kDataLoaded:
 			BindGameGlobals();
@@ -84,7 +87,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 			break;
 		}
 	};
-	SKSE::AllocTrampoline(64);
+	SKSE::AllocTrampoline(128);
 
 	auto* messaging = SKSE::GetMessagingInterface();
 	if (!messaging || !messaging->RegisterListener(OnMessage)) {
