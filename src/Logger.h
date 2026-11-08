@@ -5,7 +5,7 @@
 #include <string>
 
 /** @brief Minimal logging facade: the plugin routes the sink to spdlog, tests leave it silent. */
-namespace logger
+namespace smplog
 {
 	enum class Level
 	{
@@ -39,3 +39,7 @@ namespace logger
 	template <class... Args>
 	void error(std::format_string<Args...> a_format, Args&&... a_args) { Log(Level::Error, a_format, std::forward<Args>(a_args)...); }
 }
+
+#ifndef SMP_USE_SKSE_LOG
+namespace logger = smplog;
+#endif

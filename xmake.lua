@@ -3,6 +3,10 @@
 
 set_xmakever("2.8.2")
 
+set_config("rex_ini", true)
+
+includes("lib/commonlibsse-ng")
+
 set_project("GPUSMPPhysicsNG")
 set_license("GPL-3.0")
 
@@ -15,7 +19,7 @@ set_policy("package.requires_lock", true)
 add_rules("mode.debug", "mode.releasedbg")
 set_defaultmode("releasedbg")
 
-add_requires("catch2", "nlohmann_json", "thread-pool")
+add_requires("catch2", "nlohmann_json", "thread-pool", "directxtk", "microsoft-detours")
 
 -- Engine-free solver core: rig building, packing, collision, skinning math.
 -- No CommonLib, no D3D; this is what the Catch2 suite exercises.
@@ -35,6 +39,99 @@ add_includedirs("src", { public = true })
 add_files("src/Utils/D3D.cpp", "src/d3d/*.cpp")
 add_defines("WIN32_LEAN_AND_MEAN", "NOMINMAX", { public = true })
 add_syslinks("d3dcompiler", "d3d11", "dxgi", "windowsapp")
+target_end()
+
+-- The SKSE plugin: engine-coupled layer plus plugin glue. Built against CommonLibVR (NG branch).
+target("GPUSMPPhysicsNG")
+add_deps("commonlibsse-ng", "GPUSMPPhysicsNG-D3D")
+add_packages("thread-pool", "nlohmann_json", "directxtk", "microsoft-detours")
+set_basename("GPUSMPPhysicsNG")
+add_defines("SMP_USE_SKSE_LOG")
+add_shflags("/DEBUG", "/PDBALTPATH:%_PDB%", { force = true })
+add_rules("commonlibsse-ng.plugin", {
+    name = "GPUSMPPhysicsNG",
+    author = "alandtse",
+    description = "GPU SMP physics for hair and cloth, a companion to hdtSMP64",
+})
+add_files("src/engine/*.cpp", "src/plugin/*.cpp", "src/Features/*.cpp", "src/Features/Wind/*.cpp", "src/Utils/*.cpp|D3D.cpp")
+add_headerfiles("src/**.h")
+add_includedirs("src", "vendor/include")
+add_syslinks("d3dcompiler", "shell32")
+set_pcxxheader("src/pch.h")
+
+-- Opt-in deploy (GPUSMP_DEPLOY=1): SkyrimVRPluginTargets / SkyrimPluginTargets
+-- (semicolon-separated Data folders or mod-manager mod folders), else
+-- SkyrimVRPath (install root or Data folder). No-op when none is set.
+after_build(function(target)
+    local function to_data_folder(p)
+        p = p:trim()
+        if os.isdir(path.join(p, "Data")) then
+            return path.join(p, "Data")
+        end
+        return p
+    end
+
+    local function nonblank(v)
+        if v and v:trim() ~= "" then
+            return v
+        end
+        return nil
+    end
+
+    local function collect_targets()
+        local explicit = nonblank(os.getenv("SkyrimVRPluginTargets")) or nonblank(os.getenv("SkyrimPluginTargets"))
+        if explicit then
+            local out = {}
+            for _, dir in ipairs(explicit:split(";")) do
+                dir = dir:trim()
+                if dir ~= "" then
+                    table.insert(out, dir)
+                end
+            end
+            return out
+        end
+        local vr_root = os.getenv("SkyrimVRPath")
+        if vr_root and vr_root ~= "" then
+            return { to_data_folder(vr_root) }
+        end
+        return {}
+    end
+
+    if os.getenv("GPUSMP_DEPLOY") ~= "1" then
+        print("Deploy skipped (set GPUSMP_DEPLOY=1 to copy into the Skyrim targets)")
+        return
+    end
+    local targets = collect_targets()
+    if #targets == 0 then
+        print("No deploy target (set SkyrimVRPath, SkyrimVRPluginTargets, or SkyrimPluginTargets)")
+        return
+    end
+
+    local dll = target:targetfile()
+    local pdb = target:symbolfile()
+    for _, dir in ipairs(targets) do
+        local dest = path.join(dir, "SKSE", "Plugins")
+        os.mkdir(dest)
+        local shaderDest = path.join(dest, "GPUSMPPhysicsNG", "Shaders")
+        os.mkdir(shaderDest)
+        os.cp(path.join(os.projectdir(), "shaders", "*"), shaderDest)
+        -- A running game holds the DLL/PDB locks; skip with a warning.
+        try({
+            function()
+                os.cp(dll, dest)
+                if os.isfile(pdb) then
+                    os.cp(pdb, dest)
+                end
+                print("Deployed DLL to " .. dest)
+            end,
+            catch({
+                function()
+                    print("Skipped DLL for " .. dest .. " (game running?)")
+                end,
+            }),
+        })
+    end
+end)
 target_end()
 
 -- xmake build GPUSMPPhysicsNG-Tests && xmake run GPUSMPPhysicsNG-Tests

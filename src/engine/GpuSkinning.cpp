@@ -1,4 +1,4 @@
-#include "GpuSkinning.h"
+#include "engine/GpuSkinning.h"
 
 #include "Buffer.h"
 #include "Globals.h"
