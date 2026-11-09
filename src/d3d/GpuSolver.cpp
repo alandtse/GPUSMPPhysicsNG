@@ -136,6 +136,7 @@ namespace SmpPhysics
 			std::vector<int> parent(bones, -1);
 			for (const RigJoint& joint : a_rig.joints)
 				parent[static_cast<std::size_t>(joint.child)] = joint.parent;
+			setup.parentBody = parent;
 			setup.rootBody.assign(bones, -1);
 			setup.restRelative.assign(bones, Transform{});
 			for (std::size_t bone = 0; bone < bones; ++bone) {

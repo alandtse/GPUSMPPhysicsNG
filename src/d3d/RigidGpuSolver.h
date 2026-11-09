@@ -34,6 +34,7 @@ namespace SmpPhysics
 			RigidReference::World world;
 			std::vector<int> rootBody;            ///< Per body, the kinematic body its pose is exported relative to, or -1.
 			std::vector<Transform> restRelative;  ///< Per body, its rest pose relative to its root body's rest pose.
+			std::vector<int> parentBody;          ///< Per body, the body its joint hangs from, or -1; a pin frees the joints on that path.
 			/** @brief What wind drag needs of a body: its strand direction in its own frame, the area it presents and its wind factor. */
 			struct WindBody
 			{

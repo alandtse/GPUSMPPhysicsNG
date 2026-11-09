@@ -5,6 +5,8 @@
 // feeds the GPU solver's buffers. Record layouts mirror RigidGpuSolver.h and RigidGpuPacking.h; keep them in step.
 
 static const uint kNoBody = 0xFFFFFFFFu;
+// Frames after a hold ends during which RigidSetup eases a freed joint back inside its limits.
+static const uint kLimitEaseFrames = 30u;
 
 /** @brief The GPU solver's merged per-bone contact; its layout is HairBoneContact in ContactCS.hlsl. */
 struct HairBoneContact
@@ -40,7 +42,7 @@ struct HairRigidFrameInput
 {
 	float4 rotation;     // xyzw, a kinematic body's pose this frame
 	float4 translation;  // xyz
-	uint4 flags;         // x = 1 when the claim has stepped before, y = 1 when the body must return to rest
+	uint4 flags;         // x = 1 when the claim has stepped before, y = 1 when the body must return to rest, z = 1 when a hold frees its joint
 	float4 wind;         // xyz = the world wind vector, w = the gust clock
 	float4 windScale;    // x = the actor's wind exposure
 	float4 grabLocal;    // xyz = the held point in the body frame, w = the pin's stiffness
@@ -191,6 +193,13 @@ void CalculateVelocity(in HairRigidSolver::Transform a_from, in HairRigidSolver:
 			const float3 axis = HairRigidSolver::MatVec(basis, meta.windAxis.xyz);
 			force += HairWind::WindForce(input.wind.xyz, input.wind.w, meta.windAxis.w, 1.0f / record.inertia.w,
 				meta.windParams.x * input.windScale.x, axis, record.origin.xyz, record.linearVelocity.xyz);
+		}
+		if (input.flags.z != 0u && !reset) {
+			record.flags.y = 1u;
+			record.flags.z = kLimitEaseFrames;
+		} else {
+			record.flags.y = 0u;
+			record.flags.z = reset ? 0u : (record.flags.z > 0u ? record.flags.z - 1u : 0u);
 		}
 		record.accumulatedForce = float4(force, 0.0f);
 		record.accumulatedTorque = 0.0f;
