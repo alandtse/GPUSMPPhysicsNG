@@ -83,9 +83,12 @@ frame near 31 ms and hides frame time, so use SE for frame time and VR for per-p
 
 ## Planned work
 
-- The chain solver stepping path and its leftover names are gone. Keep the grab and wind plumbing
-  (`GpuRig::BoneStatic`, `PackChainTies`, the substep fields of `MakeTreeInput`, `SolverParams::windChainLoad/
-  subtreeLoading/chainTies`, wind areas, grab pins): the rigid solver ignores wind and grab pins today, so implement
-  them there. Also re-baseline `smp_parity_baseline.json` and rerun the SE frame-time comparison once SE is free.
+- The chain solver stepping path and its leftover names are gone. Wind (drag, cap and gust law from hdtSMP64) and grab
+  pins now act on the rigid bodies: wind adds to each body's frame force in `RigidFrameBegin`, a pin is a capped spring
+  in `RigidPredict`. Still to do: the chain solver freed the joints above a held point from their limits and eased them
+  back at `kLimitReturnRate` on release, which the rigid solver does not; measure wind in game (an A/B on live NPCs was
+  lost in their motion, only the Catch2 wind test covers it); the chain-only packing (`PackChainTies`, the tie fields,
+  `windChainLoad`, `subtreeLoading`) is kept for now and can go once those are settled. Re-baseline
+  `smp_parity_baseline.json` and rerun the SE frame-time comparison once SE is free.
 - Not covered by any suite: Menu Framework page rendering, the Ready Weapon gate, haptic feel, real controller mappings.
 - The 31 ms convergence at 30 characters on SE is unexplained.
