@@ -1,7 +1,8 @@
 # Performance: pre-port vs standalone vs hdtSMP64
 
-Measured 2026-11-08 on SkyrimVR 1.4.15 (null driver, no headset), one session, one save, one scene.
-Raw rows: [perf-data/smp_ab_results.json](perf-data/smp_ab_results.json).
+Measured 2026-11-08, one session per game, one save, one scene: SkyrimVR 1.4.15 (null driver, no headset)
+and Skyrim SE 1.7.104. Raw rows: [VR](perf-data/smp_ab_results.json), [SE](perf-data/smp_ab_se_results.json);
+the harness is [perf-data/smp_ab.py](perf-data/smp_ab.py).
 
 ## What was compared
 
@@ -9,7 +10,7 @@ Raw rows: [perf-data/smp_ab_results.json](perf-data/smp_ab_results.json).
 |---|---|
 | `hdt` | hdtSMP64 alone, with both GPU solvers off |
 | `pre` | Open Shaders' in-tree SMP feature (branch `claude/hair-body-capsules` at `1a993b31f5`, `ALL-TRACY` AIO, DLL `7CE718E25DC3C3E3`) |
-| `port` | this plugin at `4e40505` (DLL SHA-256 `352ABEAC24A13D7B...`) |
+| `port` | this plugin (VR run: DLL `352ABEAC24A13D7B...`; SE run: DLL `9C30216D3C56A10C...`, which differs only by the timer thread fix described below, no solver change) |
 
 All three were loaded together and switched at runtime, so the scene, camera and settings are identical.
 Each crowd size ran `hdt`, `pre`, `port`, `hdt` in that order, 6 s settle then a 15 s window.
@@ -54,13 +55,35 @@ Cross-check at crowd 30 against Tracy on the `pre` arm (793 frames, 38 claims), 
 `RigidSetup` 0.66 (0.66), `SurfacePrep` 0.21 (0.10), `ChainSolve` 0.04 (0.04). The port matches
 the pre-port build pass for pass, which also validates the new timer.
 
+## SE (frame time is not capped)
+
+SE ran at 74 fps with no crowd, so frame time separates the arms. Same arms, order, throttles and windows as
+VR. Frame ms; `hdt` is the mean of its two windows and the spread is the gap between them (the noise floor).
+
+| Crowd | Claims | hdt (spread) | pre | port | port vs hdt | Port GPU solver ms (share of 16.67) |
+|---|---|---|---|---|---|---|
+| 0 | 14 | 13.49 (0.08) | 13.07 | 13.32 | -0.16 (-1%) | 1.63 (10%) |
+| 5 | 26 | 16.20 (0.79) | 15.22 | 15.20 | -1.01 (-6%) | 2.18 (13%) |
+| 10 | 36 | 18.55 (0.43) | 17.09 | 17.12 | -1.43 (-8%) | 2.83 (17%) |
+| 20 | 58 | 26.72 (0.08) | 25.95 | 25.81 | -0.91 (-3%) | 8.84 (53%) |
+| 30 | 79 | 30.82 (0.42) | 30.91 | 30.95 | +0.13 (0%) | 10.07 (60%) |
+
+- **Port equals pre-port** at every size (within 0.25 ms), as on VR.
+- **Against hdtSMP64 both GPU solvers are 3-8% faster at 10 and 20 characters**, a gap larger than the
+  hdt-to-hdt spread at those sizes; at 5 it is about the size of the noise, at 0 and 30 there is no difference.
+- At 30 characters all three arms land on 30.6-31.0 ms (32.3 fps), the same figure the VR null driver capped
+  at. The cause was not identified, so this size says nothing about the arms.
+- Frame generation and NR state were not read back on SE either.
+
 ## What this does and does not show
 
 - **Port equals pre-port.** Same passes, same cost, no regression from moving out of the tree.
-- **No frame-time result.** The frame is pinned at the null-driver cap, so the GPU headroom hides the solver.
+- **No frame-time result on VR.** The frame is pinned at the null-driver cap, so the GPU headroom hides the solver.
   The 98% share is the cost against the 11.1 ms budget a real headset needs, not a measured slowdown.
-- **No hdtSMP64 comparison.** hdtSMP64 runs on the CPU and its cost does not appear in a capped frame.
-  The CPU-side comparison on record is [project-hair-physics-actor-scaling-vs-smp-2026-10-18] in gbrain.
+- **hdtSMP64 comparison is from SE only**, where the frame is not capped (table above): a modest gain at
+  10-20 characters, none at 0 and 30.
+- A first SE run crashed in the driver when the timer was switched off from the devbench thread. The timer now
+  only raises a flag there and the render path does the work; the rows above are from the rerun with the fix.
 - **Contact spheres dominate** the GPU cost from about 10 characters, which is where optimisation should go.
 - `totalStepMicroseconds` is a single last-frame sample (pre 57-409 us, port 176-628 us) and varies both
   ways between sizes, so it is not a CPU comparison.

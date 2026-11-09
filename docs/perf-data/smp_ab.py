@@ -13,6 +13,9 @@ sys.path.insert(0, 'F:/Worktrees/open-shaders/practical-boyd-c4b94a/tools/hair-t
 import ingame
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8921
+GAME = 'SE' if PORT == 8920 else 'VR'
+BUDGET_MS = 16.67 if GAME == 'SE' else 11.11
+GAME_DIR = {'SE': 'Skyrim Special Edition', 'VR': 'SkyrimVR'}[GAME]
 MIXED = [0xA2C8E, 0x13297, 0x13BA3, 0x13BAB, 0x13BB8, 0x13B99, 0x13BB9, 0x13BB0, 0x13B9C, 0x13B9B]
 SIZES = [0, 5, 10, 20, 30]
 SETTLE = 6
@@ -46,7 +49,7 @@ def fps(seconds):
 
 
 UNTHROTTLED = dict(GrabStrands=False, MaxClaims=256, MaxSimulatedClaims=256, SimulationDistance=20000.0, MinScreenSizePercent=0.0)
-HDT_CONFIG = 'E:/SteamLibrary/steamapps/common/SkyrimVR/Data/SKSE/Plugins/hdtSkinnedMeshConfigs/configs.json'
+HDT_CONFIG = f'E:/SteamLibrary/steamapps/common/{GAME_DIR}/Data/SKSE/Plugins/hdtSkinnedMeshConfigs/configs.json'
 
 
 def check_hdt_unthrottled():
@@ -109,5 +112,5 @@ for size in SIZES:
         results.append(measure(name, size))
 arm('hdt')
 pre.command('clearTestCrowd')
-json.dump(results, open('F:/tmp/smp_ab_results.json', 'w'), indent=1)
+json.dump(results, open(f'F:/tmp/smp_ab_{GAME.lower()}_results.json', 'w'), indent=1)
 print('RESULT DONE', flush=True)
