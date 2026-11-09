@@ -104,8 +104,10 @@ frame near 31 ms and hides frame time, so use SE for frame time and VR for per-p
   --prefix "CB "`, 12 bones, 61 units long, same storm) moves with vector: about 145 units/s (strength 2) shifts it
   0.15 units (0.2% of its length), 650 to 740 units/s shifts it 2.3 units (3.9%, max 11%), and 600+ at strength 20
   gives the same because the 900 cap and the field vary. So the cape shows the wind at a vector of 400 to 700 units/s,
-  the range where hair matches hdtSMP64 too. Still to do: decide whether the default `WindStrength` should rise from 2
-  to about 6 (a field of 0.2 then gives 360 units/s); the chain-only packing
+  the range where hair matches hdtSMP64 too. The default `WindStrength` is now 6 (a field of 0.2 gives 360 units/s; full
+  sky wind 1800, limited by the 900 cap). One strength serves every item: each bone's drag comes from its own area, mass
+  and `<wind-factor>`, capped at 400 units/s^2 (0.58 g), so a heavy cape and light hair follow the same law. Measured
+  at about 600 units/s the cape moves 3.9% of its length and hair about 0.34 units; not tuned per item. Still to do: the chain-only packing
   (`PackChainTies`, the tie fields, `windChainLoad`, `subtreeLoading`) is kept for now. Re-baseline
   `smp_parity_baseline.json` and rerun the SE frame-time comparison once SE is free.
 - Not covered by any suite: Menu Framework page rendering, the Ready Weapon gate, haptic feel, real controller mappings.

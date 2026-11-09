@@ -96,7 +96,7 @@ def main():
             poses.append(('hdtSMP64', mean_pose(bench, actor, args.frames, args.prefix, nodes, args.solver)))
             print('hdtSMP64 recorded')
     finally:
-        bench.set_settings(Enabled=True, WindStrength=2.0)
+        bench.set_settings(Enabled=True, WindStrength=6.0)
         bench.command('clearTestCrowd')
     base_strength, base = poses[0]
     extent = max(max(math.dist(base[0], bone) for bone in base), 1e-6)

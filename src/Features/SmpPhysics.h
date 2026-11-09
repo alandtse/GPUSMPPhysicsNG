@@ -76,7 +76,7 @@ struct SmpPhysicsFeature final : Feature
 		int MaxSimulatedClaims = 128;       ///< Most claims stepped per frame, nearest to the camera first; the rest are drawn from the engine's pose until they rank inside the budget again.
 		float GravityScale = 1.0f;
 		bool RigidContacts = true;  ///< Pushes rigid-solver bodies out of the collision proxies after every substep.
-		float WindStrength = 2.0f;  ///< hdtSMP64's windStrength: scales the weather wind on the hair, 0 switches it off.
+		float WindStrength = 6.0f;  ///< hdtSMP64's windStrength: scales the weather wind on the hair, 0 switches it off.
 		float StiffnessScale = 1.0f;
 		float DampingScale = 1.0f;
 		bool GpuSkinning = true;         ///< Draws GPU-solved hair from the solver's own pose instead of the staged readback.
