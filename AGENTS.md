@@ -96,8 +96,12 @@ frame near 31 ms and hides frame time, so use SE for frame time and VR for per-p
   against hdtSMP64 (its wind is known to be over-strong, so no parity is expected), `wind_probe.py --hdt` across two
   launches with hdtSMP64's wind on and off: hdtSMP64 at its default strength 2 moves the same hair 0.40 units on
   average (max 2.0), where this plugin's no-wind runs differ by 0.12 between launches. So the default here is far below
-  hdtSMP64's and needs roughly strength 30 to 60 to reach that shift. Still to do: decide whether the default
-  `WindStrength` should rise; the chain-only packing
+  hdtSMP64's. The wind field is the sky's normalised speed (0 to 1, gusts to 2) and the hair vector is field x 300 x
+  strength, so strength 2 at full sky wind is 600 units/s. In a forced SkyrimStormRain the field only averaged 0.22
+  (peak 0.39), about 130 units/s at strength 2, which moves hair by 0.03. A 600 units/s vector (strength 9 in that
+  storm) shifts it 0.34 on average (max 2.2), about hdtSMP64's 0.40 at its default. Trees bend 3% of height and grass
+  13 degrees per unit of field at full wind, for comparison. Still to do: decide whether the default `WindStrength`
+  should rise from 2 toward 4 to 6 so a storm shows; the chain-only packing
   (`PackChainTies`, the tie fields, `windChainLoad`, `subtreeLoading`) is kept for now. Re-baseline
   `smp_parity_baseline.json` and rerun the SE frame-time comparison once SE is free.
 - Not covered by any suite: Menu Framework page rendering, the Ready Weapon gate, haptic feel, real controller mappings.

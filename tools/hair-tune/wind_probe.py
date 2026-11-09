@@ -57,9 +57,20 @@ def main():
         for strength in strengths:
             bench.set_settings(WindStrength=strength)
             time.sleep(8)
-            claim = next((c for c in bench.status()['claims'] if c['actorFormID'] == actor), {})
+            fields = []
+
+            def sample_field():
+                claim = next((c for c in bench.status()['claims'] if c['actorFormID'] == actor), {})
+                if strength > 0:
+                    # The sampled field is normalised 0 to 1 (gusts to 2); the plugin scales it by 300 per unit of strength.
+                    fields.append(claim.get('windMagnitude', 0.0) / (300.0 * strength))
+                return claim
+
+            sample_field()
             poses.append((strength, mean_pose(bench, actor, args.frames)))
-            print(f"strength {strength}: wind vector {[round(v, 1) for v in claim.get('windVector', [])]} exposure {claim.get('windFactor', 0):.2f}")
+            claim = sample_field()
+            level = f'field {min(fields):.2f} to {max(fields):.2f}' if fields else 'no wind'
+            print(f"strength {strength}: wind vector {[round(v, 1) for v in claim.get('windVector', [])]} {level} exposure {claim.get('windFactor', 0):.2f}")
         if args.hdt:
             # hdtSMP64 simulates the hair while the plugin is off; its own wind comes from its configs.json.
             bench.set_settings(Enabled=False)
