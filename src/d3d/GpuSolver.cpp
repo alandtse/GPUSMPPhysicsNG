@@ -16,7 +16,7 @@ namespace SmpPhysics
 {
 	namespace
 	{
-		constexpr const wchar_t* kShaderPath = L"SmpPhysics\\ChainSolverCS.hlsl";
+		constexpr const wchar_t* kShaderPath = L"SmpPhysics\\ContactCS.hlsl";
 		constexpr const wchar_t* kSurfacePrepPath = L"SmpPhysics\\SurfacePrepCS.hlsl";
 		constexpr const char* kShaderTarget = "cs_5_0";
 		constexpr const char* kLogPrefix = "[GPU SMP Physics]";
@@ -192,7 +192,7 @@ namespace SmpPhysics
 		if (!available)
 			return false;
 		if (!globals::d3d::device) {
-			Fail("the chain solver GPU backend needs a Direct3D device; claimed hair stays at the engine's pose");
+			Fail("the GPU solver GPU backend needs a Direct3D device; claimed hair stays at the engine's pose");
 			return false;
 		}
 		if (!contactCullShader)
@@ -213,14 +213,14 @@ namespace SmpPhysics
 			surfaceRefitShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
 		const std::vector<std::pair<const char*, const char*>> defines;
 		try {
-			if (!contactCullShader->Get(kShaderPath, defines, kShaderTarget, "ContactCull", "SmpPhysics::ChainSolverCS ContactCull") ||
-				!contactSphereShader->Get(kShaderPath, defines, kShaderTarget, "ContactSpheres", "SmpPhysics::ChainSolverCS ContactSpheres") ||
-				!contactReduceShader->Get(kShaderPath, defines, kShaderTarget, "ContactReduce", "SmpPhysics::ChainSolverCS ContactReduce")) {
-				Fail("the chain solver compute shader did not compile; claimed hair stays at the engine's pose");
+			if (!contactCullShader->Get(kShaderPath, defines, kShaderTarget, "ContactCull", "SmpPhysics::ContactCS ContactCull") ||
+				!contactSphereShader->Get(kShaderPath, defines, kShaderTarget, "ContactSpheres", "SmpPhysics::ContactCS ContactSpheres") ||
+				!contactReduceShader->Get(kShaderPath, defines, kShaderTarget, "ContactReduce", "SmpPhysics::ContactCS ContactReduce")) {
+				Fail("the GPU solver compute shader did not compile; claimed hair stays at the engine's pose");
 				return false;
 			}
 		} catch (const std::exception& error) {
-			Fail("the chain solver compute shader did not compile; claimed hair stays at the engine's pose");
+			Fail("the GPU solver compute shader did not compile; claimed hair stays at the engine's pose");
 			logger::warn("{} shader error: {}", kLogPrefix, error.what());
 			return false;
 		}
@@ -295,39 +295,39 @@ namespace SmpPhysics
 		worldsUav = nullptr;
 		outputsUav = nullptr;
 
-		trees = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::TreeStatic>(a_slots, false, false), nullptr, "SmpPhysics::ChainSolverTrees");
+		trees = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::TreeStatic>(a_slots, false, false), nullptr, "SmpPhysics::PoolTrees");
 		trees->CreateSRV(StructuredSrvDesc(a_slots));
 		treesSrv = trees->srv;
-		spheres = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneSpheres>(a_slots, false, false), nullptr, "SmpPhysics::ChainSolverSpheres");
+		spheres = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneSpheres>(a_slots, false, false), nullptr, "SmpPhysics::PoolSpheres");
 		spheres->CreateSRV(StructuredSrvDesc(a_slots));
 		spheresSrv = spheres->srv;
-		colliders = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::ColliderPacked>(a_slots, false, false), nullptr, "SmpPhysics::ChainSolverColliders");
+		colliders = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::ColliderPacked>(a_slots, false, false), nullptr, "SmpPhysics::PoolColliders");
 		colliders->CreateSRV(StructuredSrvDesc(a_slots));
 		collidersSrv = colliders->srv;
-		inputs = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::TreeInput>(a_slots, false, true), nullptr, "SmpPhysics::ChainSolverInputs");
+		inputs = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::TreeInput>(a_slots, false, true), nullptr, "SmpPhysics::PoolInputs");
 		inputs->CreateSRV(StructuredSrvDesc(a_slots));
 		inputsSrv = inputs->srv;
-		drivers = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::DriverWorld>(a_slots, false, true), nullptr, "SmpPhysics::ChainSolverDrivers");
+		drivers = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::DriverWorld>(a_slots, false, true), nullptr, "SmpPhysics::PoolDrivers");
 		drivers->CreateSRV(StructuredSrvDesc(a_slots));
 		driversSrv = drivers->srv;
-		worlds = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneWorld>(a_slots, true, false), nullptr, "SmpPhysics::ChainSolverWorlds");
+		worlds = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneWorld>(a_slots, true, false), nullptr, "SmpPhysics::PoolWorlds");
 		worlds->CreateUAV(StructuredUavDesc(a_slots));
 		worlds->CreateSRV(StructuredSrvDesc(a_slots));
 		worldsUav = worlds->uav;
 		worldsSrv = worlds->srv;
-		outputs = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneOutput>(a_slots, true, false), nullptr, "SmpPhysics::ChainSolverOutputs");
+		outputs = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneOutput>(a_slots, true, false), nullptr, "SmpPhysics::PoolOutputs");
 		outputs->CreateUAV(StructuredUavDesc(a_slots));
 		outputsUav = outputs->uav;
-		boneTrees = std::make_unique<Buffer>(StructuredBufferDesc<std::uint32_t>(a_slots, false, false), nullptr, "SmpPhysics::ChainSolverBoneTrees");
+		boneTrees = std::make_unique<Buffer>(StructuredBufferDesc<std::uint32_t>(a_slots, false, false), nullptr, "SmpPhysics::PoolBoneTrees");
 		boneTrees->CreateSRV(StructuredSrvDesc(a_slots));
 		boneTreesSrv = boneTrees->srv;
 		// The contact pass writes this through the UAV and the rigid solver reads it through the SRV, never both at once.
-		contacts = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneContact>(a_slots, true, false), nullptr, "SmpPhysics::ChainSolverContacts");
+		contacts = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneContact>(a_slots, true, false), nullptr, "SmpPhysics::PoolContacts");
 		contacts->CreateUAV(StructuredUavDesc(a_slots));
 		contacts->CreateSRV(StructuredSrvDesc(a_slots));
 		contactsUav = contacts->uav;
 		contactsSrv = contacts->srv;
-		boneCull = std::make_unique<Buffer>(StructuredBufferDesc<std::array<std::uint32_t, 4>>(a_slots, true, false), nullptr, "SmpPhysics::ChainSolverBoneCull");
+		boneCull = std::make_unique<Buffer>(StructuredBufferDesc<std::array<std::uint32_t, 4>>(a_slots, true, false), nullptr, "SmpPhysics::PoolBoneCull");
 		boneCull->CreateUAV(StructuredUavDesc(a_slots));
 		boneCullUav = boneCull->uav;
 
@@ -336,11 +336,11 @@ namespace SmpPhysics
 			readbacks[index] = {};
 			const Buffer staging(StagingDesc(outputBytes), nullptr, nullptr);
 			readbacks[index].buffer = staging.resource;
-			Util::SetResourceName(readbacks[index].buffer.get(), "SmpPhysics::ChainSolverReadback%u", static_cast<unsigned>(index));
+			Util::SetResourceName(readbacks[index].buffer.get(), "SmpPhysics::PoolReadback%u", static_cast<unsigned>(index));
 		}
 
 		if (!constants)
-			constants = std::make_unique<ConstantBuffer>(ConstantBufferDesc<GpuSolverConstants>(true), "SmpPhysics::ChainSolverConstants");
+			constants = std::make_unique<ConstantBuffer>(ConstantBufferDesc<GpuSolverConstants>(true), "SmpPhysics::PoolConstants");
 
 		if (previousWorlds) {
 			const D3D11_BOX worldBox = ByteRange(0u, a_previousSlots * static_cast<std::uint32_t>(sizeof(GpuRig::BoneWorld)));
@@ -377,7 +377,7 @@ namespace SmpPhysics
 			const std::uint32_t grown = std::max({ static_cast<std::uint32_t>(freeBlocks.size()) * 2u,
 				static_cast<std::uint32_t>(freeBlocks.size()) + neededBlocks, kInitialBlocks });
 			if (!CreateBuffers(grown * kBlockSlots, slotCapacity)) {
-				Fail("the chain solver buffers could not be created; claimed hair stays at the engine's pose");
+				Fail("the GPU solver buffers could not be created; claimed hair stays at the engine's pose");
 				return std::nullopt;
 			}
 			slotCapacity = grown * kBlockSlots;
@@ -444,7 +444,7 @@ namespace SmpPhysics
 
 		if (freeBlocks.empty()) {
 			if (!CreateBuffers(kInitialBlocks * kBlockSlots, 0u)) {
-				Fail("the chain solver buffers could not be created; claimed hair stays at the engine's pose");
+				Fail("the GPU solver buffers could not be created; claimed hair stays at the engine's pose");
 				a_reason = unavailableReason;
 				return false;
 			}
@@ -455,7 +455,7 @@ namespace SmpPhysics
 
 		const std::optional<std::uint32_t> offset = AllocateSlots(needed);
 		if (!offset) {
-			a_reason = available ? "the chain solver has no free slot range for this rig" : unavailableReason;
+			a_reason = available ? "the GPU solver has no free slot range for this rig" : unavailableReason;
 			return false;
 		}
 
@@ -597,14 +597,14 @@ namespace SmpPhysics
 		} else {
 			return;
 		}
-		if (!UploadDynamic(sphereList, sphereListSrv, sphereListCapacity, sphereListShadow, "SmpPhysics::ChainSolverSphereList")) {
-			Fail("the chain solver sphere list could not be uploaded; claimed hair stays at the engine's pose");
+		if (!UploadDynamic(sphereList, sphereListSrv, sphereListCapacity, sphereListShadow, "SmpPhysics::PoolSphereList")) {
+			Fail("the GPU solver sphere list could not be uploaded; claimed hair stays at the engine's pose");
 			return;
 		}
 		sphereCount = static_cast<std::uint32_t>(sphereListShadow.size());
 		if (!sphereHits || sphereHitCapacity < sphereListCapacity) {
 			sphereHitCapacity = sphereListCapacity;
-			sphereHits = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::SphereHit>(sphereHitCapacity, true, false), nullptr, "SmpPhysics::ChainSolverSphereHits");
+			sphereHits = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::SphereHit>(sphereHitCapacity, true, false), nullptr, "SmpPhysics::PoolSphereHits");
 			sphereHits->CreateUAV(StructuredUavDesc(sphereHitCapacity));
 			sphereHitsUav = sphereHits->uav;
 		}
@@ -990,9 +990,9 @@ namespace SmpPhysics
 		{
 			ZoneScopedN("SmpPhysics::UploadFrame");
 			if (!surfacePrepActive) {
-				if (!UploadDynamic(surfaceMetas, surfaceMetasSrv, surfaceMetaCapacity, surfaceFrame.metas, "SmpPhysics::ChainSolverSurfaces") ||
-					!UploadDynamic(surfaceTriangles, surfaceTrianglesSrv, surfaceTriangleCapacity, surfaceFrame.triangles, "SmpPhysics::ChainSolverSurfaceTriangles") ||
-					!UploadDynamic(surfaceNodes, surfaceNodesSrv, surfaceNodeCapacity, surfaceFrame.nodes, "SmpPhysics::ChainSolverSurfaceNodes")) {
+				if (!UploadDynamic(surfaceMetas, surfaceMetasSrv, surfaceMetaCapacity, surfaceFrame.metas, "SmpPhysics::PoolSurfaces") ||
+					!UploadDynamic(surfaceTriangles, surfaceTrianglesSrv, surfaceTriangleCapacity, surfaceFrame.triangles, "SmpPhysics::PoolSurfaceTriangles") ||
+					!UploadDynamic(surfaceNodes, surfaceNodesSrv, surfaceNodeCapacity, surfaceFrame.nodes, "SmpPhysics::PoolSurfaceNodes")) {
 					return false;
 				}
 			}
@@ -1081,7 +1081,7 @@ namespace SmpPhysics
 		ID3D11UnorderedAccessView* contactTargets[kStepTargetCount] = { nullptr, worldsUav.get(), nullptr, contactsUav.get(),
 			nullptr, sphereHitsUav.get(), boneCullUav.get() };
 		ID3D11Buffer* constantView = constants->CB();
-		CS_GPU_PASS("SmpPhysics::ChainContact");
+		CS_GPU_PASS("SmpPhysics::ContactPasses");
 		context->CSSetConstantBuffers(0, 1, &constantView);
 		context->CSSetShaderResources(0, kStepViewCount, views);
 		context->CSSetUnorderedAccessViews(0, kStepTargetCount, contactTargets, nullptr);
@@ -1158,7 +1158,7 @@ namespace SmpPhysics
 
 		if (!contactStagingPending && contactStatsRequested.exchange(false)) {
 			if (!contactStaging || contactStagingSlots != slotCapacity) {
-				const Buffer staging(StagingDesc(slotCapacity * static_cast<std::uint32_t>(sizeof(GpuRig::BoneContact))), nullptr, "SmpPhysics::ChainSolverContactReadback");
+				const Buffer staging(StagingDesc(slotCapacity * static_cast<std::uint32_t>(sizeof(GpuRig::BoneContact))), nullptr, "SmpPhysics::PoolContactReadback");
 				contactStaging = staging.resource;
 				contactStagingSlots = slotCapacity;
 			}
@@ -1238,7 +1238,7 @@ namespace SmpPhysics
 				continue;
 			if (FAILED(result)) {
 				readback.pending = false;
-				Fail("the chain solver readback failed; claimed hair stays at the engine's pose");
+				Fail("the GPU solver readback failed; claimed hair stays at the engine's pose");
 				return false;
 			}
 			const auto* data = static_cast<const GpuRig::BoneOutput*>(mapped.pData);

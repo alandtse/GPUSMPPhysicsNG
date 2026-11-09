@@ -214,7 +214,7 @@ namespace
 
 std::pair<std::string, std::vector<std::string>> SmpPhysicsFeature::GetFeatureSummary()
 {
-	return { T(TKEY("description"), "Simulates hair and cloth meshes with the {brand} chain solver, taking them over from hdtSMP64."),
+	return { T(TKEY("description"), "Simulates hair and cloth meshes with the {brand} rigid-body solver, taking them over from hdtSMP64."),
 		{ T(TKEY("key_feature_1"), "Runs its own pendulum solver on the meshes whose physics file describes a bone chain"),
 			T(TKEY("key_feature_2"), "Claims only what the settings cover: head parts, armor, distance from the camera and a claim limit"),
 			T(TKEY("key_feature_3"), "Hands meshes back to hdtSMP64 the moment the settings stop covering them, with no restart"),
@@ -363,7 +363,7 @@ void SmpPhysicsFeature::RegisterUxActions()
 				GpuPassTimer::Reset();
 			GpuPassTimer::SetEnabled(a_args.value("enabled", true));
 		});
-	FEATURE_QUERY("gpuPassStats", "Average GPU milliseconds and calls per frame of each pass since gpuPassTiming last reset, with the number of frames measured. Nested passes (ChainContact holds ContactCull, ContactSpheres and ContactReduce) are counted in both.",
+	FEATURE_QUERY("gpuPassStats", "Average GPU milliseconds and calls per frame of each pass since gpuPassTiming last reset, with the number of frames measured. Nested passes (ContactPasses holds ContactCull, ContactSpheres and ContactReduce) are counted in both.",
 		[](const Feature*, const json&) -> json {
 			const GpuPassTimer::Stats stats = GpuPassTimer::GetStats();
 			json passes = json::array();

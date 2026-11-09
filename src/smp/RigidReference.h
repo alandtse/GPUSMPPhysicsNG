@@ -161,7 +161,7 @@ namespace SmpPhysics::RigidReference
 		LinearAxisLimits linear{};
 		std::array<RotationalMotor, 3> angular{};
 		int flags{ kSmpLinearOverrideFlags };
-		/** @brief Nonzero marks a GPU-only contact row for bodyA: one more than the chain solver contact slot that supplies its normal. */
+		/** @brief Nonzero marks a GPU-only contact row for bodyA: one more than the GPU solver contact slot that supplies its normal. */
 		std::uint32_t contactSlot{};
 		/** @brief The combined friction coefficient of a contactSlot row; zero adds no friction row. */
 		float contactFriction{};

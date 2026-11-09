@@ -41,13 +41,13 @@ namespace SmpPhysics
 	inline constexpr float kDefaultPenetration = 0.1f;
 	/**
 	 * @brief Smallest half-extent an ellipsoid keeps, below which its scaled-space projection would divide by zero.
-	 * @note Mirrored by kMinimumHalfExtent in package/Shaders/Common/HairChainSolver.hlsli.
+	 * @note Mirrored by kMinimumHalfExtent in package/Shaders/Common/HairCollision.hlsli.
 	 */
 	inline constexpr float kMinimumHalfExtent = 1e-3f;
 	/**
 	 * @brief Colliders a sphere's rest-exemption mask can name.
 	 * @details A claim with more colliders than this can only exempt the first few, the rest staying live.
-	 * @note Mirrored by kMaximumExemptColliders in package/Shaders/Common/HairChainSolver.hlsli.
+	 * @note Mirrored by kMaximumExemptColliders in package/Shaders/Common/HairCollision.hlsli.
 	 */
 	inline constexpr std::size_t kMaximumExemptColliders = 32;
 

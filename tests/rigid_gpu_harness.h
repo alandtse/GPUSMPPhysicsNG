@@ -259,7 +259,7 @@ namespace SmpPhysics::RigidGpuTest
 			resources.push_back(CreateSrv(gpu, islandConstraints.Get(), a_step.islandConstraints.size()));
 			resources.push_back(CreateSrv(gpu, coloredConstraints.Get(), a_step.coloredConstraints.size()));
 			resources.push_back(CreateSrv(gpu, colorOffsets.Get(), a_step.colorOffsets.size()));
-			resources.emplace_back();  // t5 is the chain solver's contact buffer, which a replay has none of
+			resources.emplace_back();  // t5 is the GPU solver's contact buffer, which a replay has none of
 			resources.push_back(CreateSrv(gpu, contacts.Get(), a_step.contacts.size()));
 		}
 

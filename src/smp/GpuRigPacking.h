@@ -11,10 +11,10 @@
 #include <vector>
 
 /**
- * @brief The immutable records the chain solver compute shader reads, packed once per claim.
+ * @brief The immutable records the GPU solver compute shader reads, packed once per claim.
  *
  * Pure data and pure functions: no D3D11, no RE/SKSE, so the packing can be unit tested against
- * the rig it came from. The record layout is mirrored by ChainSolverCS.hlsl -- a field added
+ * the rig it came from. The record layout is mirrored by ContactCS.hlsl -- a field added
  * here needs the matching field there, in the same order.
  */
 namespace SmpPhysics::GpuRig
@@ -82,7 +82,7 @@ namespace SmpPhysics::GpuRig
 	};
 	static_assert(sizeof(SphereRecord) == 32);
 
-	/** @brief One sphere's contact at the start of a substep, as ChainSolverCS.hlsl's HairSphereHit holds it. */
+	/** @brief One sphere's contact at the start of a substep, as ContactCS.hlsl's HairSphereHit holds it. */
 	struct SphereHit
 	{
 		Float4 normalDepth{};

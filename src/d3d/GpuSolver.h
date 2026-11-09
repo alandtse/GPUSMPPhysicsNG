@@ -350,7 +350,7 @@ namespace SmpPhysics
 		std::string unavailableReason;
 	};
 
-	/** @brief The contact passes' constant buffer, mirrored by ChainSolverCS.hlsl. */
+	/** @brief The contact passes' constant buffer, mirrored by ContactCS.hlsl. */
 	struct GpuSolverConstants
 	{
 		std::uint32_t boneCount{};  ///< One past the highest bone slot any claim uses.

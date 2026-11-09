@@ -1,4 +1,4 @@
-// Runs the contact passes (ChainSolverCS.hlsl: ContactCull, ContactSpheres, ContactReduce) on a WARP
+// Runs the contact passes (ContactCS.hlsl: ContactCull, ContactSpheres, ContactReduce) on a WARP
 // device and compares every bone's merged contact with the CPU's QueryColliders and ContactMerge, then checks which
 // trees the passes serve.
 
@@ -46,7 +46,7 @@ namespace
 			ContactKernels value;
 			value.gpu = CreateDevice(D3D_DRIVER_TYPE_WARP);
 			ShaderInclude include({ std::filesystem::path(SMPPHYSICS_SHADER_DIR), std::filesystem::path(SMPPHYSICS_FEATURE_SHADER_DIR) });
-			const std::filesystem::path path = std::filesystem::path(SMPPHYSICS_FEATURE_SHADER_DIR) / "SmpPhysics" / "ChainSolverCS.hlsl";
+			const std::filesystem::path path = std::filesystem::path(SMPPHYSICS_FEATURE_SHADER_DIR) / "SmpPhysics" / "ContactCS.hlsl";
 			ID3D11Device* device = value.gpu.device.Get();
 			value.cull = CompileKernel(device, &include, "ContactCull", path);
 			value.spheres = CompileKernel(device, &include, "ContactSpheres", path);

@@ -40,7 +40,7 @@ Frame time (ms, `hdt` is the mean of its two windows). The null driver caps the 
 | 30 | 38 | 31.00 | 30.98 | 31.00 |
 
 GPU milliseconds per frame, port (timestamp queries, 484 frames per window at crowd 30). "Solver total"
-adds the non-nested passes (`RigidContact` already contains `ChainContact` and its three sub-passes).
+adds the non-nested passes (`RigidContact` already contains `ContactPasses` (once `ChainContact`) and its three sub-passes).
 
 | Crowd | RigidContact | RigidSolve | RigidSetup | SurfacePrep | Solver total | Share of VR 11.1 ms |
 |---|---|---|---|---|---|---|

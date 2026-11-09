@@ -1,11 +1,11 @@
 #include "Common/HairRigidSolver.hlsli"
 
 // RigidFrameBegin turns kinematic poses into hdtSMP64's readTransform velocities and arms the dynamic bodies; RigidExport
-// feeds the chain solver's buffers. Record layouts mirror RigidGpuSolver.h and RigidGpuPacking.h; keep them in step.
+// feeds the GPU solver's buffers. Record layouts mirror RigidGpuSolver.h and RigidGpuPacking.h; keep them in step.
 
 static const uint kNoBody = 0xFFFFFFFFu;
 
-/** @brief The chain solver's merged per-bone contact; its layout is HairBoneContact in ChainSolverCS.hlsl. */
+/** @brief The GPU solver's merged per-bone contact; its layout is HairBoneContact in ContactCS.hlsl. */
 struct HairBoneContact
 {
 	float depth;
@@ -41,7 +41,7 @@ struct HairRigidFrameInput
 
 struct HairRigidBodyMeta
 {
-	uint4 slots;             // x = the chain solver's bone slot, y = the body whose pose is this body's root, or kNoBody
+	uint4 slots;             // x = the GPU solver's bone slot, y = the body whose pose is this body's root, or kNoBody
 	float4 restRotation;     // xyzw, the rest pose relative to the root
 	float4 restTranslation;  // xyz
 };
@@ -211,7 +211,7 @@ void CalculateVelocity(in HairRigidSolver::Transform a_from, in HairRigidSolver:
 	HairBoneOutputs[meta.slots.x] = output;
 }
 
-/** @brief Writes each dynamic body's world pose where the chain solver's contact passes read bone poses. */
+/** @brief Writes each dynamic body's world pose where the GPU solver's contact passes read bone poses. */
 [numthreads(64, 1, 1)] void RigidWorldExport(uint3 a_dispatchThreadId : SV_DispatchThreadID) {
 	const uint index = a_dispatchThreadId.x;
 	if (index >= HairRigidRuntimeBodyCount)

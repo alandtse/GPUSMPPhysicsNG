@@ -20,17 +20,17 @@ namespace SmpPhysics
 	 * @brief Steps claims as free rigid bodies joined by 6-DOF spring constraints, the way hdtSMP64's Bullet world does.
 	 * @details One dispatch sequence advances every claim: RigidFrameBegin arms the bodies, each substep runs the
 	 *          predict, setup, island-solve and integrate kernels, and RigidExport writes the dynamic poses into the
-	 *          chain solver's world and output buffers, so skinning and the CPU readback treat a rigid-driven claim
+	 *          GPU solver's world and output buffers, so skinning and the CPU readback treat a rigid-driven claim
 	 *          like a chain-driven one. Body state lives on the GPU and persists across frames.
 	 */
 	class RigidGpuSolver
 	{
 	public:
-		/** @brief What a claim needs to be stepped: the world SMP would build and where its bodies sit in the chain solver's slots. */
+		/** @brief What a claim needs to be stepped: the world SMP would build and where its bodies sit in the GPU solver's slots. */
 		struct ClaimSetup
 		{
 			std::uint64_t token{};
-			std::uint32_t boneOffset{};  ///< Chain solver slot of rig bone 0; rig bone i is slot boneOffset + i.
+			std::uint32_t boneOffset{};  ///< GPU solver slot of rig bone 0; rig bone i is slot boneOffset + i.
 			RigidReference::World world;
 			std::vector<int> rootBody;            ///< Per body, the kinematic body its pose is exported relative to, or -1.
 			std::vector<Transform> restRelative;  ///< Per body, its rest pose relative to its root body's rest pose.
@@ -63,11 +63,11 @@ namespace SmpPhysics
 		void InvalidateShaders();
 
 		/**
-		 * @brief Advances every listed claim one frame and writes the dynamic poses into the chain solver's buffers.
-		 * @param a_worlds The chain solver's world pose target.
-		 * @param a_outputs The chain solver's root-relative output target.
-		 * @param a_contacts The chain solver's per-bone merged contacts; with a_contactPass, bodies are moved out of the colliders it reports.
-		 * @param a_contactPass Records the chain solver's contact passes for a substep (1-based) once the bodies' poses are exported.
+		 * @brief Advances every listed claim one frame and writes the dynamic poses into the GPU solver's buffers.
+		 * @param a_worlds The GPU solver's world pose target.
+		 * @param a_outputs The GPU solver's root-relative output target.
+		 * @param a_contacts The GPU solver's per-bone merged contacts; with a_contactPass, bodies are moved out of the colliders it reports.
+		 * @param a_contactPass Records the GPU solver's contact passes for a substep (1-based) once the bodies' poses are exported.
 		 */
 		[[nodiscard]] bool Dispatch(const std::vector<FrameClaim>& a_frame, ID3D11UnorderedAccessView* a_worlds,
 			ID3D11UnorderedAccessView* a_outputs, ID3D11ShaderResourceView* a_contacts = nullptr,

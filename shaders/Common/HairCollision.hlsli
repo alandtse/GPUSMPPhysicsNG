@@ -1,10 +1,10 @@
-#ifndef __HAIR_CHAIN_SOLVER_DEPENDENCY_HLSL__
-#define __HAIR_CHAIN_SOLVER_DEPENDENCY_HLSL__
+#ifndef __HAIR_COLLISION_DEPENDENCY_HLSL__
+#define __HAIR_COLLISION_DEPENDENCY_HLSL__
 
 // Pure functions for the collision contact queries the contact passes make.
 // Every value-returning function has a single exit, or FXC reports the return as uninitialized (X4000).
 
-namespace HairChainSolver
+namespace HairCollision
 {
 	/** @brief Length below which a vector is treated as having no usable direction. */
 	static const float kDirectionEpsilon = 1e-8f;

@@ -54,7 +54,7 @@ namespace SmpPhysicsLimits
 }
 
 /**
- * @brief Simulates hair and cloth meshes that hdtSMP64 hands over, with the pure SmpPhysics chain solver.
+ * @brief Simulates hair and cloth meshes that hdtSMP64 hands over, on the GPU.
  *
  * The feature stays inert until hdtSMP64's plugin interface is linked and the user enables it: it takes
  * over only the meshes whose SMP XML describes a bone-pendulum rig it can simulate, and asks hdtSMP64 to

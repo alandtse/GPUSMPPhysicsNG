@@ -64,7 +64,7 @@ namespace SmpPhysics
 	 * @param a_origin The bone's world position, Skyrim units.
 	 * @param a_velocity The bone's world linear velocity, Skyrim units per second.
 	 * @param a_boneFactor The bone's own <wind-factor>, times the actor's exposure.
-	 * @note Mirrored by HairChainSolver::WindForce in package/Shaders/Common/HairChainSolver.hlsli.
+	 * @note Mirrored by HairCollision::WindForce in package/Shaders/Common/HairCollision.hlsli.
 	 */
 	[[nodiscard]] Vec3 WindForce(const SolverParams& a_params, float a_boneFactor, float a_mass, float a_area, const Vec3& a_axis,
 		const Vec3& a_origin, const Vec3& a_velocity) noexcept;
@@ -80,7 +80,7 @@ namespace SmpPhysics
 	 * @brief Contact spring stiffness, in force units per unit of penetration.
 	 * @details Sized so a resting contact settles at a depth of |torque| / (J * k), which for the hair XMLs'
 	 *          mass 0.1 and 16 inertia is about 0.02 units against gravity's own torque.
-	 * @note Mirrored by its namesake in package/Shaders/Common/HairChainSolver.hlsli, which
+	 * @note Mirrored by its namesake in package/Shaders/Common/HairCollision.hlsli, which
 	 *       test_smpphysics_gpurig.cpp checks these values against.
 	 */
 	inline constexpr float kContactStiffness = 4000.0f;
@@ -94,26 +94,26 @@ namespace SmpPhysics
 	inline constexpr float kContactSkin = 0.1f;
 	/**
 	 * @brief Stiffness of the pin that holds a grabbed strand to a hand, in force units per unit of distance.
-	 * @note Mirrored by the grab term in ChainSolverCS.hlsl, which takes it from the tree's input.
+	 * @note Mirrored by the grab term in ContactCS.hlsl, which takes it from the tree's input.
 	 */
 	inline constexpr float kGrabStiffness = 1500.0f;
 	/**
 	 * @brief Stiffness of the spring that holds a bone inside the linear limits of a joint to a neighbouring chain, in force units per unit of distance.
-	 * @note Mirrored by kTieStiffness in ChainSolverCS.hlsl, which takes it from the tree's input.
+	 * @note Mirrored by kTieStiffness in ContactCS.hlsl, which takes it from the tree's input.
 	 */
 	inline constexpr float kTieStiffness = 1500.0f;
 	/**
 	 * @brief Farthest, in Skyrim units, a pin pulls from, so a hand far from its strand cannot overpower the joints.
-	 * @note Mirrored by kMaxGrabPull in package/Shaders/Common/HairChainSolver.hlsli.
+	 * @note Mirrored by kMaxGrabPull in package/Shaders/Common/HairCollision.hlsli.
 	 */
 	inline constexpr float kMaxGrabPull = 25.0f;
 	/**
 	 * @brief Fastest, in radians per second, a joint beyond its limit returns inside it.
 	 * @details A held strand frees the joints above the hand from their limits; letting go moves them back at this rate instead of snapping them in one step.
-	 * @note Mirrored by kLimitReturnRate in package/Shaders/Common/HairChainSolver.hlsli.
+	 * @note Mirrored by kLimitReturnRate in package/Shaders/Common/HairCollision.hlsli.
 	 */
 	inline constexpr float kLimitReturnRate = 8.0f;
-	/** @brief Distance under which a pin does nothing, so its pull has a direction. Mirrored by kMinGrabDistance in HairChainSolver.hlsli. */
+	/** @brief Distance under which a pin does nothing, so its pull has a direction. Mirrored by kMinGrabDistance in HairCollision.hlsli. */
 	inline constexpr float kMinGrabDistance = 1.0e-3f;
 
 	/** @brief A strand held by a hand: a point on the bone is pulled toward the target like a contact that pushes it there. */
@@ -137,7 +137,7 @@ namespace SmpPhysics
 	/**
 	 * @brief Slack a bone's bound sphere carries when it decides whether the whole bone can be skipped.
 	 * @details Covers the bound's own enlargement not being an exact Euclidean distance for an ellipsoid proxy.
-	 * @note Mirrored by kBoundCullPad in package/Shaders/Common/HairChainSolver.hlsli.
+	 * @note Mirrored by kBoundCullPad in package/Shaders/Common/HairCollision.hlsli.
 	 */
 	inline constexpr float kBoundCullPad = 0.5f;
 	/** @brief How far from a one-sided face a diagnostic probe still measures which side a sphere is on. */

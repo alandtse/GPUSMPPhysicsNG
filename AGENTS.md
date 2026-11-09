@@ -83,10 +83,9 @@ frame near 31 ms and hides frame time, so use SE for frame time and VR for per-p
 
 ## Planned work
 
-- The chain solver stepping path is removed (kernels, settings, Solver combo, `setClaimSolver`, chain parity legs).
-  Still to do: rename the leftover plumbing (`ChainSolverCS.hlsl`, `ChainSolver*` resource names, `GpuSolver`) in a
-  separate commit; drop the packing only the chain solver read (`GpuRig::BoneStatic` and `PackChainTies`, the substep
-  fields of `MakeTreeInput`, `SolverParams::windChainLoad/subtreeLoading/chainTies`); re-baseline
-  `smp_parity_baseline.json`; rerun the SE frame-time comparison once SE is free.
+- The chain solver stepping path and its leftover names are gone. Keep the grab and wind plumbing
+  (`GpuRig::BoneStatic`, `PackChainTies`, the substep fields of `MakeTreeInput`, `SolverParams::windChainLoad/
+  subtreeLoading/chainTies`, wind areas, grab pins): the rigid solver ignores wind and grab pins today, so implement
+  them there. Also re-baseline `smp_parity_baseline.json` and rerun the SE frame-time comparison once SE is free.
 - Not covered by any suite: Menu Framework page rendering, the Ready Weapon gate, haptic feel, real controller mappings.
 - The 31 ms convergence at 30 characters on SE is unexplained.

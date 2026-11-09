@@ -101,7 +101,7 @@ struct HairRigidExplicitContact
 	float4 normalFriction;  // xyz = normal on B, w = friction coefficient
 };
 
-/** @brief The chain solver's merged per-bone contact; its layout is HairBoneContact in ChainSolverCS.hlsl. */
+/** @brief The GPU solver's merged per-bone contact; its layout is HairBoneContact in ContactCS.hlsl. */
 struct HairBoneContact
 {
 	float depth;

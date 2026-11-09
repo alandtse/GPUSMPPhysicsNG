@@ -1,4 +1,4 @@
-#include "Common/HairChainSolver.hlsli"
+#include "Common/HairCollision.hlsli"
 
 // Per rigid substep ContactCull, ContactSpheres and ContactReduce build each bone's merged contact.
 // The record layouts mirror src/Features/SmpPhysics/GpuRigPacking.h; keep them in step.
@@ -98,15 +98,15 @@ StructuredBuffer<uint> HairBoneTrees : register(t13);  // per bone slot: its tre
 
 RWStructuredBuffer<HairBoneWorld> HairBoneWorlds : register(u1);
 
-cbuffer HairChainSolverParams : register(b0)
+cbuffer HairContactParams : register(b0)
 {
 	uint HairBoneCount;    // one past the highest bone slot any claim uses
 	uint HairSphereCount;  // entries in the sphere list
 };
 
-HairChainSolver::Quat LoadQuat(float4 a_value)
+HairCollision::Quat LoadQuat(float4 a_value)
 {
-	HairChainSolver::Quat result;
+	HairCollision::Quat result;
 	result.w = a_value.x;
 	result.x = a_value.y;
 	result.y = a_value.z;
@@ -114,18 +114,18 @@ HairChainSolver::Quat LoadQuat(float4 a_value)
 	return result;
 }
 
-HairChainSolver::Transform LoadTransform(float4 a_rotation, float4 a_translation)
+HairCollision::Transform LoadTransform(float4 a_rotation, float4 a_translation)
 {
-	HairChainSolver::Transform result;
+	HairCollision::Transform result;
 	result.rotation = LoadQuat(a_rotation);
 	result.translation = a_translation.xyz;
 	return result;
 }
 
 /** @brief Unpacks one collider, whose radius and penetration ride in the spare lanes of two of its vectors. */
-HairChainSolver::Collider LoadCollider(HairCollider a_collider)
+HairCollision::Collider LoadCollider(HairCollider a_collider)
 {
-	HairChainSolver::Collider result;
+	HairCollision::Collider result;
 	result.kind = (int)a_collider.kind.x;
 	result.orientation = LoadQuat(a_collider.orientation);
 	result.center = a_collider.center.xyz;
@@ -145,26 +145,26 @@ HairChainSolver::Collider LoadCollider(HairCollider a_collider)
  * @param a_exemptMask The colliders to ignore, one bit per collider index as ComputeRestExemptions set them.
  * @param a_candidateMask The colliders worth testing, one bit per index below kMaximumExemptColliders; a collider past it is always tested.
  */
-HairChainSolver::Contact QueryColliders(HairTreeStatic a_tree, float3 a_point, float a_radius, uint a_exemptMask, uint a_candidateMask)
+HairCollision::Contact QueryColliders(HairTreeStatic a_tree, float3 a_point, float a_radius, uint a_exemptMask, uint a_candidateMask)
 {
-	HairChainSolver::Contact best = HairChainSolver::NoContact();
-	if (!HairChainSolver::IsFiniteVector(a_point) || !isfinite(a_radius))
+	HairCollision::Contact best = HairCollision::NoContact();
+	if (!HairCollision::IsFiniteVector(a_point) || !isfinite(a_radius))
 		return best;
 	uint colliderCount = a_tree.contact.y;
 	uint driverFirst = a_tree.contact.z;
 	uint driverCount = a_tree.contact.w;
 	for (uint index = 0; index < colliderCount; ++index) {
 		// A collider the sphere was authored inside is not a contact at all, or its spring would fight the clamp.
-		if (index < HairChainSolver::kMaximumExemptColliders && ((a_exemptMask & (1u << index)) != 0u || (a_candidateMask & (1u << index)) == 0u))
+		if (index < HairCollision::kMaximumExemptColliders && ((a_exemptMask & (1u << index)) != 0u || (a_candidateMask & (1u << index)) == 0u))
 			continue;
 		HairCollider raw = HairColliders[a_tree.contact.x + index];
 		if (raw.kind.y < driverFirst || raw.kind.y >= driverFirst + driverCount)
 			continue;
 		HairDriverWorld rawWorld = HairDrivers[raw.kind.y];
-		HairChainSolver::Transform world = LoadTransform(rawWorld.rotation, rawWorld.translation);
-		if (!HairChainSolver::IsFiniteTransform(world))
+		HairCollision::Transform world = LoadTransform(rawWorld.rotation, rawWorld.translation);
+		if (!HairCollision::IsFiniteTransform(world))
 			continue;
-		HairChainSolver::MergeContact(best, LoadCollider(raw), world, a_point, a_radius, (int)index);
+		HairCollision::MergeContact(best, LoadCollider(raw), world, a_point, a_radius, (int)index);
 	}
 	return best;
 }
@@ -180,7 +180,7 @@ bool BoxOverlapsNode(HairBvhNode a_node, float3 a_low, float3 a_high)
  * @param a_id The face's source index; of two faces at the same depth the lower index wins, so the pick is stable.
  */
 void OfferSurfaceFace(HairSurfaceTriangle a_face, uint a_id, float3 a_point, float a_reach, bool a_flipped,
-	float a_allowance, float a_behind, inout HairChainSolver::Contact a_best, inout uint a_bestId)
+	float a_allowance, float a_behind, inout HairCollision::Contact a_best, inout uint a_bestId)
 {
 	if (a_face.normalArea.w <= 0.0f)
 		return;
@@ -219,9 +219,9 @@ void OfferSurfaceFace(HairSurfaceTriangle a_face, uint a_id, float3 a_point, flo
  * @brief The deepest contact a sphere makes with one posed surface, the port of TriangleGrid::Query in TriangleGrid.cpp, enumerating through a BVH.
  * @param a_reach The sphere's radius plus the surface margin.
  */
-HairChainSolver::Contact QuerySurface(HairSurfaceMeta a_meta, float3 a_point, float a_reach)
+HairCollision::Contact QuerySurface(HairSurfaceMeta a_meta, float3 a_point, float a_reach)
 {
-	HairChainSolver::Contact best = HairChainSolver::NoContact();
+	HairCollision::Contact best = HairCollision::NoContact();
 	float penetration = a_meta.contact.y;
 	bool flipped = penetration < 0.0f;
 	float allowance = abs(penetration);
@@ -255,18 +255,18 @@ HairChainSolver::Contact QuerySurface(HairSurfaceMeta a_meta, float3 a_point, fl
 
 /**
  * @brief The deepest contact a sphere makes with the claim's colliders and posed surfaces, the port of
- *        ChainSolver::QueryContacts. A surface's contact index is the collider count plus its record's position.
+ *        the CPU contact query. A surface's contact index is the collider count plus its record's position.
  */
-HairChainSolver::Contact QueryContacts(HairTreeStatic a_tree, uint4 a_surface, uint a_surfaceMask, uint a_colliderMask, float3 a_point, float a_radius, uint a_exemptMask)
+HairCollision::Contact QueryContacts(HairTreeStatic a_tree, uint4 a_surface, uint a_surfaceMask, uint a_colliderMask, float3 a_point, float a_radius, uint a_exemptMask)
 {
-	HairChainSolver::Contact best = QueryColliders(a_tree, a_point, a_radius, a_exemptMask, a_colliderMask);
-	if (!HairChainSolver::IsFiniteVector(a_point) || !isfinite(a_radius))
+	HairCollision::Contact best = QueryColliders(a_tree, a_point, a_radius, a_exemptMask, a_colliderMask);
+	if (!HairCollision::IsFiniteVector(a_point) || !isfinite(a_radius))
 		return best;
 	for (uint index = 0; index < a_surface.y; ++index) {
 		if (index < 32u && (a_surfaceMask & (1u << index)) == 0u)
 			continue;
 		HairSurfaceMeta meta = HairSurfaces[a_surface.x + index];
-		HairChainSolver::Contact contact = QuerySurface(meta, a_point, a_radius + meta.contact.x);
+		HairCollision::Contact contact = QuerySurface(meta, a_point, a_radius + meta.contact.x);
 		if (contact.depth > best.depth) {
 			best = contact;
 			best.collider = (int)(a_tree.contact.y + index);
@@ -275,7 +275,7 @@ HairChainSolver::Contact QueryContacts(HairTreeStatic a_tree, uint4 a_surface, u
 	return best;
 }
 
-/** @brief One bone's contacts merged into one, the port of ChainSolver::BoneContact. */
+/** @brief One bone's contacts merged into one, the port of the CPU BoneContact. */
 struct HairBoneContact
 {
 	float depth;
@@ -350,7 +350,7 @@ uint ColliderBoundMask(HairTreeStatic a_tree, float3 a_centre, float a_reach, ou
 {
 	a_any = false;
 	uint mask = 0u;
-	if (!HairChainSolver::IsFiniteVector(a_centre) || !isfinite(a_reach))
+	if (!HairCollision::IsFiniteVector(a_centre) || !isfinite(a_reach))
 		return mask;
 	uint driverFirst = a_tree.contact.z;
 	uint driverCount = a_tree.contact.w;
@@ -359,14 +359,14 @@ uint ColliderBoundMask(HairTreeStatic a_tree, float3 a_centre, float a_reach, ou
 		if (raw.kind.y < driverFirst || raw.kind.y >= driverFirst + driverCount)
 			continue;
 		HairDriverWorld rawWorld = HairDrivers[raw.kind.y];
-		HairChainSolver::Transform world = LoadTransform(rawWorld.rotation, rawWorld.translation);
-		if (!HairChainSolver::IsFiniteTransform(world))
+		HairCollision::Transform world = LoadTransform(rawWorld.rotation, rawWorld.translation);
+		if (!HairCollision::IsFiniteTransform(world))
 			continue;
-		HairChainSolver::Contact touched = HairChainSolver::NoContact();
-		HairChainSolver::MergeContact(touched, LoadCollider(raw), world, a_centre, a_reach, (int)index);
+		HairCollision::Contact touched = HairCollision::NoContact();
+		HairCollision::MergeContact(touched, LoadCollider(raw), world, a_centre, a_reach, (int)index);
 		if (touched.depth > 0.0f) {
 			a_any = true;
-			if (index < HairChainSolver::kMaximumExemptColliders)
+			if (index < HairCollision::kMaximumExemptColliders)
 				mask |= 1u << index;
 		}
 	}
@@ -380,11 +380,11 @@ uint ColliderBoundMask(HairTreeStatic a_tree, float3 a_centre, float a_reach, ou
  * @param a_surfaceMask The surfaces whose grid the bound overlaps, one bit per surface index up to 32.
  * @param a_colliderMask The colliders the bound touches, one bit per collider index up to 32.
  */
-bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_bone, HairChainSolver::Transform a_pose, float a_skin,
+bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_bone, HairCollision::Transform a_pose, float a_skin,
 	out uint a_surfaceMask, out uint a_colliderMask)
 {
 	a_surfaceMask = 0u;
-	float3 boundCentre = a_pose.translation + HairChainSolver::QuatRotate(a_pose.rotation, a_bone.bound.xyz);
+	float3 boundCentre = a_pose.translation + HairCollision::QuatRotate(a_pose.rotation, a_bone.bound.xyz);
 	for (uint surface = 0; surface < a_surface.y && surface < 32u; ++surface) {
 		HairSurfaceMeta meta = HairSurfaces[a_surface.x + surface];
 		if (meta.base.z == 0u)
@@ -394,7 +394,7 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 		if (BoxOverlapsNode(HairSurfaceNodes[meta.base.y], boundCentre - float3(reach, reach, reach), boundCentre + float3(reach, reach, reach)))
 			a_surfaceMask |= 1u << surface;
 	}
-	float boundReach = a_bone.bound.w * 1.25f + a_skin + HairChainSolver::kBoundCullPad;
+	float boundReach = a_bone.bound.w * 1.25f + a_skin + HairCollision::kBoundCullPad;
 	bool anyCollider;
 	a_colliderMask = ColliderBoundMask(a_tree, boundCentre, boundReach, anyCollider);
 	return a_surfaceMask != 0u || anyCollider || a_surface.y > 32u;
@@ -424,7 +424,7 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 	uint state = kCullEmpty;
 	if (sphereRange.range.y != 0u) {
 		HairBoneWorld world = HairBoneWorlds[bone];
-		HairChainSolver::Transform pose = LoadTransform(world.rotation, world.translation);
+		HairCollision::Transform pose = LoadTransform(world.rotation, world.translation);
 		if (BoneBoundReaches(treeStatic, input.surface, sphereRange, pose, input.contact.z, surfaceMask, colliderMask))
 			state = kCullWork;
 	}
@@ -444,9 +444,9 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 	uint tree = HairBoneTrees[bone];
 	HairTreeInput input = HairTreeInputs[tree];
 	HairBoneWorld world = HairBoneWorlds[bone];
-	HairChainSolver::Transform pose = LoadTransform(world.rotation, world.translation);
-	float3 centre = pose.translation + HairChainSolver::QuatRotate(pose.rotation, sphere.centreRadius.xyz);
-	HairChainSolver::Contact contact = QueryContacts(HairTrees[tree], input.surface, cull.x, cull.z, centre,
+	HairCollision::Transform pose = LoadTransform(world.rotation, world.translation);
+	float3 centre = pose.translation + HairCollision::QuatRotate(pose.rotation, sphere.centreRadius.xyz);
+	HairCollision::Contact contact = QueryContacts(HairTrees[tree], input.surface, cull.x, cull.z, centre,
 		sphere.centreRadius.w + input.contact.z, sphere.exempt.x);
 	HairSphereHit hit;
 	hit.depth = contact.depth > 0.0f ? contact.depth : 0.0f;
@@ -456,7 +456,7 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 	HairSphereHits[index] = hit;
 }
 
-	/** @brief Merges each bone's sphere hits into the one contact the chain pass reads, the port of ChainSolver::BoneContact. */
+	/** @brief Merges each bone's sphere hits into the one contact the rigid solver reads, the port of the CPU BoneContact. */
 	[numthreads(64, 1, 1)] void ContactReduce(uint3 a_dispatchThreadId : SV_DispatchThreadID)
 {
 	uint bone = a_dispatchThreadId.x;
