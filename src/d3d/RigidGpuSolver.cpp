@@ -230,6 +230,11 @@ namespace SmpPhysics
 				const Transform& rest = claim.setup.restRelative[body];
 				meta.restRotation = Quat4(rest.rotation);
 				meta.restTranslation = { rest.translation.x, rest.translation.y, rest.translation.z, 0.0f };
+				if (body < claim.setup.wind.size()) {
+					const ClaimSetup::WindBody& wind = claim.setup.wind[body];
+					meta.windAxis = { wind.axis.x, wind.axis.y, wind.axis.z, wind.area };
+					meta.windParams = { wind.factor, 0.0f, 0.0f, 0.0f };
+				}
 				allMeta.push_back(meta);
 			}
 			bodyTotal += bodiesHere;
@@ -306,6 +311,17 @@ namespace SmpPhysics
 				input.rotation = Quat4(pose.rotation);
 				input.translation = { pose.translation.x, pose.translation.y, pose.translation.z, 0.0f };
 				input.flags = { frame.hasPreviousInput && !reset ? 1u : 0u, reset ? 1u : 0u, 0u, 0u };
+				input.wind = { frame.wind.x, frame.wind.y, frame.wind.z, frame.windTime };
+				input.windScale = { frame.windFactor, 0.0f, 0.0f, 0.0f };
+			}
+			for (const FrameClaim::Pin& pin : frame.pins) {
+				if (pin.body < 0 || static_cast<std::size_t>(pin.body) >= kinematic.size() || !(pin.stiffness > 0.0f))
+					continue;
+				FrameInput& input = frameScratch[claim.bodyBase + static_cast<std::size_t>(pin.body)];
+				if (input.grabTarget.w != 0.0f)
+					continue;
+				input.grabLocal = { pin.local.x, pin.local.y, pin.local.z, pin.stiffness };
+				input.grabTarget = { pin.target.x, pin.target.y, pin.target.z, 1.0f };
 			}
 			claim.stepped = true;
 			frameTime = std::max(frameTime, frame.deltaTime);

@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <functional>
 #include <iostream>
 #include <string_view>
 #include <thread>
@@ -105,4 +106,94 @@ TEST_CASE("The GPU solver steps a rigid hair claim on a WARP device", "[smpphysi
 
 	globals::d3d::device = nullptr;
 	globals::d3d::context = nullptr;
+}
+
+namespace
+{
+	struct WarpDevice
+	{
+		ComPtr<ID3D11Device> device;
+		ComPtr<ID3D11DeviceContext> context;
+
+		WarpDevice()
+		{
+			const D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_0 };
+			REQUIRE(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, levels, 1, D3D11_SDK_VERSION,
+						device.GetAddressOf(), nullptr, context.GetAddressOf()) == S_OK);
+			globals::d3d::device = device.Get();
+			globals::d3d::context = context.Get();
+			Util::SetShaderRoot(std::filesystem::path(SMPPHYSICS_SHADER_DIR).wstring());
+		}
+
+		~WarpDevice()
+		{
+			globals::d3d::device = nullptr;
+			globals::d3d::context = nullptr;
+		}
+	};
+
+	/** @brief Steps the two-bone rig for a_frames frames with a_claim's wind and pins and returns the newest root-relative bones. */
+	std::vector<Transform> StepRig(WarpDevice& a_gpu, const std::function<void(GpuSolver::FrameClaim&)>& a_configure, int a_frames)
+	{
+		const ParseResult parsed = ParseSmpXml(kRigXml);
+		REQUIRE(parsed.status == ParseStatus::Ok);
+		const std::vector<Transform> rest(parsed.rig.bones.size());
+		GpuSolver solver;
+		std::string reason;
+		REQUIRE(solver.AddClaim(1, parsed.rig, rest, SolverParams{}, {}, {}, {}, reason));
+
+		std::vector<GpuSolver::FrameClaim> frame(1);
+		frame[0].token = 1;
+		frame[0].kinematicWorld = &rest;
+		frame[0].deltaTime = 1.0f / 60.0f;
+		a_configure(frame[0]);
+		std::vector<GpuSolver::ClaimResult> results;
+		std::vector<Transform> newest;
+		for (int step = 0; step < a_frames; ++step) {
+			frame[0].hasPreviousInput = step > 0;
+			REQUIRE(solver.SubmitFrame(frame));
+			a_gpu.context->Flush();
+			if (solver.Poll(results) && !results.empty())
+				newest = results[0].bones;
+			std::this_thread::sleep_for(std::chrono::milliseconds(2));
+		}
+		REQUIRE(solver.Available());
+		REQUIRE_FALSE(newest.empty());
+		return newest;
+	}
+}
+
+TEST_CASE("Wind pushes a rigid hair claim downwind and a sheltered claim stays put", "[smpphysics][d3d]")
+{
+	WarpDevice gpu;
+	const std::vector<Transform> calm = StepRig(gpu, [](GpuSolver::FrameClaim&) {}, 120);
+	const std::vector<Transform> windy = StepRig(gpu, [](GpuSolver::FrameClaim& a_claim) {
+		a_claim.wind = { 600.0f, 0.0f, 0.0f };
+		a_claim.windFactor = 1.0f;
+	}, 120);
+	const std::vector<Transform> sheltered = StepRig(gpu, [](GpuSolver::FrameClaim& a_claim) {
+		a_claim.wind = { 600.0f, 0.0f, 0.0f };
+		a_claim.windFactor = 0.0f;
+	}, 120);
+	REQUIRE(calm.size() == windy.size());
+	const std::size_t tip = windy.size() - 1;
+	CHECK(windy[tip].translation.x - calm[tip].translation.x > 0.05f);
+	CHECK(std::fabs(sheltered[tip].translation.x - calm[tip].translation.x) < 1.0e-3f);
+}
+
+TEST_CASE("A grab pin pulls a rigid hair claim's bone toward the hand", "[smpphysics][d3d]")
+{
+	WarpDevice gpu;
+	const std::vector<Transform> free = StepRig(gpu, [](GpuSolver::FrameClaim&) {}, 120);
+	const std::size_t tip = free.size() - 1;
+	const Vec3 target = free[tip].translation + Vec3{ 0.0f, 8.0f, 0.0f };
+	const std::vector<Transform> held = StepRig(gpu, [&](GpuSolver::FrameClaim& a_claim) {
+		Grab grab;
+		grab.bone = static_cast<int>(tip);
+		grab.target = target;
+		a_claim.grabs.push_back(grab);
+	}, 120);
+	for (const Transform& bone : held)
+		REQUIRE(std::isfinite(bone.translation.y));
+	CHECK(held[tip].translation.y - free[tip].translation.y > 1.0f);
 }

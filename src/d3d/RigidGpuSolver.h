@@ -34,6 +34,14 @@ namespace SmpPhysics
 			RigidReference::World world;
 			std::vector<int> rootBody;            ///< Per body, the kinematic body its pose is exported relative to, or -1.
 			std::vector<Transform> restRelative;  ///< Per body, its rest pose relative to its root body's rest pose.
+			/** @brief What wind drag needs of a body: its strand direction in its own frame, the area it presents and its wind factor. */
+			struct WindBody
+			{
+				Vec3 axis{};
+				float area{};
+				float factor{};
+			};
+			std::vector<WindBody> wind;  ///< Per body, or empty for no wind.
 		};
 
 		/** @brief One claim's inputs for a frame. */
@@ -44,6 +52,18 @@ namespace SmpPhysics
 			bool hasPreviousInput{};
 			bool resetRequested{};
 			float deltaTime{};
+			Vec3 wind{};         ///< The world wind vector, zero for none.
+			float windTime{};    ///< The gust clock.
+			float windFactor{};  ///< The actor's wind exposure, 0 to 1.
+			/** @brief A point of a body a hand holds. */
+			struct Pin
+			{
+				int body{ -1 };
+				Vec3 local{};
+				Vec3 target{};
+				float stiffness{};
+			};
+			std::vector<Pin> pins;  ///< One per body; a body takes the first pin that names it.
 		};
 
 		RigidGpuSolver() = default;
@@ -89,16 +109,22 @@ namespace SmpPhysics
 			RigidGpu::Float4 rotation{};
 			RigidGpu::Float4 translation{};
 			RigidGpu::Uint4 flags{};
+			RigidGpu::Float4 wind{};       ///< xyz the world wind vector, w the gust clock
+			RigidGpu::Float4 windScale{};  ///< x the actor's wind exposure
+			RigidGpu::Float4 grabLocal{};  ///< xyz the held point in the body's frame, w the pin's stiffness
+			RigidGpu::Float4 grabTarget{};  ///< xyz where the hand holds it, w 1 for a pin
 		};
-		static_assert(sizeof(FrameInput) == 48);
+		static_assert(sizeof(FrameInput) == 112);
 
 		struct BodyMeta
 		{
 			RigidGpu::Uint4 slots{};
 			RigidGpu::Float4 restRotation{};
 			RigidGpu::Float4 restTranslation{};
+			RigidGpu::Float4 windAxis{};    ///< xyz the strand's direction in the body's frame, w the wind-facing area
+			RigidGpu::Float4 windParams{};  ///< x the bone's own wind factor
 		};
-		static_assert(sizeof(BodyMeta) == 48);
+		static_assert(sizeof(BodyMeta) == 80);
 
 		struct RuntimeConstants
 		{

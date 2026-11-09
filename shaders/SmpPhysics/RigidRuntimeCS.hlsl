@@ -1,4 +1,5 @@
 #include "Common/HairRigidSolver.hlsli"
+#include "Common/HairWind.hlsli"
 
 // RigidFrameBegin turns kinematic poses into hdtSMP64's readTransform velocities and arms the dynamic bodies; RigidExport
 // feeds the GPU solver's buffers. Record layouts mirror RigidGpuSolver.h and RigidGpuPacking.h; keep them in step.
@@ -30,6 +31,9 @@ struct HairRigidBody
 	float4 interpolationLinearVelocity;
 	float4 interpolationAngularVelocity;
 	float4 accumulatedForce;
+	float4 accumulatedTorque;
+	float4 grabLocal;   // xyz = the held point in the body frame, w = the pin's stiffness
+	float4 grabTarget;  // xyz = where the hand holds the point, w = 1 for a pin
 };
 
 struct HairRigidFrameInput
@@ -37,6 +41,10 @@ struct HairRigidFrameInput
 	float4 rotation;     // xyzw, a kinematic body's pose this frame
 	float4 translation;  // xyz
 	uint4 flags;         // x = 1 when the claim has stepped before, y = 1 when the body must return to rest
+	float4 wind;         // xyz = the world wind vector, w = the gust clock
+	float4 windScale;    // x = the actor's wind exposure
+	float4 grabLocal;    // xyz = the held point in the body frame, w = the pin's stiffness
+	float4 grabTarget;   // xyz = where the hand holds the point, w = 1 for a pin
 };
 
 struct HairRigidBodyMeta
@@ -44,6 +52,8 @@ struct HairRigidBodyMeta
 	uint4 slots;             // x = the GPU solver's bone slot, y = the body whose pose is this body's root, or kNoBody
 	float4 restRotation;     // xyzw, the rest pose relative to the root
 	float4 restTranslation;  // xyz
+	float4 windAxis;         // xyz = the strand's direction in the body frame, w = the wind-facing area
+	float4 windParams;       // x = the bone's own wind factor
 };
 
 struct HairBoneWorld
@@ -164,6 +174,9 @@ void CalculateVelocity(in HairRigidSolver::Transform a_from, in HairRigidSolver:
 		record.interpolationLinearVelocity = float4(linearSpeed, 0.0f);
 		record.interpolationAngularVelocity = float4(angularSpeed, 0.0f);
 		record.accumulatedForce = 0.0f;
+		record.accumulatedTorque = 0.0f;
+		record.grabLocal = 0.0f;
+		record.grabTarget = 0.0f;
 	} else {
 		const HairRigidBodyMeta meta = HairRigidMeta[index];
 		if (reset && meta.slots.y != kNoBody) {
@@ -172,7 +185,17 @@ void CalculateVelocity(in HairRigidSolver::Transform a_from, in HairRigidSolver:
 			record.linearVelocity = 0.0f;
 			record.angularVelocity = 0.0f;
 		}
-		record.accumulatedForce = float4(record.gravity.xyz, 0.0f);
+		float3 force = record.gravity.xyz;
+		if (record.inertia.w > 0.0f) {
+			const HairRigidSolver::Mat3 basis = { record.basis0.xyz, record.basis1.xyz, record.basis2.xyz };
+			const float3 axis = HairRigidSolver::MatVec(basis, meta.windAxis.xyz);
+			force += HairWind::WindForce(input.wind.xyz, input.wind.w, meta.windAxis.w, 1.0f / record.inertia.w,
+				meta.windParams.x * input.windScale.x, axis, record.origin.xyz, record.linearVelocity.xyz);
+		}
+		record.accumulatedForce = float4(force, 0.0f);
+		record.accumulatedTorque = 0.0f;
+		record.grabLocal = input.grabLocal;
+		record.grabTarget = input.grabTarget;
 	}
 	HairRigidBodies[index] = record;
 }

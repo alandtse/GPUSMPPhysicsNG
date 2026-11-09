@@ -7,6 +7,7 @@
 #include "smp/RigidRigBuilder.h"
 
 #include <algorithm>
+#include <bit>
 #include <cstring>
 #include <exception>
 #include <thread>
@@ -192,7 +193,7 @@ namespace SmpPhysics
 		if (!available)
 			return false;
 		if (!globals::d3d::device) {
-			Fail("the GPU solver GPU backend needs a Direct3D device; claimed hair stays at the engine's pose");
+			Fail("the GPU solver backend needs a Direct3D device; claimed hair stays at the engine's pose");
 			return false;
 		}
 		if (!contactCullShader)
@@ -495,7 +496,11 @@ namespace SmpPhysics
 			pendingStaticClaims.push_back(claims.size() - 1u);
 		surfacePrepDirty = true;
 
-		if (!rigidSolver.AddClaim(BuildRigidSetup(a_token, *offset, a_rig, a_restWorld, a_params), a_reason)) {
+		RigidGpuSolver::ClaimSetup rigidSetup = BuildRigidSetup(a_token, *offset, a_rig, a_restWorld, a_params);
+		rigidSetup.wind.reserve(claims.back().rig.bones.size());
+		for (const GpuRig::BoneStatic& bone : claims.back().rig.bones)
+			rigidSetup.wind.push_back({ { bone.wind.x, bone.wind.y, bone.wind.z }, bone.wind.w, std::bit_cast<float>(bone.topology.z) });
+		if (!rigidSolver.AddClaim(std::move(rigidSetup), a_reason)) {
 			RemoveClaim(a_token);
 			return false;
 		}
@@ -967,8 +972,17 @@ namespace SmpPhysics
 				const D3D11_BOX region{ first, 0, 0, first + static_cast<UINT>(externals.size() * sizeof(GpuRig::ColliderPacked)), 1, 1 };
 				context->UpdateSubresource(colliders->resource.get(), 0, &region, externals.data(), 0, 0);
 			}
-			a_pack.rigidClaims.push_back({ frameClaim.token, frameClaim.kinematicWorld, frameClaim.hasPreviousInput,
-				frameClaim.resetRequested, frameClaim.deltaTime });
+			RigidGpuSolver::FrameClaim& rigid = a_pack.rigidClaims.emplace_back();
+			rigid.token = frameClaim.token;
+			rigid.kinematicWorld = frameClaim.kinematicWorld;
+			rigid.hasPreviousInput = frameClaim.hasPreviousInput;
+			rigid.resetRequested = frameClaim.resetRequested;
+			rigid.deltaTime = frameClaim.deltaTime;
+			rigid.wind = frameClaim.wind;
+			rigid.windTime = frameClaim.windTime;
+			rigid.windFactor = frameClaim.windFactor;
+			for (const Grab& grab : frameClaim.grabs)
+				rigid.pins.push_back({ grab.bone, grab.local, grab.target, grab.stiffness });
 			if (claim.firstFrame == 0u) {
 				claim.firstFrame = frameCounter + 1u;
 				a_pack.startedClaims.push_back(found->second);

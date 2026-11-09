@@ -55,8 +55,11 @@ namespace SmpPhysics::RigidGpu
 		Float4 interpolationLinearVelocity{};
 		Float4 interpolationAngularVelocity{};
 		Float4 accumulatedForce{};  ///< xyz the force BeginFrame accumulated for the frame
+		Float4 accumulatedTorque{};
+		Float4 grabLocal{};   ///< xyz the held point in the body frame, w the pin's stiffness
+		Float4 grabTarget{};  ///< xyz where the hand holds the point, w 1 for a pin
 	};
-	static_assert(sizeof(BodyRecord) == 208);
+	static_assert(sizeof(BodyRecord) == 256);
 
 	/** @brief One angular axis's limits, springs and motor, as HairRigidSolver.hlsli's MotorSettings holds them. */
 	struct AngularMotorRecord

@@ -25,6 +25,9 @@ struct HairRigidBody
 	float4 interpolationLinearVelocity;
 	float4 interpolationAngularVelocity;
 	float4 accumulatedForce;  // xyz = the force BeginFrame accumulated for the frame
+	float4 accumulatedTorque;
+	float4 grabLocal;   // xyz = the held point in the body frame, w = the pin's stiffness
+	float4 grabTarget;  // xyz = where the hand holds the point, w = 1 for a pin
 };
 
 struct HairRigidAngularMotor
@@ -315,6 +318,31 @@ HairRigidRow StoreRow(in HairRigidSolver::SolverRow a_value)
 	return record;
 }
 
+// Mirrored by kMaxGrabPull and kMinGrabDistance in smp/SolverCommon.h.
+static const float kMaxGrabPull = 25.0f;
+static const float kMinGrabDistance = 1.0e-3f;
+
+/**
+ * @brief Pulls the point a hand holds toward the hand as a spring on the body, the way a contact pushes it.
+ * @details The impulse is capped at the one that would carry the body half the distance in one substep, so a
+ *          stiff pin on a light strand cannot overshoot and ring.
+ */
+void ApplyGrabPin(in HairRigidBody a_record, in HairRigidSolver::Body a_body, inout HairRigidSolver::SolverBody a_solverBody)
+{
+	const float3 offset = HairRigidSolver::MatVec(a_body.worldTransform.basis, a_record.grabLocal.xyz);
+	const float3 toTarget = a_record.grabTarget.xyz - (a_body.worldTransform.origin + offset);
+	const float distance = length(toTarget);
+	if (!(distance > kMinGrabDistance))
+		return;
+	const float3 direction = toTarget / distance;
+	const float depth = min(distance, kMaxGrabPull);
+	const float impulseLimit = distance / (2.0f * HairRigidTimeStep * a_body.inverseMass);
+	const float3 impulse = direction * min(a_record.grabLocal.w * depth * HairRigidTimeStep, impulseLimit);
+	a_solverBody.externalForceImpulse += impulse * a_body.inverseMass;
+	a_solverBody.externalTorqueImpulse += HairRigidSolver::MatVec(HairRigidSolver::InverseWorldInertia(a_body),
+		HairRigidSolver::Cross(offset, impulse));
+}
+
 /** @brief Damping, gravity as the frame force, and the predicted solver-body state: World::Step's prefix. */
 [numthreads(64, 1, 1)] void RigidPredict(uint3 a_dispatchThreadId : SV_DispatchThreadID) {
 	uint index = a_dispatchThreadId.x;
@@ -335,6 +363,8 @@ HairRigidRow StoreRow(in HairRigidSolver::SolverRow a_value)
 	solverBody.externalForceImpulse = record.accumulatedForce.xyz * (body.inverseMass * HairRigidTimeStep);
 	if (body.inverseMass != 0.0f)
 		solverBody.externalTorqueImpulse = HairRigidSolver::GyroscopicImpulse(body, HairRigidTimeStep);
+	if (!body.kinematic && body.inverseMass != 0.0f && record.grabTarget.w != 0.0f)
+		ApplyGrabPin(record, body, solverBody);
 
 	StoreBodyState(record, body);
 	HairRigidBodies[index] = record;
