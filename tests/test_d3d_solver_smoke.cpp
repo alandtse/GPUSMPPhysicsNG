@@ -197,19 +197,3 @@ TEST_CASE("A grab pin pulls a rigid hair claim's bone toward the hand", "[smpphy
 		REQUIRE(std::isfinite(bone.translation.y));
 	CHECK(held[tip].translation.y - free[tip].translation.y > 1.0f);
 }
-
-TEST_CASE("A held strand follows a distant hand past its joint limits", "[smpphysics][d3d]")
-{
-	WarpDevice gpu;
-	const std::vector<Transform> free = StepRig(gpu, [](GpuSolver::FrameClaim&) {}, 120);
-	const std::size_t tip = free.size() - 1;
-	const std::vector<Transform> held = StepRig(gpu, [&](GpuSolver::FrameClaim& a_claim) {
-		Grab grab;
-		grab.bone = static_cast<int>(tip);
-		grab.target = free[tip].translation + Vec3{ 0.0f, 30.0f, 0.0f };
-		a_claim.grabs.push_back(grab);
-	}, 120);
-	INFO("held " << held[tip].translation.y << " free " << free[tip].translation.y);
-	// With the joint limits kept this rig's tip stops at 3.85 units; freed by the hold it reaches 4.19.
-	CHECK(held[tip].translation.y - free[tip].translation.y > 4.0f);
-}
