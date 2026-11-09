@@ -1,15 +1,16 @@
 """SMP port A/B on one VR session: hdtSMP64 only vs pre-port Open Shaders SMP vs standalone GPUSMPPhysicsNG.
 
 Holds the VR lock already, game running with both plugins loaded and a save loaded.
-Usage: python smp_ab.py [port]   Output: F:/tmp/smp_ab_results.json and a table.
+Usage: python smp_ab.py [port]   Output: smp_ab_<vr|se>_results.json next to this file and a table.
 """
 import json
+import pathlib
 import sys
 import time
 import urllib.error
 import urllib.request
 
-sys.path.insert(0, 'F:/Worktrees/open-shaders/practical-boyd-c4b94a/tools/hair-tune')
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'tools' / 'hair-tune'))
 import ingame
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8921
@@ -112,5 +113,5 @@ for size in SIZES:
         results.append(measure(name, size))
 arm('hdt')
 pre.command('clearTestCrowd')
-json.dump(results, open(f'F:/tmp/smp_ab_{GAME.lower()}_results.json', 'w'), indent=1)
+json.dump(results, open(pathlib.Path(__file__).with_name(f'smp_ab_{GAME.lower()}_results.json'), 'w'), indent=1)
 print('RESULT DONE', flush=True)
