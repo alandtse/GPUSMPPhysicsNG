@@ -1,0 +1,54 @@
+{
+    "SE": {
+        "wig": {
+            "rigid": {
+                "distance": 1.31,
+                "sdLow": 0.69,
+                "sdHigh": 0.78
+            },
+            "chain": {
+                "distance": 2.87,
+                "sdLow": 0.67,
+                "sdHigh": 0.71
+            }
+        },
+        "cape": {
+            "rigid": {
+                "distance": 0.29,
+                "sdLow": 0.99,
+                "sdHigh": 1.85
+            },
+            "chain": {
+                "distance": 0.98,
+                "sdLow": 0.01,
+                "sdHigh": 0.01
+            }
+        }
+    },
+    "VR": {
+        "wig": {
+            "rigid": {
+                "distance": 2.16,
+                "sdLow": 0.62,
+                "sdHigh": 0.65
+            },
+            "chain": {
+                "distance": 3.1,
+                "sdLow": 0.77,
+                "sdHigh": 0.89
+            }
+        },
+        "cape": {
+            "rigid": {
+                "distance": 2.08,
+                "sdLow": 0.44,
+                "sdHigh": 0.51
+            },
+            "chain": {
+                "distance": 1.32,
+                "sdLow": 0.16,
+                "sdHigh": 0.18
+            }
+        }
+    }
+}
