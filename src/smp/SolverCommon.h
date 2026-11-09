@@ -107,12 +107,6 @@ namespace SmpPhysics
 	 * @note Mirrored by kMaxGrabPull in package/Shaders/Common/HairCollision.hlsli.
 	 */
 	inline constexpr float kMaxGrabPull = 25.0f;
-	/**
-	 * @brief Fastest, in radians per second, a joint beyond its limit returns inside it.
-	 * @details A held strand frees the joints above the hand from their limits; letting go moves them back at this rate instead of snapping them in one step.
-	 * @note Mirrored by kLimitReturnRate in package/Shaders/Common/HairCollision.hlsli.
-	 */
-	inline constexpr float kLimitReturnRate = 8.0f;
 	/** @brief Distance under which a pin does nothing, so its pull has a direction. Mirrored by kMinGrabDistance in HairCollision.hlsli. */
 	inline constexpr float kMinGrabDistance = 1.0e-3f;
 

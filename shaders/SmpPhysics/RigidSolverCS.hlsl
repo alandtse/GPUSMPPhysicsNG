@@ -14,7 +14,7 @@ struct HairRigidBody
 {
 	float4 inertia;  // xyz = inverse inertia in the body frame, w = inverse mass
 	float4 damping;  // x = linear damping, y = angular damping
-	uint4 flags;     // x = 1 when the body is kinematic, y = 1 while a hold frees its joint limits, z = frames left easing them back
+	uint4 flags;     // x = 1 when the body is kinematic, y = 1 while a hold frees its joint limits
 	float4 gravity;  // xyz = the body's frame gravity force
 	float4 basis0;   // xyz = world basis row 0
 	float4 basis1;   // xyz = world basis row 1
@@ -318,8 +318,7 @@ HairRigidRow StoreRow(in HairRigidSolver::SolverRow a_value)
 	return record;
 }
 
-// Mirrored by kMaxGrabPull, kMinGrabDistance and kLimitReturnRate in smp/SolverCommon.h.
-static const float kLimitReturnRate = 8.0f;
+// Mirrored by kMaxGrabPull and kMinGrabDistance in smp/SolverCommon.h.
 static const float kMaxGrabPull = 25.0f;
 static const float kMinGrabDistance = 1.0e-3f;
 
@@ -439,11 +438,8 @@ void SetupContact(uint a_constraint, int a_bodyA, int a_bodyB, in HairRigidConta
 		const HairRigidBody recordB = HairRigidBodies[bodyB];
 		const bool endAHeld = recordA.flags.x != 0u || recordA.flags.y != 0u;
 		const bool endBHeld = recordB.flags.x != 0u || recordB.flags.y != 0u;
-		const bool endAEasing = endAHeld || recordA.flags.z > 0u;
-		const bool endBEasing = endBHeld || recordB.flags.z > 0u;
 		// A hold frees every joint between the held bone and the root: both ends are held bodies or the kinematic root.
 		const bool freed = endAHeld && endBHeld && (recordA.flags.y != 0u || recordB.flags.y != 0u);
-		const bool easing = !freed && endAEasing && endBEasing && (recordA.flags.z > 0u || recordB.flags.z > 0u);
 		if (freed) {
 			config.angular0.lower = 1.0f;
 			config.angular0.upper = -1.0f;
@@ -470,8 +466,6 @@ void SetupContact(uint a_constraint, int a_bodyA, int a_bodyB, in HairRigidConta
 					if ((block.present & (1u << rowIndex)) == 0u)
 						continue;
 					HairRigidSolver::SolverRow solved = HairRigidSolver::GetAxisRow(block, rowIndex);
-					if (easing && axisSlot >= 3 && rowIndex < 2)
-						solved.rhs = clamp(solved.rhs, -kLimitReturnRate, kLimitReturnRate);
 					solved.solverBodyA = bodyA;
 					solved.solverBodyB = bodyB;
 					HairRigidRows[rowBase + (uint)axisSlot * (uint)HairRigidSolver::kRowsPerAxis + (uint)rowIndex] = StoreRow(solved);

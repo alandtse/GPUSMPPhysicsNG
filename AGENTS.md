@@ -67,6 +67,8 @@ Suites (all need a game running with the plugin and `GPUSMP_STANDALONE=1`):
 | `tools/hair-tune/contact_e2e.py` | probe and hand capsules as colliders |
 | `tools/hair-tune/pose_e2e.py` | outfits, idles, overlay, pull |
 | `tools/hair-tune/smp_parity_e2e.py` | comparison against hdtSMP64 (needs its baseline) |
+| `tools/hair-tune/limit_probe.py` | measures joint angles against their limits through a hold and release on real hair |
+| `tools/hair-tune/wind_probe.py` | measures how far the wind moves real hair, in the head frame, per wind strength |
 | `tools/game/check_actions.py`, `check_overlay.py` | quick devbench and overlay sanity (`GSP_PORT`) |
 
 Known failures and their causes are in `docs/PARITY.md`. Clear the test crowd, set the cloak index to `-1` (0 is a real
@@ -85,11 +87,14 @@ frame near 31 ms and hides frame time, so use SE for frame time and VR for per-p
 
 - The chain solver stepping path and its leftover names are gone. Wind (drag, cap and gust law from hdtSMP64) and grab
   pins now act on the rigid bodies: wind adds to each body's frame force in `RigidFrameBegin`, a pin is a capped spring
-  in `RigidPredict`; a hold frees the angular limits of the joints up to the root and `RigidSetup` eases them back at
-  `kLimitReturnRate` for 30 frames after release (the ease has no test). Still to do: measure wind in game (an A/B on
-  live NPCs was lost in their motion, only the Catch2 wind test covers it); check why held strands sit 0.1 to 0.3
-  units off the hand since the limits were freed (0.02 to 0.13 before; the suite still passes); the chain-only packing (`PackChainTies`, the tie fields,
-  `windChainLoad`, `subtreeLoading`) is kept for now and can go once those are settled. Re-baseline
+  in `RigidPredict`; a hold frees the angular limits of the joints up to the root. Measured on VR with
+  `tools/hair-tune/limit_probe.py` and `wind_probe.py`: a hold takes real joints about 2 rad past their limits and they
+  settle back within 0.5 s of the release with or without a return-rate clamp (about 10 rad/s either way), so there is
+  no clamp. Freeing the limits moved held strands from 0.02-0.13 to 0.08-0.32 units off the hand (grab_e2e limit 1.0).
+  Wind at strength 60 shifts a claim's hair 0.6 units on average (max 4.6) in the head frame; at the default 2 the
+  shift (0.04) is the same as the 0.04 noise between two no-wind runs, with that claim 77% sheltered. Still to do:
+  decide whether the default wind should show more, against hdtSMP64 on the same scene; the chain-only packing
+  (`PackChainTies`, the tie fields, `windChainLoad`, `subtreeLoading`) is kept for now. Re-baseline
   `smp_parity_baseline.json` and rerun the SE frame-time comparison once SE is free.
 - Not covered by any suite: Menu Framework page rendering, the Ready Weapon gate, haptic feel, real controller mappings.
 - The 31 ms convergence at 30 characters on SE is unexplained.
