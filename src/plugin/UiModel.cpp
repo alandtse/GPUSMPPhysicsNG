@@ -171,7 +171,7 @@ void PluginUi::Register()
 		Slide("Gravity scale", "Applies to claims made from now on.", &settings.GravityScale, kMinScale, kMaxScale, "%.2f"),
 		Slide("Stiffness scale", "Applies to claims made from now on.", &settings.StiffnessScale, kMinScale, kMaxScale, "%.2f"),
 		Slide("Damping scale", "Applies to claims made from now on.", &settings.DampingScale, kMinScale, kMaxScale, "%.2f"),
-		Slide("Wind strength", "How hard the weather's wind pushes the hair outdoors; 0 switches wind off.", &settings.WindStrength, 0.0f, kMaxWindStrength, "%.1f"),
+		Slide("Wind strength", "How hard the weather's wind pushes hair and cloth outdoors; 0 switches wind off.", &settings.WindStrength, 0.0f, kMaxWindStrength, "%.1f"),
 		Header("Limits and culling"),
 		Slide("Simulation distance", "Game units from the camera beyond which claims are not stepped.", &settings.SimulationDistance, kMinSimulationDistance, kMaxSimulationDistance, "%.0f"),
 		SlideInt("Maximum claims", "Meshes beyond this count keep being simulated by hdtSMP64.", &settings.MaxClaims, kMinClaims, kMaxClaims),
