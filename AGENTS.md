@@ -100,8 +100,12 @@ frame near 31 ms and hides frame time, so use SE for frame time and VR for per-p
   strength, so strength 2 at full sky wind is 600 units/s. In a forced SkyrimStormRain the field only averaged 0.22
   (peak 0.39), about 130 units/s at strength 2, which moves hair by 0.03. A 600 units/s vector (strength 9 in that
   storm) shifts it 0.34 on average (max 2.2), about hdtSMP64's 0.40 at its default. Trees bend 3% of height and grass
-  13 degrees per unit of field at full wind, for comparison. Still to do: decide whether the default `WindStrength`
-  should rise from 2 toward 4 to 6 so a storm shows; the chain-only packing
+  13 degrees per unit of field at full wind, for comparison. A worn linen cape (`wind_probe.py --cloak 3 --solver
+  --prefix "CB "`, 12 bones, 61 units long, same storm) moves with vector: about 145 units/s (strength 2) shifts it
+  0.15 units (0.2% of its length), 650 to 740 units/s shifts it 2.3 units (3.9%, max 11%), and 600+ at strength 20
+  gives the same because the 900 cap and the field vary. So the cape shows the wind at a vector of 400 to 700 units/s,
+  the range where hair matches hdtSMP64 too. Still to do: decide whether the default `WindStrength` should rise from 2
+  to about 6 (a field of 0.2 then gives 360 units/s); the chain-only packing
   (`PackChainTies`, the tie fields, `windChainLoad`, `subtreeLoading`) is kept for now. Re-baseline
   `smp_parity_baseline.json` and rerun the SE frame-time comparison once SE is free.
 - Not covered by any suite: Menu Framework page rendering, the Ready Weapon gate, haptic feel, real controller mappings.
