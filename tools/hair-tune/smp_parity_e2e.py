@@ -1,11 +1,11 @@
-"""In-game parity gate: our hair solvers against hdtSMP64 on the same wig, turned the same way.
+"""In-game parity gate: our hair solver against hdtSMP64 on the same wig, turned the same way.
 
     python tools/hair-tune/smp_parity_e2e.py --data-dir <game Data folder> [--port 8920] [--crowd 2] [--runs 2] [--update-baseline]
 
 Needs a game that is already running with the devbench server answering, a save loaded, hdtSMP64 installed, and
 you holding the game's lock. The script spawns frozen test characters with a wig, turns one of them while it
-records the wig's and the cape's bones in the actor's frame, once per solver: hdtSMP64 (GPU SMP Physics off), the rigid solver and the
-chain solver. Each of our solvers is scored by how far its mean bone positions sit from the centroid of hdtSMP64's
+records the wig's and the cape's bones in the actor's frame, once per solver: hdtSMP64 (GPU SMP Physics off) and the rigid solver.
+The rigid solver is scored by how far its mean bone positions sit from the centroid of hdtSMP64's
 runs, and by the spread of its motion relative to hdtSMP64's; hdtSMP64's own run-to-run distance sets the noise floor.
 
 The limits live in smp_parity_baseline.json, next to this script, one set per game. They are measured values with headroom, so a change
@@ -34,7 +34,7 @@ SD_RATIO_BAND = 0.35       # how far past the baseline's observed range a solver
 SD_RATIO_SLACK = 0.05      # added to both ends, so a solver that barely moves does not fail on rounding
 ROOT_NODE = 'NPC Spine2 [Spn2]'
 PREFIXES = ('HG_ColdHeart', 'hdtSSEPhysics_AutoRename', 'hdtSSE', 'HDT', 'CME')
-SOLVERS = ('rigid', 'chain')
+SOLVERS = ('rigid',)
 NOT_A_WIG = ('cape', 'cloak', 'cloth', 'skirt', 'tail')
 CLOTH = ('cape', 'cloak')
 MOVING_SPREAD = 0.01       # units; a bone that moves less than this under hdtSMP64 is kinematic and says nothing about a solver
@@ -114,7 +114,7 @@ def main():
     game = 'VR' if bench.post('inspect', {'kind': 'state'}).get('vr') else 'SE'
     print(f'game: {game}', flush=True)
     checks = ingame.Checks()
-    bench.set_settings(Enabled=True, ClaimArmor=True, ClaimHeadParts=True, RigidSolver=False, RetargetRest=False)
+    bench.set_settings(Enabled=True, ClaimArmor=True, ClaimHeadParts=True, RetargetRest=False)
     bench.command('clearTestCrowd')
     bench.command('stripTestCrowd', enabled=True)
     bench.command('setTestCrowdCloak', index=3)
@@ -161,22 +161,18 @@ def main():
         recording = recording.get('result', recording)
         return load_positions(recording)
 
-    def resettle(solver):
+    def resettle():
         bench.set_settings(Enabled=False)
         time.sleep(3)
         bench.set_settings(Enabled=True)
-        time.sleep(8)
-        for claim in [c for c in bench.status().get('claims', []) if c.get('actorFormID') == actor]:
-            bench.command('setClaimSolver', actorFormID=actor, file=claim['file'], solver=solver)
-        time.sleep(SETTLE_SECONDS)
+        time.sleep(8 + SETTLE_SECONDS)
 
     results = {}
     for solver in SOLVERS:
-        resettle(solver)
+        resettle()
         mine = [c for c in bench.status().get('claims', []) if c.get('actorFormID') == actor and c.get('file') == wig_file]
-        checks.check(f'{solver} runs the wig on the GPU', bool(mine) and all(c.get('gpuRegistered') for c in mine) and all(bool(c.get('rigid')) == (solver == 'rigid') for c in mine),
-                     [(c.get('gpuRegistered'), c.get('rigid')) for c in mine])
-        resettle(solver)
+        checks.check(f'{solver} runs the wig on the GPU', bool(mine) and all(c.get('gpuRegistered') for c in mine), [c.get('gpuRegistered') for c in mine])
+        resettle()
         results[solver] = [record() for _ in range(arguments.runs)]
 
     bench.set_settings(Enabled=False)

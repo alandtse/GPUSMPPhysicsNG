@@ -213,18 +213,6 @@ namespace SmpPhysics::GpuRig
 	};
 	static_assert(sizeof(TreeInput) == 304);
 
-	/** @brief One bone's persistent solver state, as the shader keeps it. */
-	struct BoneState
-	{
-		Float4 rotation{};
-		Float4 angularVelocity{};
-		Float4 previousPivot{};
-		Float4 previousPivotVelocity{};
-		Float4 previousParentRotation{};
-		Uint4 history{};  ///< x has a previous pivot, y has a previous pivot velocity
-	};
-	static_assert(sizeof(BoneState) == 96);
-
 	/** @brief One bone's world transform while a tree is being stepped. */
 	struct BoneWorld
 	{

@@ -1,6 +1,6 @@
-// Runs the chain solver's contact passes (ChainSolverCS.hlsl: ContactCull, ContactSpheres, ContactReduce) on a WARP
+// Runs the contact passes (ChainSolverCS.hlsl: ContactCull, ContactSpheres, ContactReduce) on a WARP
 // device and compares every bone's merged contact with the CPU's QueryColliders and ContactMerge, then checks which
-// trees each pass serves.
+// trees the passes serve.
 
 #include "rigid_gpu_harness.h"
 #include "smp/Collision.h"
@@ -25,12 +25,11 @@ namespace
 {
 	constexpr std::size_t kBoneCount{ 4 };
 	constexpr std::size_t kTreeCount{ 2 };
-	constexpr std::uint32_t kChainSubSteps{ 2 };
 	constexpr float kContactSkin{ 0.02f };
 	constexpr float kSentinelDepth{ 123.0f };
 	constexpr float kTolerance{ 1.0e-4f };
 
-	/** @brief Bones 0 and 1 form the chain tree and bones 2 and 3 the rigid tree. Bone 3 is out of every collider's reach. */
+	/** @brief Bones 0 and 1 form tree 0 and bones 2 and 3 tree 1. Bone 3 is out of every collider's reach. */
 	constexpr std::array<std::uint32_t, kBoneCount> kBoneTrees{ 0u, 0u, 1u, 1u };
 
 	struct ContactKernels
@@ -57,7 +56,7 @@ namespace
 		return built;
 	}
 
-	/** @brief The claim the passes run over: a chain tree and a rigid tree of two bones each, sharing one collider set. */
+	/** @brief The claim the passes run over: two trees of two bones each, sharing one collider set. */
 	struct Scene
 	{
 		std::vector<Collider> colliders;
@@ -209,9 +208,7 @@ namespace
 
 	struct PassOptions
 	{
-		std::uint32_t owner{};
-		std::uint32_t subStep{ 1 };
-		std::array<std::uint32_t, kTreeCount> treeFlags{};
+		std::array<bool, kTreeCount> takesContacts{ true, true };
 	};
 
 	/** @brief Dispatches the three contact passes over a scene and returns each bone's merged contact; a skipped bone keeps the sentinel. */
@@ -235,8 +232,8 @@ namespace
 		std::vector<GpuRig::TreeInput> inputs(kTreeCount);
 		for (GpuRig::TreeInput& input : inputs)
 			input.contact.z = a_scene.contactSkin;
-		inputs[0].control.x = kChainSubSteps;
-		inputs[1].surface.z = 1u;
+		for (std::size_t tree = 0; tree < kTreeCount; ++tree)
+			inputs[tree].surface.z = a_options.takesContacts[tree] ? 1u : 0u;
 
 		std::vector<GpuRig::BoneWorld> worlds(kBoneCount);
 		for (std::size_t bone = 0; bone < kBoneCount; ++bone) {
@@ -255,26 +252,22 @@ namespace
 			input.surface.y = metaCount;
 		}
 		const std::vector<GpuRig::BoneContact> contacts(kBoneCount, Sentinel());
-		const std::vector<GpuRig::BoneState> states(kBoneCount);
-		const std::vector<GpuRig::BoneOutput> outputs(kBoneCount);
-		const std::vector<std::uint32_t> flags(a_options.treeFlags.begin(), a_options.treeFlags.end());
 		const std::vector<std::uint32_t> boneTrees(kBoneTrees.begin(), kBoneTrees.end());
 		const std::vector<float> hits(sphereList.size() * 12);
 		const std::vector<std::uint32_t> cull(kBoneCount * 4);
 		const std::vector<std::uint32_t> unused(4);
 
 		std::array<ComPtr<ID3D11Buffer>, 7> targetBuffers;
-		targetBuffers[0] = CreateTyped(device, states, D3D11_BIND_UNORDERED_ACCESS);
 		targetBuffers[1] = CreateTyped(device, worlds, D3D11_BIND_UNORDERED_ACCESS);
-		targetBuffers[2] = CreateTyped(device, outputs, D3D11_BIND_UNORDERED_ACCESS);
 		targetBuffers[3] = CreateTyped(device, contacts, D3D11_BIND_UNORDERED_ACCESS);
-		targetBuffers[4] = CreateTyped(device, flags, D3D11_BIND_UNORDERED_ACCESS);
 		targetBuffers[5] = CreateStructured(device, 48, sphereList.size(), D3D11_BIND_UNORDERED_ACCESS);
 		targetBuffers[6] = CreateStructured(device, 16, kBoneCount, D3D11_BIND_UNORDERED_ACCESS);
-		const std::array<std::size_t, 7> targetCounts{ kBoneCount, kBoneCount, kBoneCount, kBoneCount, kTreeCount, sphereList.size(), kBoneCount };
+		const std::array<std::size_t, 7> targetCounts{ 0, kBoneCount, 0, kBoneCount, 0, sphereList.size(), kBoneCount };
 		std::array<ID3D11UnorderedAccessView*, 7> targets{};
 		std::array<ComPtr<ID3D11UnorderedAccessView>, 7> targetViews;
 		for (std::size_t slot = 0; slot < targets.size(); ++slot) {
+			if (!targetBuffers[slot])
+				continue;
 			targetViews[slot] = CreateUav(device, targetBuffers[slot].Get(), targetCounts[slot]);
 			targets[slot] = targetViews[slot].Get();
 		}
@@ -285,8 +278,6 @@ namespace
 			sourceBuffers[slot] = CreateTyped(device, values, D3D11_BIND_SHADER_RESOURCE);
 			sourceCounts[slot] = values.size();
 		};
-		const std::vector<GpuRig::BoneStatic> statics(kBoneCount);
-		bind(0, statics);
 		bind(1, trees);
 		bind(2, inputs);
 		bind(5, collision.spheres);
@@ -308,10 +299,9 @@ namespace
 
 		struct Constants
 		{
-			std::uint32_t treeCount, resetCount, subStep, boneCount, sphereCount, contactOwner, padding[2];
+			std::uint32_t boneCount, sphereCount, padding[2];
 		};
-		const Constants constants{ static_cast<std::uint32_t>(kTreeCount), 0u, a_options.subStep, static_cast<std::uint32_t>(kBoneCount),
-			static_cast<std::uint32_t>(sphereList.size()), a_options.owner, {} };
+		const Constants constants{ static_cast<std::uint32_t>(kBoneCount), static_cast<std::uint32_t>(sphereList.size()), {} };
 		D3D11_BUFFER_DESC constantsDesc{};
 		constantsDesc.ByteWidth = sizeof(Constants);
 		constantsDesc.Usage = D3D11_USAGE_IMMUTABLE;
@@ -368,93 +358,44 @@ TEST_CASE("The scene exercises a contact, an exemption and a bone out of reach",
 	CHECK(ExpectedContact(scene, 3).depth == 0.0f);
 }
 
-TEST_CASE("The chain pass merges each chain bone's contact as the CPU does", "[smpphysics][contact_gpu]")
-{
-	const Scene scene = MakeScene();
-	const std::vector<GpuRig::BoneContact> contacts = RunPasses(scene, {});
-	RequireMatches(contacts[0], ExpectedContact(scene, 0), 0);
-	RequireMatches(contacts[1], ExpectedContact(scene, 1), 1);
-}
-
-TEST_CASE("The chain pass leaves the rigid tree's contacts alone", "[smpphysics][contact_gpu]")
-{
-	const std::vector<GpuRig::BoneContact> contacts = RunPasses(MakeScene(), {});
-	CHECK(IsSkipped(contacts[2]));
-	CHECK(IsSkipped(contacts[3]));
-}
-
-TEST_CASE("A rigid substep's pass merges the rigid tree's contacts and leaves the chain tree's", "[smpphysics][contact_gpu]")
+TEST_CASE("The pass merges the contacts of a tree that takes them and leaves the other tree's", "[smpphysics][contact_gpu]")
 {
 	const Scene scene = MakeScene();
 	PassOptions options;
-	options.owner = 1;
-	for (const std::uint32_t subStep : { 1u, kChainSubSteps, kChainSubSteps + 5u }) {
-		options.subStep = subStep;
-		const std::vector<GpuRig::BoneContact> contacts = RunPasses(scene, options);
-		CHECK(IsSkipped(contacts[0]));
-		CHECK(IsSkipped(contacts[1]));
-		RequireMatches(contacts[2], ExpectedContact(scene, 2), 2);
-		RequireMatches(contacts[3], ExpectedContact(scene, 3), 3);
-	}
+	options.takesContacts = { false, true };
+	const std::vector<GpuRig::BoneContact> contacts = RunPasses(scene, options);
+	CHECK(IsSkipped(contacts[0]));
+	CHECK(IsSkipped(contacts[1]));
+	RequireMatches(contacts[2], ExpectedContact(scene, 2), 2);
+	RequireMatches(contacts[3], ExpectedContact(scene, 3), 3);
+}
+
+TEST_CASE("The pass merges every bone's contact as the CPU does", "[smpphysics][contact_gpu]")
+{
+	const Scene scene = MakeScene();
+	const std::vector<GpuRig::BoneContact> contacts = RunPasses(scene, {});
+	for (std::size_t bone = 0; bone < kBoneCount; ++bone)
+		RequireMatches(contacts[bone], ExpectedContact(scene, bone), bone);
 }
 
 TEST_CASE("A bone out of reach merges to no contact rather than keeping the last one", "[smpphysics][contact_gpu]")
 {
-	PassOptions options;
-	options.owner = 1;
-	const std::vector<GpuRig::BoneContact> contacts = RunPasses(MakeScene(), options);
+	const std::vector<GpuRig::BoneContact> contacts = RunPasses(MakeScene(), {});
 	CHECK_FALSE(IsSkipped(contacts[3]));
 	CHECK(contacts[3].depth == 0.0f);
 	CHECK(contacts[3].collider == -1);
 }
 
-TEST_CASE("The chain pass stops serving a chain tree past its substep count", "[smpphysics][contact_gpu]")
-{
-	const Scene scene = MakeScene();
-	PassOptions options;
-	options.subStep = kChainSubSteps;
-	std::vector<GpuRig::BoneContact> contacts = RunPasses(scene, options);
-	RequireMatches(contacts[0], ExpectedContact(scene, 0), 0);
-
-	options.subStep = kChainSubSteps + 1;
-	contacts = RunPasses(scene, options);
-	CHECK(IsSkipped(contacts[0]));
-	CHECK(IsSkipped(contacts[1]));
-}
-
-TEST_CASE("A tree that stopped being finite takes no contacts in either pass", "[smpphysics][contact_gpu]")
-{
-	PassOptions chain;
-	chain.treeFlags = { 1u, 0u };
-	const std::vector<GpuRig::BoneContact> chainPass = RunPasses(MakeScene(), chain);
-	CHECK(IsSkipped(chainPass[0]));
-	CHECK(IsSkipped(chainPass[1]));
-
-	PassOptions rigid;
-	rigid.owner = 1;
-	rigid.treeFlags = { 0u, 1u };
-	const std::vector<GpuRig::BoneContact> rigidPass = RunPasses(MakeScene(), rigid);
-	CHECK(IsSkipped(rigidPass[2]));
-	CHECK(IsSkipped(rigidPass[3]));
-}
-
-/** @brief Runs both passes over a surface scene and checks every bone's depth against the CPU probe, and that the other pass leaves it alone. */
+/** @brief Runs the passes over a surface scene and checks every bone's depth against the CPU probe. */
 void CheckSurfaceDepthsMatchProbe(const Scene& a_scene, std::vector<SphereProbe>& a_probes)
 {
 	ProbeSpheres(a_scene.spheres, a_scene.colliders, a_scene.surfaces, a_scene.boneWorld, { a_scene.driver }, a_probes);
 	REQUIRE(a_probes.size() == kBoneCount);
 
-	PassOptions chain;
-	const std::vector<GpuRig::BoneContact> chainPass = RunPasses(a_scene, chain);
-	PassOptions rigid;
-	rigid.owner = 1;
-	const std::vector<GpuRig::BoneContact> rigidPass = RunPasses(a_scene, rigid);
+	const std::vector<GpuRig::BoneContact> contacts = RunPasses(a_scene, {});
 	for (std::size_t bone = 0; bone < kBoneCount; ++bone) {
-		const GpuRig::BoneContact& actual = (kBoneTrees[bone] == 0u ? chainPass : rigidPass)[bone];
-		const GpuRig::BoneContact& skipped = (kBoneTrees[bone] == 0u ? rigidPass : chainPass)[bone];
-		INFO("bone " << bone << " depth " << actual.depth << " probe " << a_probes[bone].depth);
-		CHECK(actual.depth == Approx(a_probes[bone].depth).margin(1.0e-3f));
-		CHECK(IsSkipped(skipped));
+		INFO("bone " << bone << " depth " << contacts[bone].depth << " probe " << a_probes[bone].depth);
+		CHECK(contacts[bone].depth == Approx(a_probes[bone].depth).margin(1.0e-3f));
 	}
 }
 

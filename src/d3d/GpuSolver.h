@@ -24,10 +24,10 @@ namespace SmpPhysics
 	struct GpuSolverConstants;
 
 	/**
-	 * @brief Integrates hair chains as reduced-coordinate pendulums on the GPU, one compute thread per dynamic tree.
+	 * @brief Hosts the GPU hair claims: their shared slot pool, collision contact passes and surface prep, with the rigid-body solver stepping the bodies.
 	 *
-	 * Every claim owns a range of bone slots in buffers shared by all claims, so a single Step dispatch
-	 * advances every tree of every claim. Results are read back through a ring of staging buffers and
+	 * Every claim owns a range of bone slots in buffers shared by all claims, so a single dispatch
+	 * advances every claim. Results are read back through a ring of staging buffers and
 	 * arrive one to two frames late, which is why they are returned relative to the tree's kinematic
 	 * root: the caller applies the current frame's root transform and the attachment never goes stale.
 	 */
@@ -52,11 +52,7 @@ namespace SmpPhysics
 			Vec3 wind{};         ///< The world wind vector, zero for none.
 			float windTime{};    ///< The gust clock.
 			float windFactor{};  ///< The actor's wind exposure, 0 to 1.
-			bool windChainLoad{ true };
-			bool rigid{};          ///< Step the claim with the rigid-body solver instead of the chain solver.
-			bool rigidContacts{};  ///< Move the rigid claim's bodies out of the collision proxies every substep.
-			bool subtreeLoading{ true };
-			bool chainTies{ true };
+			bool rigidContacts{};     ///< Move the claim's bodies out of the collision proxies every substep.
 			std::vector<Grab> grabs;  ///< Points a hand holds, by claim-local rig bone; a tree takes the first kMaxGrabPinsPerTree.
 		};
 
@@ -121,19 +117,19 @@ namespace SmpPhysics
 		[[nodiscard]] SurfacePrepCheckResult LastSurfacePrepCheck() const;
 
 		/**
-		 * @brief Packs a rig and reserves slots for it. Its persistent state is left to the Reset dispatch
-		 *        the next SubmitFrame issues, which builds its joint frames from that rest pose.
+		 * @brief Packs a rig, reserves slots for it and gives its bodies to the rigid-body solver, which starts them
+		 *        from that rest pose on the next SubmitFrame.
 		 * @param a_collision The claim's packed collision proxies, empty for a rig that has none.
 		 * @param a_surfaces The claim's posed collision meshes; boneDriver indexes the driver list every FrameClaim supplies.
-		 * @param a_reason Set to why the claim was refused; a rig the pool cannot hold is not simulated
-		 *                 without disabling the backend for the claims that do fit.
+		 * @param a_reason Set to why the claim was refused; a rig the pool or the rigid-body solver cannot hold is not
+		 *                 simulated without disabling the backend for the claims that do fit.
 		 * @return false, registering nothing, when the backend is unavailable or the rig cannot be packed.
 		 */
 		[[nodiscard]] bool AddClaim(std::uint64_t a_token, const SmpRig& a_rig, const std::vector<Transform>& a_restWorld,
 			const SolverParams& a_params, const GpuRig::CollisionData& a_collision, const std::vector<SkinnedSurface>& a_surfaces,
 			const std::vector<float>& a_windAreas, std::string& a_reason);
 		void RemoveClaim(std::uint64_t a_token);
-		/** @brief Uploads every claim's inputs, dispatches Reset for claims awaiting their first frame and Step for all of them, then copies the output for readback. */
+		/** @brief Uploads every claim's inputs and steps them with the rigid-body solver, then copies the output for readback. */
 		[[nodiscard]] bool SubmitFrame(const std::vector<FrameClaim>& a_claims);
 		/** @return True when a newer completed result was read; a_results then holds one entry per live claim. */
 		[[nodiscard]] bool Poll(std::vector<ClaimResult>& a_results);
@@ -141,7 +137,7 @@ namespace SmpPhysics
 		[[nodiscard]] std::uint64_t Frame() const noexcept { return frameCounter; }
 		/** @brief Drops the cached compute shaders so the next SubmitFrame recompiles them. */
 		void InvalidateShaders();
-		/** @brief The rigid-body solver that steps claims whose frame asks for it. */
+		/** @brief The rigid-body solver that steps every claim. */
 		[[nodiscard]] const RigidGpuSolver& Rigid() const noexcept { return rigidSolver; }
 		/** @brief The view over every slot's world pose, which the skinning pass reads; null until the pool exists. The solver's world poses carry no scale. */
 		[[nodiscard]] winrt::com_ptr<ID3D11ShaderResourceView> WorldsView() const noexcept { return worldsSrv; }
@@ -196,8 +192,6 @@ namespace SmpPhysics
 			std::vector<GpuRig::TreeInput> inputs;     ///< One per tree, refreshed every submitted frame.
 			std::vector<Transform> previousKinematic;  ///< One per tree: its kinematic parent's transform last frame.
 			std::uint64_t firstFrame{};                ///< The first frame this claim's output is in the output buffer; zero until then.
-			bool resetPending{ true };
-			bool wasRigid{};  ///< The previous frame stepped this claim with the rigid-body solver, so the chain solver's state is stale.
 		};
 
 		struct Readback
@@ -231,20 +225,16 @@ namespace SmpPhysics
 		{
 			std::vector<GpuRig::TreeInput> treeInputs;
 			std::vector<GpuRig::DriverWorld> driverWorlds;
-			std::vector<std::uint32_t> resetTrees;
-			std::vector<std::size_t> consumedResets;  ///< Claims whose pending reset this frame took.
-			std::vector<std::size_t> startedClaims;   ///< Claims whose first-frame number this frame took.
-			std::uint32_t maxSubSteps{};
+			std::vector<std::size_t> startedClaims;               ///< Claims whose first-frame number this frame took.
 			std::vector<RigidGpuSolver::FrameClaim> rigidClaims;  ///< Claims the rigid-body solver steps this frame.
 		};
 		void PrepareFrameSurfaces(const std::vector<FrameClaim>& a_claims);
 		[[nodiscard]] bool PackFrameClaims(const std::vector<FrameClaim>& a_claims, FramePack& a_pack);
-		/** @brief Gives back the reset and first-frame state a pack took, for a frame that failed to upload. */
+		/** @brief Gives back the first-frame state a pack took, for a frame that failed to upload. */
 		void UndoFramePack(const FramePack& a_pack);
 		[[nodiscard]] bool UploadFramePack(const FramePack& a_pack);
 		void DispatchSurfacePrep();
-		void DispatchChain(GpuSolverConstants& a_values, std::uint32_t a_maxSubSteps);
-		/** @brief Records the contact passes for the substep a_values names, from the bone poses the worlds buffer holds. */
+		/** @brief Records the contact passes, from the bone poses the worlds buffer holds. */
 		void DispatchContacts(const GpuSolverConstants& a_values);
 
 		std::vector<Claim> claims;
@@ -257,13 +247,11 @@ namespace SmpPhysics
 		std::unique_ptr<Buffer> spheres;
 		std::unique_ptr<Buffer> colliders;
 		std::unique_ptr<Buffer> inputs;
-		std::unique_ptr<Buffer> resetList;
 		std::unique_ptr<Buffer> drivers;
 		std::unique_ptr<Buffer> boneTrees;   ///< Per bone slot, the tree slot it belongs to, or kNoTree for a kinematic bone.
 		std::unique_ptr<Buffer> contacts;    ///< Per bone slot, its merged contact at the start of the substep in flight.
 		std::unique_ptr<Buffer> boneCull;    ///< Per bone slot, which surfaces its spheres can reach and whether they are queried this substep.
 		std::unique_ptr<Buffer> sphereHits;  ///< Per sphere list entry, its contact at the start of the substep; sized with the list.
-		std::unique_ptr<Buffer> treeFlags;   ///< Per tree slot, set once the tree stopped being finite this frame.
 		std::unique_ptr<Buffer> sphereList;  ///< Every claim's spheres, rewritten whole whenever the claims change.
 		std::uint32_t sphereListCapacity{};
 		std::vector<GpuRig::SphereRecord> sphereListShadow;  ///< The sphere list as uploaded, so an added claim appends to it instead of rebuilding it.
@@ -307,7 +295,6 @@ namespace SmpPhysics
 		mutable std::mutex surfacePrepCheckMutex;
 		SurfacePrepCheckResult surfacePrepCheckResult{ false, "no surface check has run yet; call surfaceCheck again after the next frame" };
 		bool surfacePrepWarned{};  ///< The reason the GPU path was last disabled is already logged.
-		std::unique_ptr<Buffer> states;
 		std::unique_ptr<Buffer> worlds;
 		std::unique_ptr<Buffer> outputs;
 		winrt::com_ptr<ID3D11ShaderResourceView> worldsSrv;
@@ -319,12 +306,10 @@ namespace SmpPhysics
 		winrt::com_ptr<ID3D11ShaderResourceView> spheresSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> collidersSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> inputsSrv;
-		winrt::com_ptr<ID3D11ShaderResourceView> resetListSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> driversSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> surfaceMetasSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> surfaceTrianglesSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> surfaceNodesSrv;
-		winrt::com_ptr<ID3D11UnorderedAccessView> statesUav;
 		winrt::com_ptr<ID3D11UnorderedAccessView> worldsUav;
 		winrt::com_ptr<ID3D11UnorderedAccessView> outputsUav;
 		winrt::com_ptr<ID3D11UnorderedAccessView> contactsUav;
@@ -332,7 +317,6 @@ namespace SmpPhysics
 		winrt::com_ptr<ID3D11UnorderedAccessView> sphereHitsUav;
 		std::uint32_t sphereHitCapacity{};
 		std::uint32_t sphereCount{};  ///< Entries in the sphere list as last uploaded.
-		winrt::com_ptr<ID3D11UnorderedAccessView> treeFlagsUav;
 		std::unique_ptr<ConstantBuffer> constants;
 		std::array<Readback, kStagingSlots> readbacks;
 		mutable std::atomic<bool> contactStatsRequested{};
@@ -343,13 +327,9 @@ namespace SmpPhysics
 		std::vector<ContactStat> contactStats;
 		std::unique_ptr<BS::thread_pool<>> surfacePool;  ///< refits each claim's surface hierarchies at once
 		GpuRig::SurfaceFrame surfaceFrame;               ///< the frame's merged surface arrays, kept so their capacity carries over
-		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> stepShader;
-		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> resetShader;
-		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> resetRequestedShader;
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> contactCullShader;
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> contactSphereShader;
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> contactReduceShader;
-		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> tieProjectShader;
 		std::unique_ptr<ConstantBuffer> surfacePrepConstants;  ///< Mirrored by SurfacePrepCS.hlsl.
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> surfaceBonesShader;
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> surfacePoseShader;
@@ -370,21 +350,14 @@ namespace SmpPhysics
 		std::string unavailableReason;
 	};
 
-	/** @brief The compute shader's constant buffer, mirrored by ChainSolverCS.hlsl. */
+	/** @brief The contact passes' constant buffer, mirrored by ChainSolverCS.hlsl. */
 	struct GpuSolverConstants
 	{
-		std::uint32_t treeCount{};
-		std::uint32_t resetCount{};
-		std::uint32_t subStep{};    ///< The substep a dispatch advances, counted from 1.
 		std::uint32_t boneCount{};  ///< One past the highest bone slot any claim uses.
 		std::uint32_t sphereCount{};
-		std::uint32_t contactOwner{};  ///< kContactOwnerChain or kContactOwnerRigid: whose trees the contact passes serve.
 		std::uint32_t padding[2]{};
 	};
-	static_assert(sizeof(GpuSolverConstants) == 32);
-
-	inline constexpr std::uint32_t kContactOwnerChain = 0;  ///< The chain solver's substeps own the contacts of chain trees.
-	inline constexpr std::uint32_t kContactOwnerRigid = 1;  ///< A rigid substep owns the contacts of rigid trees, computed from the substep's own pose.
+	static_assert(sizeof(GpuSolverConstants) == 16);
 
 	/** @brief The surface prep compute shader's constant buffer, mirrored by SurfacePrepCS.hlsl. */
 	struct GpuSurfacePrepConstants

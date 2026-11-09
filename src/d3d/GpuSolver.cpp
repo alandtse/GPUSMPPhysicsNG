@@ -165,20 +165,12 @@ namespace SmpPhysics
 
 	void GpuSolver::InvalidateShaders()
 	{
-		if (stepShader)
-			stepShader->Reset();
-		if (resetShader)
-			resetShader->Reset();
-		if (resetRequestedShader)
-			resetRequestedShader->Reset();
 		if (contactCullShader)
 			contactCullShader->Reset();
 		if (contactSphereShader)
 			contactSphereShader->Reset();
 		if (contactReduceShader)
 			contactReduceShader->Reset();
-		if (tieProjectShader)
-			tieProjectShader->Reset();
 		if (surfaceBonesShader)
 			surfaceBonesShader->Reset();
 		if (surfacePoseShader)
@@ -203,20 +195,12 @@ namespace SmpPhysics
 			Fail("the chain solver GPU backend needs a Direct3D device; claimed hair stays at the engine's pose");
 			return false;
 		}
-		if (!stepShader)
-			stepShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
-		if (!resetShader)
-			resetShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
-		if (!resetRequestedShader)
-			resetRequestedShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
 		if (!contactCullShader)
 			contactCullShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
 		if (!contactSphereShader)
 			contactSphereShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
 		if (!contactReduceShader)
 			contactReduceShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
-		if (!tieProjectShader)
-			tieProjectShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
 		if (!surfaceBonesShader)
 			surfaceBonesShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
 		if (!surfacePoseShader)
@@ -229,13 +213,9 @@ namespace SmpPhysics
 			surfaceRefitShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
 		const std::vector<std::pair<const char*, const char*>> defines;
 		try {
-			if (!stepShader->Get(kShaderPath, defines, kShaderTarget, "Step", "SmpPhysics::ChainSolverCS Step") ||
-				!resetShader->Get(kShaderPath, defines, kShaderTarget, "Reset", "SmpPhysics::ChainSolverCS Reset") ||
-				!resetRequestedShader->Get(kShaderPath, defines, kShaderTarget, "ResetRequested", "SmpPhysics::ChainSolverCS ResetRequested") ||
-				!contactCullShader->Get(kShaderPath, defines, kShaderTarget, "ContactCull", "SmpPhysics::ChainSolverCS ContactCull") ||
+			if (!contactCullShader->Get(kShaderPath, defines, kShaderTarget, "ContactCull", "SmpPhysics::ChainSolverCS ContactCull") ||
 				!contactSphereShader->Get(kShaderPath, defines, kShaderTarget, "ContactSpheres", "SmpPhysics::ChainSolverCS ContactSpheres") ||
-				!contactReduceShader->Get(kShaderPath, defines, kShaderTarget, "ContactReduce", "SmpPhysics::ChainSolverCS ContactReduce") ||
-				!tieProjectShader->Get(kShaderPath, defines, kShaderTarget, "TieProject", "SmpPhysics::ChainSolverCS TieProject")) {
+				!contactReduceShader->Get(kShaderPath, defines, kShaderTarget, "ContactReduce", "SmpPhysics::ChainSolverCS ContactReduce")) {
 				Fail("the chain solver compute shader did not compile; claimed hair stays at the engine's pose");
 				return false;
 			}
@@ -283,29 +263,22 @@ namespace SmpPhysics
 		if (!device || !context || a_slots == 0u)
 			return false;
 
-		winrt::com_ptr<ID3D11Buffer> previousStates;
 		winrt::com_ptr<ID3D11Buffer> previousWorlds;
 		winrt::com_ptr<ID3D11Buffer> previousOutputs;
-		if (a_previousSlots > 0u && states && worlds && outputs) {
-			previousStates = states->resource;
+		if (a_previousSlots > 0u && worlds && outputs) {
 			previousWorlds = worlds->resource;
 			previousOutputs = outputs->resource;
 		}
 
-		statics = nullptr;
 		trees = nullptr;
-		order = nullptr;
 		spheres = nullptr;
 		colliders = nullptr;
 		inputs = nullptr;
-		resetList = nullptr;
 		drivers = nullptr;
-		states = nullptr;
 		worlds = nullptr;
 		outputs = nullptr;
 		boneTrees = nullptr;
 		contacts = nullptr;
-		treeFlags = nullptr;
 		boneTreesSrv = nullptr;
 		contactsSrv = nullptr;
 		contactsUav = nullptr;
@@ -313,29 +286,18 @@ namespace SmpPhysics
 		sphereHitsUav = nullptr;
 		sphereHits = nullptr;
 		sphereHitCapacity = 0u;
-		treeFlagsUav = nullptr;
-		staticsSrv = nullptr;
 		treesSrv = nullptr;
-		orderSrv = nullptr;
 		spheresSrv = nullptr;
 		collidersSrv = nullptr;
 		inputsSrv = nullptr;
-		resetListSrv = nullptr;
 		driversSrv = nullptr;
-		statesUav = nullptr;
 		worldsSrv = nullptr;
 		worldsUav = nullptr;
 		outputsUav = nullptr;
 
-		statics = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneStatic>(a_slots, false, false), nullptr, "SmpPhysics::ChainSolverBones");
-		statics->CreateSRV(StructuredSrvDesc(a_slots));
-		staticsSrv = statics->srv;
 		trees = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::TreeStatic>(a_slots, false, false), nullptr, "SmpPhysics::ChainSolverTrees");
 		trees->CreateSRV(StructuredSrvDesc(a_slots));
 		treesSrv = trees->srv;
-		order = std::make_unique<Buffer>(StructuredBufferDesc<std::uint32_t>(a_slots, false, false), nullptr, "SmpPhysics::ChainSolverOrder");
-		order->CreateSRV(StructuredSrvDesc(a_slots));
-		orderSrv = order->srv;
 		spheres = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneSpheres>(a_slots, false, false), nullptr, "SmpPhysics::ChainSolverSpheres");
 		spheres->CreateSRV(StructuredSrvDesc(a_slots));
 		spheresSrv = spheres->srv;
@@ -345,15 +307,9 @@ namespace SmpPhysics
 		inputs = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::TreeInput>(a_slots, false, true), nullptr, "SmpPhysics::ChainSolverInputs");
 		inputs->CreateSRV(StructuredSrvDesc(a_slots));
 		inputsSrv = inputs->srv;
-		resetList = std::make_unique<Buffer>(StructuredBufferDesc<std::uint32_t>(a_slots, false, true), nullptr, "SmpPhysics::ChainSolverResetList");
-		resetList->CreateSRV(StructuredSrvDesc(a_slots));
-		resetListSrv = resetList->srv;
 		drivers = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::DriverWorld>(a_slots, false, true), nullptr, "SmpPhysics::ChainSolverDrivers");
 		drivers->CreateSRV(StructuredSrvDesc(a_slots));
 		driversSrv = drivers->srv;
-		states = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneState>(a_slots, true, false), nullptr, "SmpPhysics::ChainSolverStates");
-		states->CreateUAV(StructuredUavDesc(a_slots));
-		statesUav = states->uav;
 		worlds = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneWorld>(a_slots, true, false), nullptr, "SmpPhysics::ChainSolverWorlds");
 		worlds->CreateUAV(StructuredUavDesc(a_slots));
 		worlds->CreateSRV(StructuredSrvDesc(a_slots));
@@ -365,7 +321,7 @@ namespace SmpPhysics
 		boneTrees = std::make_unique<Buffer>(StructuredBufferDesc<std::uint32_t>(a_slots, false, false), nullptr, "SmpPhysics::ChainSolverBoneTrees");
 		boneTrees->CreateSRV(StructuredSrvDesc(a_slots));
 		boneTreesSrv = boneTrees->srv;
-		// The contact pass writes this through the UAV and the chain pass reads it through the SRV, never both at once.
+		// The contact pass writes this through the UAV and the rigid solver reads it through the SRV, never both at once.
 		contacts = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneContact>(a_slots, true, false), nullptr, "SmpPhysics::ChainSolverContacts");
 		contacts->CreateUAV(StructuredUavDesc(a_slots));
 		contacts->CreateSRV(StructuredSrvDesc(a_slots));
@@ -374,9 +330,6 @@ namespace SmpPhysics
 		boneCull = std::make_unique<Buffer>(StructuredBufferDesc<std::array<std::uint32_t, 4>>(a_slots, true, false), nullptr, "SmpPhysics::ChainSolverBoneCull");
 		boneCull->CreateUAV(StructuredUavDesc(a_slots));
 		boneCullUav = boneCull->uav;
-		treeFlags = std::make_unique<Buffer>(StructuredBufferDesc<std::uint32_t>(a_slots, true, false), nullptr, "SmpPhysics::ChainSolverTreeFlags");
-		treeFlags->CreateUAV(StructuredUavDesc(a_slots));
-		treeFlagsUav = treeFlags->uav;
 
 		const std::uint32_t outputBytes = a_slots * static_cast<std::uint32_t>(sizeof(GpuRig::BoneOutput));
 		for (std::size_t index = 0; index < readbacks.size(); ++index) {
@@ -389,9 +342,7 @@ namespace SmpPhysics
 		if (!constants)
 			constants = std::make_unique<ConstantBuffer>(ConstantBufferDesc<GpuSolverConstants>(true), "SmpPhysics::ChainSolverConstants");
 
-		if (previousStates) {
-			const D3D11_BOX stateBox = ByteRange(0u, a_previousSlots * static_cast<std::uint32_t>(sizeof(GpuRig::BoneState)));
-			context->CopySubresourceRegion(states->resource.get(), 0, 0, 0, 0, previousStates.get(), 0, &stateBox);
+		if (previousWorlds) {
 			const D3D11_BOX worldBox = ByteRange(0u, a_previousSlots * static_cast<std::uint32_t>(sizeof(GpuRig::BoneWorld)));
 			context->CopySubresourceRegion(worlds->resource.get(), 0, 0, 0, 0, previousWorlds.get(), 0, &worldBox);
 			const D3D11_BOX outputBox = ByteRange(0u, a_previousSlots * static_cast<std::uint32_t>(sizeof(GpuRig::BoneOutput)));
@@ -544,9 +495,10 @@ namespace SmpPhysics
 			pendingStaticClaims.push_back(claims.size() - 1u);
 		surfacePrepDirty = true;
 
-		std::string rigidReason;
-		if (!rigidSolver.AddClaim(BuildRigidSetup(a_token, *offset, a_rig, a_restWorld, a_params), rigidReason))
-			logger::info("{} the rigid solver declined claim {}: {}", kLogPrefix, a_token, rigidReason);
+		if (!rigidSolver.AddClaim(BuildRigidSetup(a_token, *offset, a_rig, a_restWorld, a_params), a_reason)) {
+			RemoveClaim(a_token);
+			return false;
+		}
 
 		UploadStatics();
 		return true;
@@ -604,14 +556,12 @@ namespace SmpPhysics
 
 	void GpuSolver::UploadStatics()
 	{
-		if (!statics)
+		if (!trees)
 			return;
 		auto* context = globals::d3d::context;
 		if (staticsDirty) {
 			ZoneScopedN("SmpPhysics::UploadStatics");
-			std::vector<GpuRig::BoneStatic> boneData(slotCapacity);
 			std::vector<GpuRig::TreeStatic> treeData(slotCapacity);
-			std::vector<std::uint32_t> orderData(slotCapacity);
 			std::vector<GpuRig::BoneSpheres> sphereData(slotCapacity);
 			std::vector<GpuRig::ColliderPacked> colliderData(slotCapacity);
 			std::vector<std::uint32_t> boneTreeData(slotCapacity, kNoTree);
@@ -619,17 +569,13 @@ namespace SmpPhysics
 			for (Claim& claim : claims) {
 				claim.sphereBase = static_cast<std::uint32_t>(sphereListShadow.size());
 				const GpuRig::ClaimStatics packed = GpuRig::PackClaimStatics(claim.rig, claim.boneOffset, claim.boneCount, claim.sphereBase);
-				std::ranges::copy(packed.bones, boneData.begin() + claim.boneOffset);
 				std::ranges::copy(packed.trees, treeData.begin() + claim.boneOffset);
-				std::ranges::copy(packed.order, orderData.begin() + claim.boneOffset);
 				std::ranges::copy(packed.spheres, sphereData.begin() + claim.boneOffset);
 				std::ranges::copy(packed.boneTrees, boneTreeData.begin() + claim.boneOffset);
 				std::ranges::copy(packed.colliders, colliderData.begin() + claim.colliderOffset);
 				sphereListShadow.insert(sphereListShadow.end(), packed.sphereList.begin(), packed.sphereList.end());
 			}
-			context->UpdateSubresource(statics->resource.get(), 0, nullptr, boneData.data(), 0, 0);
 			context->UpdateSubresource(trees->resource.get(), 0, nullptr, treeData.data(), 0, 0);
-			context->UpdateSubresource(order->resource.get(), 0, nullptr, orderData.data(), 0, 0);
 			context->UpdateSubresource(spheres->resource.get(), 0, nullptr, sphereData.data(), 0, 0);
 			context->UpdateSubresource(colliders->resource.get(), 0, nullptr, colliderData.data(), 0, 0);
 			context->UpdateSubresource(boneTrees->resource.get(), 0, nullptr, boneTreeData.data(), 0, 0);
@@ -641,9 +587,7 @@ namespace SmpPhysics
 				Claim& claim = claims[index];
 				claim.sphereBase = static_cast<std::uint32_t>(sphereListShadow.size());
 				const GpuRig::ClaimStatics packed = GpuRig::PackClaimStatics(claim.rig, claim.boneOffset, claim.boneCount, claim.sphereBase);
-				Util::UpdateBufferSlots(statics->resource.get(), claim.boneOffset, packed.bones);
 				Util::UpdateBufferSlots(trees->resource.get(), claim.boneOffset, packed.trees);
-				Util::UpdateBufferSlots(order->resource.get(), claim.boneOffset, packed.order);
 				Util::UpdateBufferSlots(spheres->resource.get(), claim.boneOffset, packed.spheres);
 				Util::UpdateBufferSlots(boneTrees->resource.get(), claim.boneOffset, packed.boneTrees);
 				Util::UpdateBufferSlots(colliders->resource.get(), claim.colliderOffset, packed.colliders);
@@ -967,12 +911,7 @@ namespace SmpPhysics
 			claim.params.wind = frameClaim.wind;
 			claim.params.windTime = frameClaim.windTime;
 			claim.params.windFactor = frameClaim.windFactor;
-			claim.params.windChainLoad = frameClaim.windChainLoad;
-			claim.params.subtreeLoading = frameClaim.subtreeLoading;
-			claim.params.chainTies = frameClaim.chainTies;
 			const SubStepPlan plan = PlanSubSteps(frameClaim.deltaTime, claim.params);
-			if (!(frameClaim.rigid && rigidSolver.HasClaim(frameClaim.token)))
-				a_pack.maxSubSteps = std::max(a_pack.maxSubSteps, static_cast<std::uint32_t>(std::max(plan.count, 0)));
 			std::uint32_t firstSurface = claim.surfaceFirst;
 			std::uint32_t surfaceCount = claim.surfaceCount;
 			if (!surfacePrepActive) {
@@ -985,7 +924,6 @@ namespace SmpPhysics
 				}
 				surfaceCount = static_cast<std::uint32_t>(surfaceFrame.metas.size()) - firstSurface;
 			}
-			const bool rigid = frameClaim.rigid && rigidSolver.HasClaim(frameClaim.token);
 			for (std::size_t tree = 0; tree < claim.rig.trees.size(); ++tree) {
 				const Transform& current = kinematic[LocalKinematicParent(claim.rig.trees[tree], claim.boneOffset)];
 				claim.inputs[tree] = GpuRig::MakeTreeInput(claim.params, plan, claim.previousKinematic[tree], current,
@@ -1004,11 +942,9 @@ namespace SmpPhysics
 					}
 				}
 				claim.previousKinematic[tree] = current;
-				if (rigid) {
-					claim.inputs[tree].control.x = 0u;
-					claim.inputs[tree].control.z = 0u;
-					claim.inputs[tree].surface.z = frameClaim.rigidContacts ? 1u : 0u;
-				}
+				claim.inputs[tree].control.x = 0u;
+				claim.inputs[tree].control.z = 0u;
+				claim.inputs[tree].surface.z = frameClaim.rigidContacts ? 1u : 0u;
 				a_pack.treeInputs[claim.boneOffset + static_cast<std::uint32_t>(tree)] = claim.inputs[tree];
 			}
 			const bool supplied = frameClaim.driverWorld && frameClaim.driverWorld->size() == claim.driverCount;
@@ -1031,19 +967,8 @@ namespace SmpPhysics
 				const D3D11_BOX region{ first, 0, 0, first + static_cast<UINT>(externals.size() * sizeof(GpuRig::ColliderPacked)), 1, 1 };
 				context->UpdateSubresource(colliders->resource.get(), 0, &region, externals.data(), 0, 0);
 			}
-			if (rigid) {
-				a_pack.rigidClaims.push_back({ frameClaim.token, frameClaim.kinematicWorld, frameClaim.hasPreviousInput,
-					frameClaim.resetRequested || !claim.wasRigid, frameClaim.deltaTime });
-			} else if (claim.wasRigid) {
-				claim.resetPending = true;
-			}
-			claim.wasRigid = rigid;
-			if (!rigid && claim.resetPending) {
-				claim.resetPending = false;
-				a_pack.consumedResets.push_back(found->second);
-				for (std::size_t tree = 0; tree < claim.rig.trees.size(); ++tree)
-					a_pack.resetTrees.push_back(claim.boneOffset + static_cast<std::uint32_t>(tree));
-			}
+			a_pack.rigidClaims.push_back({ frameClaim.token, frameClaim.kinematicWorld, frameClaim.hasPreviousInput,
+				frameClaim.resetRequested, frameClaim.deltaTime });
 			if (claim.firstFrame == 0u) {
 				claim.firstFrame = frameCounter + 1u;
 				a_pack.startedClaims.push_back(found->second);
@@ -1055,8 +980,6 @@ namespace SmpPhysics
 
 	void GpuSolver::UndoFramePack(const FramePack& a_pack)
 	{
-		for (const std::size_t index : a_pack.consumedResets)
-			claims[index].resetPending = true;
 		for (const std::size_t index : a_pack.startedClaims)
 			claims[index].firstFrame = 0u;
 	}
@@ -1089,14 +1012,6 @@ namespace SmpPhysics
 				std::memcpy(driverMapped.pData, a_pack.driverWorlds.data(), a_pack.driverWorlds.size() * sizeof(GpuRig::DriverWorld));
 				context->Unmap(drivers->resource.get(), 0);
 			}
-		}
-
-		if (!a_pack.resetTrees.empty()) {
-			D3D11_MAPPED_SUBRESOURCE resetMapped{};
-			if (FAILED(context->Map(resetList->resource.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &resetMapped)))
-				return false;
-			std::memcpy(resetMapped.pData, a_pack.resetTrees.data(), a_pack.resetTrees.size() * sizeof(std::uint32_t));
-			context->Unmap(resetList->resource.get(), 0);
 		}
 		return true;
 	}
@@ -1157,14 +1072,14 @@ namespace SmpPhysics
 	void GpuSolver::DispatchContacts(const GpuSolverConstants& a_values)
 	{
 		auto* context = globals::d3d::context;
-		ID3D11ShaderResourceView* views[kStepViewCount] = { staticsSrv.get(), treesSrv.get(), inputsSrv.get(), orderSrv.get(),
-			resetListSrv.get(), spheresSrv.get(), collidersSrv.get(), driversSrv.get(),
+		ID3D11ShaderResourceView* views[kStepViewCount] = { nullptr, treesSrv.get(), inputsSrv.get(), nullptr,
+			nullptr, spheresSrv.get(), collidersSrv.get(), driversSrv.get(),
 			surfacePrepActive ? surfacePrepMetasSrv.get() : surfaceMetasSrv.get(),
 			surfacePrepActive ? gpuSurfaceTrianglesSrv.get() : surfaceTrianglesSrv.get(),
 			surfacePrepActive ? gpuSurfaceNodesSrv.get() : surfaceNodesSrv.get(),
 			nullptr, sphereListSrv.get(), boneTreesSrv.get(), nullptr };
-		ID3D11UnorderedAccessView* contactTargets[kStepTargetCount] = { statesUav.get(), worldsUav.get(), outputsUav.get(), contactsUav.get(),
-			treeFlagsUav.get(), sphereHitsUav.get(), boneCullUav.get() };
+		ID3D11UnorderedAccessView* contactTargets[kStepTargetCount] = { nullptr, worldsUav.get(), nullptr, contactsUav.get(),
+			nullptr, sphereHitsUav.get(), boneCullUav.get() };
 		ID3D11Buffer* constantView = constants->CB();
 		CS_GPU_PASS("SmpPhysics::ChainContact");
 		context->CSSetConstantBuffers(0, 1, &constantView);
@@ -1187,59 +1102,6 @@ namespace SmpPhysics
 		}
 	}
 
-	void GpuSolver::DispatchChain(GpuSolverConstants& a_values, std::uint32_t a_maxSubSteps)
-	{
-		auto* context = globals::d3d::context;
-		ID3D11ShaderResourceView* views[kStepViewCount] = { staticsSrv.get(), treesSrv.get(), inputsSrv.get(), orderSrv.get(),
-			resetListSrv.get(), spheresSrv.get(), collidersSrv.get(), driversSrv.get(),
-			surfacePrepActive ? surfacePrepMetasSrv.get() : surfaceMetasSrv.get(),
-			surfacePrepActive ? gpuSurfaceTrianglesSrv.get() : surfaceTrianglesSrv.get(),
-			surfacePrepActive ? gpuSurfaceNodesSrv.get() : surfaceNodesSrv.get(),
-			nullptr, sphereListSrv.get(), boneTreesSrv.get(), nullptr };
-		ID3D11ShaderResourceView* stepViews[kStepViewCount];
-		std::copy(std::begin(views), std::end(views), std::begin(stepViews));
-		stepViews[kStepViewCount - 1] = contactsSrv.get();
-		ID3D11UnorderedAccessView* targets[kStepTargetCount] = { statesUav.get(), worldsUav.get(), outputsUav.get(), nullptr, treeFlagsUav.get(), nullptr, nullptr };
-		ID3D11Buffer* constantView = constants->CB();
-		const bool anyTies = std::ranges::any_of(claims, [](const Claim& a_claim) { return !a_claim.rig.trees.empty() && a_claim.rig.trees.front().range.w != 0u; });
-
-		if (a_values.resetCount > 0u) {
-			CS_GPU_PASS("SmpPhysics::ChainReset");
-			context->CSSetShader(resetShader->get(), nullptr, 0);
-			context->CSSetConstantBuffers(0, 1, &constantView);
-			context->CSSetShaderResources(0, kStepViewCount, views);
-			context->CSSetUnorderedAccessViews(0, kStepTargetCount, targets, nullptr);
-			context->Dispatch(Groups(a_values.resetCount), 1, 1);
-		}
-
-		{
-			CS_GPU_PASS("SmpPhysics::ChainSolve");
-			context->CSSetShader(resetRequestedShader->get(), nullptr, 0);
-			context->CSSetConstantBuffers(0, 1, &constantView);
-			context->CSSetShaderResources(0, kStepViewCount, views);
-			context->CSSetUnorderedAccessViews(0, kStepTargetCount, targets, nullptr);
-			context->Dispatch(Groups(a_values.treeCount), 1, 1);
-
-			for (std::uint32_t subStep = 1; subStep <= a_maxSubSteps; ++subStep) {
-				a_values.subStep = subStep;
-				constants->Update(a_values);
-				DispatchContacts(a_values);
-				{
-					CS_GPU_PASS("SmpPhysics::ChainStep");
-					context->CSSetUnorderedAccessViews(0, kStepTargetCount, targets, nullptr);
-					context->CSSetShaderResources(0, kStepViewCount, stepViews);
-					context->CSSetShader(stepShader->get(), nullptr, 0);
-					context->Dispatch(Groups(a_values.treeCount), 1, 1);
-				}
-				if (anyTies) {
-					CS_GPU_PASS("SmpPhysics::TieProject");
-					context->CSSetShader(tieProjectShader->get(), nullptr, 0);
-					context->Dispatch(Groups(a_values.treeCount), 1, 1);
-				}
-			}
-		}
-	}
-
 	bool GpuSolver::SubmitFrame(const std::vector<FrameClaim>& a_claims)
 	{
 		try {
@@ -1254,7 +1116,7 @@ namespace SmpPhysics
 	bool GpuSolver::SubmitFrameUnchecked(const std::vector<FrameClaim>& a_claims)
 	{
 		// The shaders are rebuilt here after a shader cache clear, so claims already running do not dispatch nothing.
-		if (!available || !statics || claims.empty() || !EnsureShaders())
+		if (!available || !trees || claims.empty() || !EnsureShaders())
 			return false;
 		auto* context = globals::d3d::context;
 		if (!context)
@@ -1275,8 +1137,6 @@ namespace SmpPhysics
 		ZoneNamedN(recordZone, "SmpPhysics::RecordDispatches", true);
 		++frameCounter;
 		GpuSolverConstants values;
-		values.treeCount = treeHighWater;
-		values.resetCount = static_cast<std::uint32_t>(pack.resetTrees.size());
 		values.boneCount = boneHighWater;
 		values.sphereCount = sphereCount;
 		constants->Update(values);
@@ -1290,15 +1150,9 @@ namespace SmpPhysics
 		}
 
 		DispatchSurfacePrep();
-		DispatchChain(values, pack.maxSubSteps);
 		if (!pack.rigidClaims.empty()) {
-			const auto contactPass = [this, &values](std::uint32_t a_subStep) {
-				values.subStep = a_subStep;
-				values.contactOwner = kContactOwnerRigid;
-				constants->Update(values);
-				DispatchContacts(values);
-			};
-			const bool takeContacts = std::ranges::any_of(a_claims, [](const FrameClaim& a_claim) { return a_claim.rigid && a_claim.rigidContacts; });
+			const auto contactPass = [this, &values](std::uint32_t) { DispatchContacts(values); };
+			const bool takeContacts = std::ranges::any_of(a_claims, [](const FrameClaim& a_claim) { return a_claim.rigidContacts; });
 			(void)rigidSolver.Dispatch(pack.rigidClaims, worldsUav.get(), outputsUav.get(), takeContacts ? contactsSrv.get() : nullptr, contactPass);
 		}
 

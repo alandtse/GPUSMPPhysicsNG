@@ -91,21 +91,15 @@ namespace SettingsUi
 				const std::vector<ClaimLine> lines = model->claims();
 				if (lines.empty())
 					ImGuiMCP::TextDisabled("Nothing is claimed.");
-				std::string joined;
-				for (const std::string& name : model->solverNames) {
-					joined += name;
-					joined.push_back('\0');
-				}
 				for (const ClaimLine& line : lines) {
-					if (line.solver < 0) {
+					if (line.enabled < 0) {
 						ImGuiMCP::TextDisabled("%s", line.text.c_str());
 						continue;
 					}
 					ImGuiMCP::PushID(static_cast<int>(line.id));
-					ImGuiMCP::SetNextItemWidth(160.0f);
-					int solver = line.solver;
-					if (ImGuiMCP::Combo("##solver", &solver, joined.c_str(), -1) && model->onSolver)
-						model->onSolver(line.id, solver);
+					bool enabled = line.enabled != 0;
+					if (ImGuiMCP::Checkbox("##gpu", &enabled) && model->onEnabled)
+						model->onEnabled(line.id, enabled);
 					ImGuiMCP::SameLine(0.0f, -1.0f);
 					ImGuiMCP::TextUnformatted(line.text.c_str());
 					ImGuiMCP::PopID();

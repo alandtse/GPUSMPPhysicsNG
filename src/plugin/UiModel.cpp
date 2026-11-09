@@ -157,7 +157,6 @@ void PluginUi::Register()
 			else
 				feature.ReevaluateClaimedActors();
 		}),
-		Check("Rigid-body solver", "Reproduces hdtSMP64's constraints. Off, the faster chain approximation steps the hair.", &settings.RigidSolver, [&feature, &settings] { feature.SetDefaultSolver(settings.RigidSolver); }),
 		Check("Collide with the body", "Hair is kept out of the head, neck and shoulders and off the ground.", &settings.CollisionEnabled, reclaim),
 		Check("Simulate head parts", "Hair, wigs and other head parts.", &settings.ClaimHeadParts, reclaim),
 		Check("Simulate armor", "Armor and clothing with physics.", &settings.ClaimArmor, reclaim),
@@ -196,7 +195,6 @@ void PluginUi::Register()
 	claimsModel.title = "Claims";
 	claimsModel.showFooter = false;
 	claimsModel.status = model.status;
-	claimsModel.solverNames = { "hdtSMP64", "GPU chain", "GPU rigid body" };
 	claimsModel.claims = [&feature] {
 		std::vector<SettingsUi::ClaimLine> lines;
 		auto rows = feature.GetClaimRows();
@@ -204,16 +202,16 @@ void PluginUi::Register()
 		for (const auto& row : rows) {
 			const auto* actor = RE::TESForm::LookupByID<RE::Actor>(row.actorFormID);
 			const char* name = actor ? actor->GetName() : nullptr;
-			lines.push_back({ std::format("{} ({:08X})  {}  {} bones", name && *name ? name : "?", row.actorFormID, row.file, row.boneCount), !row.enabled ? 0 : (row.rigid ? 2 : 1), ClaimLineId(row) });
+			lines.push_back({ std::format("{} ({:08X})  {}  {} bones", name && *name ? name : "?", row.actorFormID, row.file, row.boneCount), row.enabled ? 1 : 0, ClaimLineId(row) });
 		}
 		for (const std::string& declined : feature.GetDeclinedLines())
 			lines.push_back({ "Declined: " + declined, -1, 0 });
 		return lines;
 	};
-	claimsModel.onSolver = [&feature](std::uint64_t a_id, int a_solver) {
+	claimsModel.onEnabled = [&feature](std::uint64_t a_id, bool a_enabled) {
 		for (const auto& row : feature.GetClaimRows()) {
 			if (ClaimLineId(row) == a_id) {
-				feature.SetClaimSolver(row.actorFormID, row.file, a_solver);
+				feature.SetClaimEnabled(row.actorFormID, row.file, a_enabled);
 				return;
 			}
 		}

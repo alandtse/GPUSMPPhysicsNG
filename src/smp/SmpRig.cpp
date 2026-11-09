@@ -1013,22 +1013,6 @@ namespace SmpPhysics
 		return true;
 	}
 
-	bool RigNeedsRigidSolver(const SmpRig& a_rig)
-	{
-		const auto isZero = [](const Vec3& a_value) {
-			return a_value.x == 0.0f && a_value.y == 0.0f && a_value.z == 0.0f;
-		};
-		const auto slides = [&isZero](const RigJoint& a_joint) {
-			return a_joint.linearLower.x != a_joint.linearUpper.x || a_joint.linearLower.y != a_joint.linearUpper.y ||
-			       a_joint.linearLower.z != a_joint.linearUpper.z || a_joint.linearMotors || a_joint.angularMotors ||
-			       a_joint.linearServoMotors || a_joint.angularServoMotors || a_joint.useLinearReferenceFrameA || a_joint.reversed ||
-			       !isZero(a_joint.linearNonHookeanStiffness) || !isZero(a_joint.linearNonHookeanDamping) ||
-			       !isZero(a_joint.angularNonHookeanStiffness) || !isZero(a_joint.angularNonHookeanDamping);
-		};
-		return std::any_of(a_rig.joints.begin(), a_rig.joints.end(), slides) ||
-		       std::any_of(a_rig.additionalJoints.begin(), a_rig.additionalJoints.end(), slides);
-	}
-
 	std::vector<int> BuildParentFirstOrder(const SmpRig& a_rig, const std::vector<int>& a_jointOfBone)
 	{
 		std::vector<int> order;

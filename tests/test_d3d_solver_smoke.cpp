@@ -81,15 +81,18 @@ TEST_CASE("The GPU solver steps a rigid hair claim on a WARP device", "[smpphysi
 	std::vector<GpuSolver::FrameClaim> frame(1);
 	frame[0].token = 1;
 	frame[0].kinematicWorld = &rest;
-	frame[0].rigid = true;
 	frame[0].deltaTime = 1.0f / 60.0f;
 
 	std::vector<GpuSolver::ClaimResult> results;
 	bool polled = false;
-	for (int step = 0; step < 12 && !polled; ++step) {
+	// WARP finishes a frame some time after it is submitted, so the readback is awaited rather than counted in frames.
+	for (int step = 0; step < 400 && !polled; ++step) {
 		frame[0].hasPreviousInput = step > 0;
 		REQUIRE(solver.SubmitFrame(frame));
+		context->Flush();
 		polled = solver.Poll(results);
+		if (!polled)
+			std::this_thread::sleep_for(std::chrono::milliseconds(5));
 	}
 	INFO(solver.UnavailableReason());
 	REQUIRE(solver.Available());

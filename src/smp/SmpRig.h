@@ -208,13 +208,6 @@ namespace SmpPhysics
 	[[nodiscard]] bool ValidateRig(const SmpRig& a_rig, std::string& a_reason, bool a_requireForest = true);
 
 	/**
-	 * @brief Whether any joint needs more than the chain solver steps: a free or limited linear axis, a motor or servo,
-	 *        a non-Hookean spring, swapped bodies, or a direction NormalizeRigTopology reversed.
-	 * @details The chain solver keeps every child bone on its joint's pivot, so such a rig has to run rigid.
-	 */
-	[[nodiscard]] bool RigNeedsRigidSolver(const SmpRig& a_rig);
-
-	/**
 	 * @brief The rig's dynamic bones sorted so a parent always precedes its children, which ValidateRig
 	 *        has already proved is a forest.
 	 * @param a_jointOfBone The joint index of each bone, or -1 for a bone that has none.

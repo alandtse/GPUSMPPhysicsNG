@@ -75,12 +75,8 @@ struct SmpPhysicsFeature final : Feature
 		bool CullOffscreen = false;         ///< Stops simulating a claim that has stayed outside the view for a while, unless it is close to the camera; it restarts from rest when it comes back into view.
 		int MaxSimulatedClaims = 128;       ///< Most claims stepped per frame, nearest to the camera first; the rest are drawn from the engine's pose until they rank inside the budget again.
 		float GravityScale = 1.0f;
-		bool SubtreeLoading = false;   ///< A joint carries the gravity, acceleration load and inertia of the bones below it, so long hair and cloaks swing from their roots.
-		bool RigidSolver = true;       ///< Steps claims with the rigid-body solver that reproduces hdtSMP64's Bullet constraints, instead of the chain solver.
-		bool RigidContacts = true;     ///< Pushes rigid-solver bodies out of the collision proxies after every substep.
-		bool ChainTies = true;         ///< Joints that tie a chain to its neighbours, such as a cloak's chains, keep them within the rig's authored limits.
-		bool WindChainLoading = true;  ///< A joint carries the wind drag of the hair below it, so long hair leans from its root.
-		float WindStrength = 2.0f;     ///< hdtSMP64's windStrength: scales the weather wind on the hair, 0 switches it off.
+		bool RigidContacts = true;  ///< Pushes rigid-solver bodies out of the collision proxies after every substep.
+		float WindStrength = 2.0f;  ///< hdtSMP64's windStrength: scales the weather wind on the hair, 0 switches it off.
 		float StiffnessScale = 1.0f;
 		float DampingScale = 1.0f;
 		bool GpuSkinning = true;         ///< Draws GPU-solved hair from the solver's own pose instead of the staged readback.
@@ -132,7 +128,6 @@ struct SmpPhysicsFeature final : Feature
 		int boneCount{};
 		bool gpu{};
 		bool enabled{};
-		bool rigid{};           ///< Whether the GPU solver steps it with the rigid-body solver.
 		std::uint64_t token{};  ///< The live claim's token, zero for a row switched off; makes the row's widget ID unique.
 	};
 
@@ -142,20 +137,12 @@ struct SmpPhysicsFeature final : Feature
 	void ReevaluatePlayer();
 	/** @brief Asks hdtSMP64 to re-run claiming for the actors this feature currently holds. */
 	void ReevaluateClaimedActors();
-	/** @brief Draws a_rows as a table with a solver choice per claim, see SetClaimSolver. */
 	/**
 	 * @brief Switches the simulation of one actor's physics file on or off, so a claim can be compared with hdtSMP64 driving the same hair.
 	 * @details Off, the file is declined for that actor and hdtSMP64 is asked to offer the actor's meshes again, so it simulates the file itself.
 	 * @param a_file The physics file as the claim lists it, compared without regard to case.
 	 */
 	void SetClaimEnabled(RE::FormID a_actorFormID, const std::string& a_file, bool a_enabled);
-	/**
-	 * @brief Picks which solver steps one actor's physics file: hdtSMP64, or the GPU chain or rigid-body solver.
-	 * @param a_solver 0 hands the file to hdtSMP64, 1 steps it with the chain solver, 2 with the rigid-body solver.
-	 */
-	void SetClaimSolver(RE::FormID a_actorFormID, const std::string& a_file, int a_solver);
-	/** @brief Steps every claim with the chain or the rigid-body solver, dropping the per-file choices made with SetClaimSolver. */
-	void SetDefaultSolver(bool a_rigid);
 
 	/** @brief What the settings page shows beside the controls. */
 	struct UiStatus
@@ -286,8 +273,6 @@ private:
 		std::uint64_t token{};
 		RE::FormID actorFormID{};  ///< Zero when hdtSMP64 handed over a mesh with no actor.
 		std::string physicsFile;
-		bool requiresRigid{};     ///< A joint lets its bone slide, which the chain solver cannot step, so the claim always runs rigid.
-		int rigidOverride{ -1 };  ///< -1 follows Settings::RigidSolver, 0 steps this claim with the chain solver, 1 with the rigid-body solver.
 		std::shared_ptr<const SmpPhysics::ParseResult> parsed;
 		std::vector<RE::NiPointer<RE::NiAVObject>> nodes;             ///< One per rig bone, owned past the claim call.
 		std::vector<RE::NiPointer<RE::NiSkinInstance>> skins;         ///< The skin instances of the claimed model that use at least one rig bone.
@@ -521,7 +506,6 @@ private:
 	[[nodiscard]] bool ClaimInRange(Claim& a_claim, const RE::NiPoint3& a_cameraPosition, bool a_haveCameraPosition);
 	void GatherSolverInput(Claim& a_claim);
 	[[nodiscard]] bool RootTeleported(const Claim& a_claim) const;
-	[[nodiscard]] bool ClaimUsesRigid(const Claim& a_claim) const;
 	void SubmitGpuFrame(Claim& a_claim, float a_frameDelta, std::vector<SmpPhysics::GpuSolver::FrameClaim>& a_submissions);
 	/** @brief Writes the last pose the GPU returned into the claim's simulated nodes. */
 	void WriteBackPose(Claim& a_claim);
@@ -579,7 +563,6 @@ private:
 	std::unordered_map<std::string, std::shared_ptr<const SmpPhysics::ParseResult>> parsedRigs;
 	std::unordered_map<std::string, std::string> declinedFiles;
 	bool claimsHandedBack{};                                                ///< Set once the claims were handed back to hdtSMP64 after Enabled went off, so a disable from any path releases them. Frame-sync thread only.
-	std::map<std::pair<RE::FormID, std::string>, bool> rigidChoices;        ///< Actor and lower-case physics file pairs the user gave their own solver, true for the rigid-body one, guarded by stateMutex.
 	std::map<std::pair<RE::FormID, std::string>, ClaimRow> disabledClaims;  ///< Actor and lower-case physics file pairs the user switched off, with the row the table keeps showing, guarded by stateMutex.
 	/** @brief A triangle shape from a rig that is not a hair rig, such as the body collision mesh, which hair rigs on the same actor collide with. */
 	struct BodyShape

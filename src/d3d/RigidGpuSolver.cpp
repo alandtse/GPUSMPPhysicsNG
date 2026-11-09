@@ -88,7 +88,7 @@ namespace SmpPhysics
 		if (!available)
 			return false;
 		if (!globals::d3d::device) {
-			Fail("the rigid solver needs a Direct3D device; claimed hair stays with the chain solver");
+			Fail("the rigid solver needs a Direct3D device; claimed hair stays at the engine's pose");
 			return false;
 		}
 		const auto make = [](std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>>& a_shader) {
@@ -111,11 +111,11 @@ namespace SmpPhysics
 				!setupShader->Get(kStepShaderPath, defines, kShaderTarget, "RigidSetup", "SmpPhysics::RigidSolverCS RigidSetup") ||
 				!solveShader->Get(kStepShaderPath, defines, kShaderTarget, "RigidSolveIslandColored", "SmpPhysics::RigidSolverCS RigidSolveIslandColored") ||
 				!integrateShader->Get(kStepShaderPath, defines, kShaderTarget, "RigidIntegrate", "SmpPhysics::RigidSolverCS RigidIntegrate")) {
-				Fail("the rigid solver compute shaders did not compile; claimed hair stays with the chain solver");
+				Fail("the rigid solver compute shaders did not compile; claimed hair stays at the engine's pose");
 				return false;
 			}
 		} catch (const std::exception& error) {
-			Fail("the rigid solver compute shaders did not compile; claimed hair stays with the chain solver");
+			Fail("the rigid solver compute shaders did not compile; claimed hair stays at the engine's pose");
 			logger::warn("{} shader error: {}", kLogPrefix, error.what());
 			return false;
 		}
@@ -265,7 +265,7 @@ namespace SmpPhysics
 			if (!runtimeConstants)
 				runtimeConstants = std::make_unique<ConstantBuffer>(ConstantBufferDesc<RuntimeConstants>(true), "SmpPhysics::RigidRuntimeConstants");
 		} catch (const std::exception& error) {
-			Fail("the rigid solver could not allocate its buffers; claimed hair stays with the chain solver");
+			Fail("the rigid solver could not allocate its buffers; claimed hair stays at the engine's pose");
 			logger::warn("{} buffer error: {}", kLogPrefix, error.what());
 			return false;
 		}

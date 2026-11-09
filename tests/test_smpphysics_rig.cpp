@@ -447,7 +447,7 @@ TEST_CASE("A frameInLerp joint blends both bodies' rest frames", "[SmpPhysics]")
 	REQUIRE(result.rig.joints[0].rotationLerp == Approx(0.0f));
 }
 
-TEST_CASE("A heavy template's bounded linear box is kept and the rig runs rigid", "[SmpPhysics]")
+TEST_CASE("A heavy template's bounded linear box is kept", "[SmpPhysics]")
 {
 	// The heavy hair XMLs give their cross-strand joints a (-2,-2,-4) to (5,5,4) box that SMP stretches within.
 	const ParseResult result = ParseSmpXml(WrapSystem(R"XML(
@@ -464,7 +464,6 @@ TEST_CASE("A heavy template's bounded linear box is kept and the rig runs rigid"
 	REQUIRE(result.rig.joints.size() == 1);
 	CHECK(result.rig.joints[0].linearLower.z == Approx(-4.0f));
 	CHECK(result.rig.joints[0].linearUpper.x == Approx(5.0f));
-	CHECK(RigNeedsRigidSolver(result.rig));
 }
 
 TEST_CASE("An unknown element inside frameInLerp is caught rather than ignored", "[SmpPhysics]")
@@ -530,7 +529,7 @@ TEST_CASE("An unknown element of a collision shape is caught rather than ignored
 	REQUIRE(NamesElement(result, "wobble"));
 }
 
-TEST_CASE("A joint that lets its bone slide is accepted and needs the rigid solver", "[SmpPhysics]")
+TEST_CASE("A joint that lets its bone slide is accepted", "[SmpPhysics]")
 {
 	const ParseResult result = ParseSmpXml(WrapSystem(R"XML(
 		<bone name="Head"><mass>0</mass></bone>
@@ -563,11 +562,6 @@ TEST_CASE("A joint that lets its bone slide is accepted and needs the rigid solv
 	CHECK(sliding.linearBounce.x == Approx(0.25f));
 	CHECK_FALSE(sliding.linearStiffnessLimited);
 	CHECK_FALSE(sliding.linearSpringsEnabled);
-	CHECK(RigNeedsRigidSolver(result.rig));
-
-	SmpRig locked = result.rig;
-	locked.joints.erase(locked.joints.begin());
-	CHECK_FALSE(RigNeedsRigidSolver(locked));
 }
 
 TEST_CASE("A joint that leaves a linear axis unset is free", "[SmpPhysics]")
@@ -580,7 +574,6 @@ TEST_CASE("A joint that leaves a linear axis unset is free", "[SmpPhysics]")
 
 	REQUIRE(result.status == ParseStatus::Ok);
 	CHECK(result.rig.joints[0].linearLower.x > result.rig.joints[0].linearUpper.x);
-	CHECK(RigNeedsRigidSolver(result.rig));
 }
 
 TEST_CASE("Rigs the solver cannot drive fail validation or lose the bones it cannot hold", "[SmpPhysics]")
@@ -900,7 +893,6 @@ TEST_CASE("A dynamic bone that only hangs other bones is held through them and r
 	REQUIRE(NormalizeRigTopology(rig, reason));
 	CHECK(ValidateRig(rig, reason));
 	CHECK(rig.bones.size() == 4);
-	CHECK(RigNeedsRigidSolver(rig));
 	REQUIRE(rig.joints.size() == 3);
 
 	const auto indexOf = [&rig](std::string_view a_name) {

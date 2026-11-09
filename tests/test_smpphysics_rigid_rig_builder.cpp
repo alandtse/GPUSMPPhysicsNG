@@ -180,7 +180,6 @@ TEST_CASE("A joint carries its motors, servos, ERP and CFM, bounce and non-Hooke
 )XML";
 	const ParseResult parsed = ParseSmpXml(kMotorXml);
 	REQUIRE(parsed.status == ParseStatus::Ok);
-	CHECK(RigNeedsRigidSolver(parsed.rig));
 	const std::vector<Transform> rest(parsed.rig.bones.size());
 	const RigidReference::World world = BuildRigidWorld(parsed.rig, rest, 2.0f, SolverParams{});
 	const RigidReference::Generic6DofSpring2& joint = world.constraints[0];
@@ -220,7 +219,6 @@ TEST_CASE("useLinearReferenceFrameA makes the parent body A, as SMP swaps the co
 )XML";
 	const ParseResult parsed = ParseSmpXml(kSwapXml);
 	REQUIRE(parsed.status == ParseStatus::Ok);
-	CHECK(RigNeedsRigidSolver(parsed.rig));
 	const std::vector<Transform> rest(parsed.rig.bones.size());
 	const RigidReference::World world = BuildRigidWorld(parsed.rig, rest, 1.0f, SolverParams{});
 	CHECK(world.constraints[0].bodyA == 0);

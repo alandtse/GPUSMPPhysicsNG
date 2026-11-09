@@ -40,11 +40,11 @@ namespace SettingsUi
 		std::function<void()> onChanged;  ///< Runs after the user edits the control; may be empty.
 	};
 
-	/** @brief One claimed physics file and the solver steps it, for the Claims page. */
+	/** @brief One claimed physics file and whether the GPU simulates it, for the Claims page. */
 	struct ClaimLine
 	{
 		std::string text;
-		int solver{};  ///< Index into Model::solverNames.
+		int enabled{};  ///< 1 when the GPU simulates the file, 0 when hdtSMP64 does, -1 for a line that is only text.
 		std::uint64_t id{};
 	};
 
@@ -52,10 +52,9 @@ namespace SettingsUi
 	{
 		std::string title;  ///< The page's name in the framework's menu.
 		std::vector<Row> rows;
-		std::function<std::vector<ClaimLine>()> claims;  ///< When set, the page lists these with a solver choice each.
-		std::vector<std::string> solverNames;
-		std::function<void(std::uint64_t, int)> onSolver;  ///< Runs with a line's id and the solver picked for it.
-		bool showFooter{ true };                           ///< Whether the page ends with Re-evaluate and Save.
+		std::function<std::vector<ClaimLine>()> claims;      ///< When set, the page lists these with a GPU switch each.
+		std::function<void(std::uint64_t, bool)> onEnabled;  ///< Runs with a line's id and whether the GPU should simulate it.
+		bool showFooter{ true };                             ///< Whether the page ends with Re-evaluate and Save.
 		std::function<std::string()> status;  ///< Text shown above the controls, refreshed every frame.
 		std::function<void()> onSave;         ///< Writes Settings.json.
 		std::function<void()> onReevaluate;   ///< Asks hdtSMP64 to offer every actor's meshes again.

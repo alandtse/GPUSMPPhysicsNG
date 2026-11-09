@@ -44,10 +44,6 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	CullOffscreen,
 	GravityScale,
 	WindStrength,
-	WindChainLoading,
-	ChainTies,
-	SubtreeLoading,
-	RigidSolver,
 	RigidContacts,
 	StiffnessScale,
 	DampingScale,
@@ -445,12 +441,6 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->ReevaluateAllActors(); });
 	FEATURE_COMMAND("setClaimEnabled", "Switch one actor's physics file off or on for testing: off, this feature declines the file for that actor and hdtSMP64 is asked to simulate it, so the same hair can be compared in both solvers; the settings menu lists the same switches. Args: actorFormID (number), file (string, the physics file as status lists it, compared without regard to case), enabled (bool, default true).",
 		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->SetClaimEnabled(a_args.value("actorFormID", 0u), a_args.value("file", std::string{}), a_args.value("enabled", true)); });
-	FEATURE_COMMAND("setClaimSolver", "Pick the solver for one actor's physics file, as the claims table's Solver column does. Args: actorFormID (number), file (string, the physics file as status lists it, compared without regard to case), solver (\"smp\" hands the file to hdtSMP64, \"chain\" or \"rigid\" steps it on the GPU with that solver). Read each claim's rigid flag in the status query.",
-		[](Feature* a_self, const json& a_args) {
-			const std::string solver = a_args.value("solver", std::string("chain"));
-			const int mode = solver == "smp" ? 0 : (solver == "rigid" ? 2 : 1);
-			static_cast<SmpPhysicsFeature*>(a_self)->SetClaimSolver(a_args.value("actorFormID", 0u), a_args.value("file", std::string{}), mode);
-		});
 	FEATURE_COMMAND("reevaluatePlayer", "Ask hdtSMP64 to re-run claiming for the player only.",
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->ReevaluatePlayer(); });
 	FEATURE_QUERY("kinematicCheck", "Measure, for a claimed mesh, how far the engine's skinning matrices for the bones the solver does not simulate are from matrices rebuilt from the world poses recorded when the solver stepped: engineVsStepPoseMax near float rounding means those bones could be built once per frame after the solver step. Call with arm true, move the actor or camera for a few seconds, then call with arm false to read samples, staticBones, engineVsBindPoseMax, engineVsStepPoseMax and stepVsBindTranslationMax. Args: actorFormID (number), mesh (string), arm (boolean).",
@@ -727,7 +717,6 @@ json SmpPhysicsFeature::BuildStatusJson() const
 				{ "surfaceCount", claim.surfaces.size() },
 				{ "gpuRegistered", claim.gpuRegistered },
 				{ "divergenceRestarts", claim.divergenceRestarts },
-				{ "rigid", ClaimUsesRigid(claim) },
 				{ "stepMicroseconds", claim.stepMicroseconds },
 				{ "windFactor", claim.windFactor },
 				{ "windVector", { claim.wind.x, claim.wind.y, claim.wind.z } },
@@ -775,7 +764,7 @@ std::vector<SmpPhysicsFeature::ClaimRow> SmpPhysicsFeature::GetClaimRows() const
 	const std::scoped_lock lock(stateMutex);
 	std::vector<ClaimRow> rows;
 	for (const auto& entry : claims)
-		rows.push_back({ entry.second.actorFormID, entry.second.physicsFile, entry.second.boneCount, entry.second.gpuRegistered, true, ClaimUsesRigid(entry.second), entry.first });
+		rows.push_back({ entry.second.actorFormID, entry.second.physicsFile, entry.second.boneCount, entry.second.gpuRegistered, true, entry.first });
 	for (const auto& entry : disabledClaims)
 		rows.push_back(entry.second);
 	return rows;
@@ -894,37 +883,6 @@ void SmpPhysicsFeature::SetClaimEnabled(RE::FormID a_actorFormID, const std::str
 		return;
 	if (auto* actor = RE::TESForm::LookupByID<RE::Actor>(a_actorFormID))
 		smpInterface->reloadActorPhysics(actor);
-}
-
-void SmpPhysicsFeature::SetClaimSolver(RE::FormID a_actorFormID, const std::string& a_file, int a_solver)
-{
-	if (a_solver <= 0) {
-		SetClaimEnabled(a_actorFormID, a_file, false);
-		return;
-	}
-	bool wasDisabled = false;
-	{
-		const std::scoped_lock lock(stateMutex);
-		const auto key = std::make_pair(a_actorFormID, Util::ToLowerAscii(a_file));
-		const bool rigid = a_solver >= 2;
-		rigidChoices.insert_or_assign(key, rigid);
-		for (auto& entry : claims) {
-			if (entry.second.actorFormID == key.first && Util::ToLowerAscii(entry.second.physicsFile) == key.second)
-				entry.second.rigidOverride = rigid ? 1 : 0;
-		}
-		wasDisabled = disabledClaims.contains(key);
-	}
-	if (wasDisabled)
-		SetClaimEnabled(a_actorFormID, a_file, true);
-}
-
-void SmpPhysicsFeature::SetDefaultSolver(bool a_rigid)
-{
-	const std::scoped_lock lock(stateMutex);
-	settings.RigidSolver = a_rigid;
-	rigidChoices.clear();
-	for (auto& entry : claims)
-		entry.second.rigidOverride = -1;
 }
 
 bool SmpPhysicsFeature::MeshOwner::claim(const hdt::IMeshClaimContext& a_context, std::uint64_t a_token)
@@ -1203,9 +1161,8 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 		RecordDecline(path, "the GPU solver is not available: " + gpuSolver.UnavailableReason());
 		return false;
 	}
-	const bool requiresRigid = SmpPhysics::RigNeedsRigidSolver(rig);
-	if (requiresRigid && !gpuSolver.Rigid().Available()) {
-		RecordDecline(path, "a joint lets its bone slide and the rigid-body solver is not available");
+	if (!gpuSolver.Rigid().Available()) {
+		RecordDecline(path, "the rigid-body solver is not available");
 		return false;
 	}
 	std::string rigReason;
@@ -1236,13 +1193,6 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 	ReadViewRules(claim);
 	claim.actorFormID = actor ? actor->GetFormID() : 0;
 	claim.physicsFile = path;
-	{
-		const std::scoped_lock lock(stateMutex);
-		const auto choice = rigidChoices.find({ claim.actorFormID, Util::ToLowerAscii(path) });
-		if (choice != rigidChoices.end())
-			claim.rigidOverride = choice->second ? 1 : 0;
-	}
-	claim.requiresRigid = requiresRigid;
 	const bool rigChanged = rig.bones.size() != parsed->rig.bones.size() || rig.joints.size() != parsed->rig.joints.size() ||
 	                        rig.additionalJoints.size() != parsed->rig.additionalJoints.size() ||
 	                        std::any_of(rig.joints.begin(), rig.joints.end(), [](const SmpPhysics::RigJoint& a_joint) { return a_joint.reversed; });
@@ -2931,13 +2881,6 @@ bool SmpPhysicsFeature::RootTeleported(const Claim& a_claim) const
 	return false;
 }
 
-bool SmpPhysicsFeature::ClaimUsesRigid(const Claim& a_claim) const
-{
-	if (a_claim.requiresRigid)
-		return true;
-	return a_claim.rigidOverride >= 0 ? a_claim.rigidOverride == 1 : settings.RigidSolver;
-}
-
 void SmpPhysicsFeature::SubmitGpuFrame(Claim& a_claim, float a_frameDelta, std::vector<SmpPhysics::GpuSolver::FrameClaim>& a_submissions)
 {
 	SmpPhysics::GpuSolver::FrameClaim submission;
@@ -2951,11 +2894,7 @@ void SmpPhysicsFeature::SubmitGpuFrame(Claim& a_claim, float a_frameDelta, std::
 	submission.wind = a_claim.wind;
 	submission.windTime = windClock;
 	submission.windFactor = a_claim.windFactor;
-	submission.windChainLoad = settings.WindChainLoading;
-	submission.subtreeLoading = settings.SubtreeLoading;
-	submission.rigid = ClaimUsesRigid(a_claim);
 	submission.rigidContacts = settings.RigidContacts;
-	submission.chainTies = settings.ChainTies;
 	submission.grabs = a_claim.grabs;
 	a_submissions.push_back(submission);
 	a_claim.gpuHasPrevious = true;
