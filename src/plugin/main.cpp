@@ -5,6 +5,7 @@
 #include "Features/Wind/Wind.h"
 #include "Globals.h"
 #include "Utils/D3D.h"
+#include "Utils/TestBench/IdleCache.h"
 #include "plugin/BoneUploadHook.h"
 #include "plugin/DevBench.h"
 #include "plugin/OverlayHook.h"
@@ -88,6 +89,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 		}
 	};
 	SKSE::AllocTrampoline(128);
+	TestBench::IdleCache::Install();
 
 	auto* messaging = SKSE::GetMessagingInterface();
 	if (!messaging || !messaging->RegisterListener(OnMessage)) {
