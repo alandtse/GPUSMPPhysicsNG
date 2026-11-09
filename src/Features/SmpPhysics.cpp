@@ -3,6 +3,7 @@
 #include "Features/Wind/Wind.h"
 #include "Features/Wind/WindShelterQuery.h"
 #include "Globals.h"
+#include "GpuPassTimer.h"
 #include "Utils/ActorUtils.h"
 #include "Utils/BodyCapsules.h"
 #include "Utils/D3D.h"
@@ -360,6 +361,20 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](const Feature*, const json& a_args) -> json { return NodeWorldJson(a_args); });
 	FEATURE_QUERY("status", "Report the hdtSMP64 link source, whether the GPU solver is available and how many claims it holds, the live claims with their bone and collision counts, step cost, wind exposure and whether the GPU solver took them, the weather wind they are pushed by, and the physics files this feature declined. In VR it also reports the strand grip (grip grab: HIGGS, per hand whether the grip is squeezed, strands in reach and held, and whether HIGGS is kept from the hand; controller pulses sent; whether the player's weapon is drawn) and the debug line counts of the strand renderer.",
 		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->BuildStatusJson(); });
+	FEATURE_COMMAND("gpuPassTiming", "Measure the GPU time of every SmpPhysics pass with timestamp queries, for comparing builds. Args: enabled (bool, default true), reset (bool, clear the totals first). Read the result with gpuPassStats.",
+		[](Feature*, const json& a_args) {
+			if (a_args.value("reset", false))
+				GpuPassTimer::Reset();
+			GpuPassTimer::SetEnabled(a_args.value("enabled", true));
+		});
+	FEATURE_QUERY("gpuPassStats", "Average GPU milliseconds and calls per frame of each pass since gpuPassTiming last reset, with the number of frames measured. Nested passes (ChainContact holds ContactCull, ContactSpheres and ContactReduce) are counted in both.",
+		[](const Feature*, const json&) -> json {
+			const GpuPassTimer::Stats stats = GpuPassTimer::GetStats();
+			json passes = json::array();
+			for (const GpuPassTimer::PassStat& pass : stats.passes)
+				passes.push_back({ { "name", pass.name }, { "msPerFrame", pass.millisecondsPerFrame }, { "callsPerFrame", pass.callsPerFrame } });
+			return json({ { "enabled", stats.enabled }, { "frames", stats.frames }, { "passes", passes } });
+		});
 	FEATURE_QUERY("solverBones", "Read, per claim, the pose the GPU solver last returned for each simulated bone in its kinematic root's frame: finite flag, local position, distance from the root, the reach limit that distance is checked against, and exceedsReach. A claim whose pose passes its reach is restarted; divergenceRestarts counts how often. Use it to see why hair is stretched. Args: actorFormID (number, optional; all claims when absent).",
 		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->SolverBonesJson(a_args); });
 	FEATURE_COMMAND("windProbe", "Queue rays from an actor's head and read their hits with windProbeResult, to see what the wind shelter test would meet. Args: actorFormID (number), elevations (array of degrees above the horizontal, negative aims down, default the shelter set), azimuth (degrees, world heading of the rays, default toward the wind), reach (units, default 3000). The rays run on the next frame.",
@@ -947,6 +962,7 @@ RE::BSEventNotifyControl SmpPhysicsFeature::FrameListener::ProcessEvent(
 RE::BSEventNotifyControl SmpPhysicsFeature::FrameSyncListener::ProcessEvent(
 	const hdt::PluginFrameSyncEvent*, RE::BSTEventSource<hdt::PluginFrameSyncEvent>*)
 {
+	GpuPassTimer::NextFrame();
 	feature.crowdWigs.Tick();
 	feature.StepClaims();
 	feature.RecordBoneFrame();

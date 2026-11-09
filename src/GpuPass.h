@@ -1,16 +1,18 @@
 #pragma once
 
 #include "Globals.h"
+#include "GpuPassTimer.h"
 
 #include <d3d11_1.h>
 #include <string>
 #include <string_view>
 #include <winrt/base.h>
 
-/** @brief RAII PIX/RenderDoc event bracket around a render pass entry point; a no-op when the context has no annotation interface. */
+/** @brief RAII PIX/RenderDoc event bracket, and GpuPassTimer sample, around a render pass entry point; a no-op when the context has no annotation interface. */
 struct ScopedGpuPass
 {
-	explicit ScopedGpuPass(std::string_view a_name)
+	explicit ScopedGpuPass(std::string_view a_name) :
+		timerToken(GpuPassTimer::Begin(a_name))
 	{
 		if (globals::d3d::context && SUCCEEDED(globals::d3d::context->QueryInterface(IID_PPV_ARGS(annotation.put())))) {
 			const std::wstring wide(a_name.begin(), a_name.end());
@@ -20,6 +22,7 @@ struct ScopedGpuPass
 
 	~ScopedGpuPass()
 	{
+		GpuPassTimer::End(timerToken);
 		if (annotation)
 			annotation->EndEvent();
 	}
@@ -28,6 +31,7 @@ struct ScopedGpuPass
 	ScopedGpuPass& operator=(const ScopedGpuPass&) = delete;
 
 private:
+	std::uint64_t timerToken;
 	winrt::com_ptr<ID3DUserDefinedAnnotation> annotation;
 };
 
