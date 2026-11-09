@@ -92,8 +92,12 @@ frame near 31 ms and hides frame time, so use SE for frame time and VR for per-p
   settle back within 0.5 s of the release with or without a return-rate clamp (about 10 rad/s either way), so there is
   no clamp. Freeing the limits moved held strands from 0.02-0.13 to 0.08-0.32 units off the hand (grab_e2e limit 1.0).
   Wind at strength 60 shifts a claim's hair 0.6 units on average (max 4.6) in the head frame; at the default 2 the
-  shift (0.04) is the same as the 0.04 noise between two no-wind runs, with that claim 77% sheltered. Still to do:
-  decide whether the default wind should show more, against hdtSMP64 on the same scene; the chain-only packing
+  shift (0.04) is the same as the 0.04 noise between two no-wind runs, with that claim 77% sheltered. As a bounds check
+  against hdtSMP64 (its wind is known to be over-strong, so no parity is expected), `wind_probe.py --hdt` across two
+  launches with hdtSMP64's wind on and off: hdtSMP64 at its default strength 2 moves the same hair 0.40 units on
+  average (max 2.0), where this plugin's no-wind runs differ by 0.12 between launches. So the default here is far below
+  hdtSMP64's and needs roughly strength 30 to 60 to reach that shift. Still to do: decide whether the default
+  `WindStrength` should rise; the chain-only packing
   (`PackChainTies`, the tie fields, `windChainLoad`, `subtreeLoading`) is kept for now. Re-baseline
   `smp_parity_baseline.json` and rerun the SE frame-time comparison once SE is free.
 - Not covered by any suite: Menu Framework page rendering, the Ready Weapon gate, haptic feel, real controller mappings.

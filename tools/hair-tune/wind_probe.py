@@ -8,6 +8,7 @@ prints the claim's wind exposure and how far the mean hair pose sits from the po
 """
 
 import argparse
+import json
 import math
 import time
 
@@ -33,6 +34,9 @@ def main():
     parser.add_argument('--port', type=int, default=8921)
     parser.add_argument('--strengths', default='0,2,60')
     parser.add_argument('--frames', type=int, default=150)
+    parser.add_argument('--hdt', action='store_true', help='also record the hair under hdtSMP64 (the plugin off)')
+    parser.add_argument('--out', help='write the mean poses to this JSON file')
+    parser.add_argument('--against', help='a JSON file from another launch: report each arm\'s shift against the same arm there')
     args = parser.parse_args()
     strengths = [float(value) for value in args.strengths.split(',')]
 
@@ -56,13 +60,31 @@ def main():
             claim = next((c for c in bench.status()['claims'] if c['actorFormID'] == actor), {})
             poses.append((strength, mean_pose(bench, actor, args.frames)))
             print(f"strength {strength}: wind vector {[round(v, 1) for v in claim.get('windVector', [])]} exposure {claim.get('windFactor', 0):.2f}")
+        if args.hdt:
+            # hdtSMP64 simulates the hair while the plugin is off; its own wind comes from its configs.json.
+            bench.set_settings(Enabled=False)
+            time.sleep(8)
+            poses.append(('hdtSMP64', mean_pose(bench, actor, args.frames)))
+            print('hdtSMP64 recorded')
     finally:
-        bench.set_settings(WindStrength=2.0)
+        bench.set_settings(Enabled=True, WindStrength=2.0)
         bench.command('clearTestCrowd')
     base_strength, base = poses[0]
     for strength, pose in poses[1:]:
+        if strength == 'hdtSMP64':
+            continue
         moved = [math.dist(a, b) for a, b in zip(base, pose)]
         print(f'strength {strength} vs the first run at {base_strength}: mean bone shift {sum(moved) / len(moved):.3f}, max {max(moved):.3f} units over {len(moved)} bones')
+    if args.out:
+        with open(args.out, 'w') as handle:
+            json.dump({str(label): pose for label, pose in poses}, handle)
+    if args.against:
+        with open(args.against) as handle:
+            other = json.load(handle)
+        for label, pose in poses:
+            if str(label) in other and len(other[str(label)]) == len(pose):
+                moved = [math.dist(a, b) for a, b in zip(other[str(label)], pose)]
+                print(f'{label} against the same arm in {args.against}: mean bone shift {sum(moved) / len(moved):.3f}, max {max(moved):.3f} units over {len(moved)} bones')
     return 0
 
 
