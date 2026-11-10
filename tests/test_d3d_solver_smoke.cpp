@@ -2,6 +2,7 @@
 // through the rigid path, which proves the shader root, runtime compile, buffer helpers and dispatch wiring.
 
 #include "d3d/GpuSolver.h"
+#include "shader_cache_dir.h"
 #include "smp/SmpRig.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -68,7 +69,7 @@ TEST_CASE("The GPU solver steps a rigid hair claim on a WARP device", "[smpphysi
 	globals::d3d::context = context.Get();
 	logger::GetSink() = [](logger::Level, const std::string& a_message) { std::cerr << a_message << '\n'; };
 	Util::SetShaderRoot(std::filesystem::path(SMPPHYSICS_SHADER_DIR).wstring());
-	Util::SetShaderCacheDir((std::filesystem::temp_directory_path() / "GPUSMPPhysicsNG-test-shaders").wstring());
+	Util::SetShaderCacheDir(TestShaderCacheDir());
 
 	const ParseResult parsed = ParseSmpXml(kRigXml);
 	REQUIRE(parsed.status == ParseStatus::Ok);
@@ -124,7 +125,7 @@ namespace
 			globals::d3d::device = device.Get();
 			globals::d3d::context = context.Get();
 			Util::SetShaderRoot(std::filesystem::path(SMPPHYSICS_SHADER_DIR).wstring());
-			Util::SetShaderCacheDir((std::filesystem::temp_directory_path() / "GPUSMPPhysicsNG-test-shaders").wstring());
+			Util::SetShaderCacheDir(TestShaderCacheDir());
 		}
 
 		~WarpDevice()

@@ -17,6 +17,11 @@ xmake run GPUSMPPhysicsNG-Tests
 
 Run xmake from PowerShell, not Bash. All Catch2 cases must pass before a commit.
 
+`tools/game/build_shader_cache.ps1` fills a `ShaderCache` folder from the unit tests (the 53 s `RigidSetup` compile is the one
+worth skipping); ship it as `Data/SKSE/Plugins/GPUSMPPhysicsNG/ShaderCache`. Entries are keyed by shader path under the shader
+root and checked by a content hash of the source and its includes, so a cache built elsewhere stays valid. The skinning and
+debug-line shaders are not in it; they compile quickly.
+
 Deploy to a game's `Data` folder: set `GPUSMP_DEPLOY=1` plus `SkyrimVRPluginTargets` or `SkyrimPluginTargets`, then build.
 It copies the DLL (skipped while the game runs) and `shaders/` to `Data/SKSE/Plugins/GPUSMPPhysicsNG/Shaders`.
 Deploy only while holding that game's lock (below).

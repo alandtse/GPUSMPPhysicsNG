@@ -4,6 +4,7 @@
 // buffers and views, and a GPU timer. The WARP replay test and the hardware benchmark dispatch the same kernels.
 
 #include "Utils/D3D.h"
+#include "shader_cache_dir.h"
 #include "smp/RigidGpuPacking.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -69,7 +70,7 @@ namespace SmpPhysics::RigidGpuTest
 		const std::filesystem::path& a_path = KernelPath())
 	{
 		Util::SetShaderRoot(std::filesystem::path(SMPPHYSICS_SHADER_DIR).wstring());
-		Util::SetShaderCacheDir((std::filesystem::temp_directory_path() / "GPUSMPPhysicsNG-test-shaders").wstring());
+		Util::SetShaderCacheDir(TestShaderCacheDir());
 		const winrt::com_ptr<ID3DBlob> code = Util::CompileShaderBlob(a_path.c_str(), {}, "cs_5_0", a_entry);
 		REQUIRE(code);
 

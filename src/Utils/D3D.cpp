@@ -63,14 +63,23 @@ namespace Util
 		};
 
 		constexpr UINT kCompileFlags = D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_OPTIMIZATION_LEVEL3;
-		constexpr std::string_view kCacheTag = "v1";
+		constexpr std::string_view kCacheTag = "v2";
 
+		/** @brief A dependency as "path-under-shader-root<TAB>content hash", so a cache built elsewhere stays valid. */
 		std::string StampOf(const std::filesystem::path& a_path)
 		{
+			std::ifstream stream(a_path, std::ios::binary);
+			std::uint64_t hash = 1469598103934665603ull;
+			char buffer[4096];
+			while (stream.read(buffer, sizeof(buffer)) || stream.gcount() > 0) {
+				for (std::streamsize i = 0; i < stream.gcount(); ++i) {
+					hash ^= static_cast<unsigned char>(buffer[i]);
+					hash *= 1099511628211ull;
+				}
+			}
 			std::error_code error;
-			const auto size = std::filesystem::file_size(a_path, error);
-			const auto time = std::filesystem::last_write_time(a_path, error);
-			return std::format("{}\t{}\t{}", a_path.string(), size, time.time_since_epoch().count());
+			const auto relative = std::filesystem::relative(a_path, std::filesystem::path(shaderRoot), error);
+			return std::format("{}\t{:016x}", error || relative.empty() ? a_path.generic_string() : relative.generic_string(), hash);
 		}
 
 		std::string CacheName(std::string_view a_key)
@@ -94,7 +103,8 @@ namespace Util
 			if (!deps || !std::getline(deps, line) || line != kCacheTag)
 				return blob;
 			while (std::getline(deps, line)) {
-				const std::filesystem::path file = line.substr(0, line.find('\t'));
+				const std::filesystem::path stored = line.substr(0, line.find('\t'));
+				const std::filesystem::path file = stored.is_absolute() ? stored : std::filesystem::path(shaderRoot) / stored;
 				if (StampOf(file) != line)
 					return blob;
 			}
@@ -196,7 +206,12 @@ namespace Util
 				return nullptr;
 		}
 
-		const std::string cacheName = CacheName(failureKey + '|' + std::to_string(kCompileFlags));
+		std::error_code relativeError;
+		const auto relativeSource = std::filesystem::relative(source, std::filesystem::path(shaderRoot), relativeError);
+		std::string cacheKey = failureKey;
+		if (!relativeError && !relativeSource.empty())
+			cacheKey.replace(0, source.string().size(), relativeSource.generic_string());
+		const std::string cacheName = CacheName(cacheKey + '|' + std::to_string(kCompileFlags));
 		if (auto cached = ReadCache(cacheName))
 			return cached;
 

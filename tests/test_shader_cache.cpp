@@ -66,6 +66,15 @@ TEST_CASE("A compiled shader is read back from the cache until its source or an 
 	REQUIRE(afterSource);
 	CHECK(Bytes(afterSource) != Bytes(afterInclude));
 
+	// A cache built under one folder serves the same shaders copied to another, as a shipped cache must.
+	const std::size_t before = CacheFiles(root / "cache", ".bin");
+	std::filesystem::copy(root / "shaders", root / "moved", std::filesystem::copy_options::recursive);
+	Util::SetShaderRoot((root / "moved").wstring());
+	const auto moved = Util::CompileShaderBlob(L"Test.hlsl", {}, "cs_5_0", "Main");
+	REQUIRE(moved);
+	CHECK(Bytes(moved) == Bytes(afterSource));
+	CHECK(CacheFiles(root / "cache", ".bin") == before);
+
 	Util::SetShaderCacheDir(L"");
 	std::filesystem::remove_all(root);
 }
