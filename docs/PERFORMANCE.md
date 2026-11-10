@@ -114,6 +114,16 @@ The tables above predate the removal of the chain solver and the in-tree arm. Th
   starts at level 3 and ends at a fixed point in the frame. The earlier single-group refit moved it to `ContactPasses`,
   so it follows the first compute dispatch after that point, not the dispatch or its constants. Unexplained; the next
   step is an ETW trace taken in the same run, which needs the trace tools to run without an elevated shell.
+  **Cause found (2026-11-10):** an ETW DxgKrnl trace and the Tracy capture of one run, aligned on the 32 ms frame period
+  (`tracy_se_20261110_correlated.tracy`, `gpu_dxg.etl`, VR confirmed not running), show the GPU executing almost nothing
+  inside the 8.8 ms stall: SE 0.2 ms, every other process together 1.7 ms (VS Code, the Claude app, DWM, bHaptics,
+  RustDesk), about 7 ms idle. So it is not GPU contention. It is the solver's commands sitting unsubmitted in the
+  driver's command buffer until the game flushes at the end of its CPU frame. One `context->Flush()` at the end of
+  `SubmitFrame` removes it (`tracy_se_20261110_flush.tracy`): `SurfacePrep` 9.1 -> 0.09 ms, `RigidSolve` 0.13 ms,
+  `RigidSetup` 0.33 ms, `RigidContact` 0.49 ms, a solver total near 1.1 ms against the 3 ms quoted above, while the
+  frame stays at 32.6 ms (33.3 ms without the flush). The earlier per-pass figures on SE therefore overstate the
+  solver by about 8 ms of misattributed wait, and the frame time was never bound by the solver's GPU work. The flush
+  costs about 0.3 ms of CPU in `SubmitFrame`; it is not in the code. The 3 ms and VR figures were not remeasured with a flush.
 - **VR, 2026-11-09 (null driver, crowd 20 and 30):** `ContactSpheres` 1.1 ms, solver total about 3.1 to 3.3 ms
   (28% of 11.1 ms), against 10 to 11 ms in the VR table above. The cause of the gap was not identified.
 - **`clearTestCrowd` crashed SE at the end of both sessions**, in the engine: `BipedAnim::dtor` -> `RemoveAllParts` ->
