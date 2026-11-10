@@ -32,7 +32,10 @@ set_showmenu(true)
 set_description("Build with the Tracy profiler client")
 option_end()
 if has_config("tracy") then
-    add_requires("tracy v0.15.0", { configs = { cmake = false, on_demand = true, only_localhost = true, fibers = false } })
+    add_requires(
+        "tracy v0.15.0",
+        { configs = { cmake = false, on_demand = true, only_localhost = true, fibers = false } }
+    )
 end
 
 -- Engine-free solver core: rig building, packing, collision, skinning math.

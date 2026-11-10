@@ -1,247 +1,247 @@
 [
- {
-  "arm": "hdt",
-  "crowd": 0,
-  "fps": 32.23,
-  "frameMs": 31.026,
-  "claims": 0,
-  "stepUs": null
- },
- {
-  "arm": "pre",
-  "crowd": 0,
-  "fps": 32.25,
-  "frameMs": 31.01,
-  "claims": 9,
-  "stepUs": 57.1
- },
- {
-  "arm": "port",
-  "crowd": 0,
-  "fps": 32.26,
-  "frameMs": 31.0,
-  "claims": 9,
-  "stepUs": 175.70000000000002,
-  "gpuPasses": {
-   "SmpPhysics::ChainContact": 0.244,
-   "SmpPhysics::ChainSolve": 0.0172,
-   "SmpPhysics::ContactCull": 0.0259,
-   "SmpPhysics::ContactReduce": 0.0229,
-   "SmpPhysics::ContactSpheres": 0.1913,
-   "SmpPhysics::RigidContact": 0.2547,
-   "SmpPhysics::RigidExport": 0.0085,
-   "SmpPhysics::RigidFrameBegin": 0.1252,
-   "SmpPhysics::RigidIntegrate": 0.0126,
-   "SmpPhysics::RigidPredict": 0.0102,
-   "SmpPhysics::RigidSetup": 0.8843,
-   "SmpPhysics::RigidSolve": 1.3217,
-   "SmpPhysics::SkinPaletteBatch": 0.0121,
-   "SmpPhysics::SurfacePrep": 0.1005
+  {
+    "arm": "hdt",
+    "crowd": 0,
+    "fps": 32.23,
+    "frameMs": 31.026,
+    "claims": 0,
+    "stepUs": null
   },
-  "gpuFrames": 484
- },
- {
-  "arm": "hdt",
-  "crowd": 0,
-  "fps": 32.28,
-  "frameMs": 30.98,
-  "claims": 0,
-  "stepUs": null
- },
- {
-  "arm": "hdt",
-  "crowd": 5,
-  "fps": 32.24,
-  "frameMs": 31.022,
-  "claims": 0,
-  "stepUs": null
- },
- {
-  "arm": "pre",
-  "crowd": 5,
-  "fps": 32.26,
-  "frameMs": 30.999,
-  "claims": 16,
-  "stepUs": 242.8
- },
- {
-  "arm": "port",
-  "crowd": 5,
-  "fps": 32.25,
-  "frameMs": 31.004,
-  "claims": 16,
-  "stepUs": 180.6,
-  "gpuPasses": {
-   "SmpPhysics::ChainContact": 1.9598,
-   "SmpPhysics::ChainSolve": 0.0196,
-   "SmpPhysics::ContactCull": 0.0465,
-   "SmpPhysics::ContactReduce": 0.0652,
-   "SmpPhysics::ContactSpheres": 1.8435,
-   "SmpPhysics::RigidContact": 1.9679,
-   "SmpPhysics::RigidExport": 0.0138,
-   "SmpPhysics::RigidFrameBegin": 0.0692,
-   "SmpPhysics::RigidIntegrate": 0.0206,
-   "SmpPhysics::RigidPredict": 0.0283,
-   "SmpPhysics::RigidSetup": 0.7267,
-   "SmpPhysics::RigidSolve": 1.4433,
-   "SmpPhysics::SkinPaletteBatch": 0.0134,
-   "SmpPhysics::SurfacePrep": 0.2058
+  {
+    "arm": "pre",
+    "crowd": 0,
+    "fps": 32.25,
+    "frameMs": 31.01,
+    "claims": 9,
+    "stepUs": 57.1
   },
-  "gpuFrames": 484
- },
- {
-  "arm": "hdt",
-  "crowd": 5,
-  "fps": 32.25,
-  "frameMs": 31.008,
-  "claims": 0,
-  "stepUs": null
- },
- {
-  "arm": "hdt",
-  "crowd": 10,
-  "fps": 32.23,
-  "frameMs": 31.027,
-  "claims": 0,
-  "stepUs": null
- },
- {
-  "arm": "pre",
-  "crowd": 10,
-  "fps": 31.87,
-  "frameMs": 31.38,
-  "claims": 21,
-  "stepUs": 179.6
- },
- {
-  "arm": "port",
-  "crowd": 10,
-  "fps": 32.24,
-  "frameMs": 31.014,
-  "claims": 21,
-  "stepUs": 411.5,
-  "gpuPasses": {
-   "SmpPhysics::ChainContact": 3.3669,
-   "SmpPhysics::ChainSolve": 0.0252,
-   "SmpPhysics::ContactCull": 0.0628,
-   "SmpPhysics::ContactReduce": 0.0393,
-   "SmpPhysics::ContactSpheres": 3.261,
-   "SmpPhysics::RigidContact": 3.3751,
-   "SmpPhysics::RigidExport": 0.0127,
-   "SmpPhysics::RigidFrameBegin": 0.0975,
-   "SmpPhysics::RigidIntegrate": 0.01,
-   "SmpPhysics::RigidPredict": 0.0106,
-   "SmpPhysics::RigidSetup": 0.7963,
-   "SmpPhysics::RigidSolve": 1.6544,
-   "SmpPhysics::SkinPaletteBatch": 0.0149,
-   "SmpPhysics::SurfacePrep": 0.1895
+  {
+    "arm": "port",
+    "crowd": 0,
+    "fps": 32.26,
+    "frameMs": 31.0,
+    "claims": 9,
+    "stepUs": 175.70000000000002,
+    "gpuPasses": {
+      "SmpPhysics::ChainContact": 0.244,
+      "SmpPhysics::ChainSolve": 0.0172,
+      "SmpPhysics::ContactCull": 0.0259,
+      "SmpPhysics::ContactReduce": 0.0229,
+      "SmpPhysics::ContactSpheres": 0.1913,
+      "SmpPhysics::RigidContact": 0.2547,
+      "SmpPhysics::RigidExport": 0.0085,
+      "SmpPhysics::RigidFrameBegin": 0.1252,
+      "SmpPhysics::RigidIntegrate": 0.0126,
+      "SmpPhysics::RigidPredict": 0.0102,
+      "SmpPhysics::RigidSetup": 0.8843,
+      "SmpPhysics::RigidSolve": 1.3217,
+      "SmpPhysics::SkinPaletteBatch": 0.0121,
+      "SmpPhysics::SurfacePrep": 0.1005
+    },
+    "gpuFrames": 484
   },
-  "gpuFrames": 484
- },
- {
-  "arm": "hdt",
-  "crowd": 10,
-  "fps": 32.03,
-  "frameMs": 31.218,
-  "claims": 0,
-  "stepUs": null
- },
- {
-  "arm": "hdt",
-  "crowd": 20,
-  "fps": 32.27,
-  "frameMs": 30.993,
-  "claims": 0,
-  "stepUs": null
- },
- {
-  "arm": "pre",
-  "crowd": 20,
-  "fps": 32.1,
-  "frameMs": 31.153,
-  "claims": 33,
-  "stepUs": 310.9000000000001
- },
- {
-  "arm": "port",
-  "crowd": 20,
-  "fps": 32.19,
-  "frameMs": 31.066,
-  "claims": 33,
-  "stepUs": 627.8000000000001,
-  "gpuPasses": {
-   "SmpPhysics::ChainContact": 7.1753,
-   "SmpPhysics::ChainSolve": 0.0368,
-   "SmpPhysics::ContactCull": 0.1151,
-   "SmpPhysics::ContactReduce": 0.0415,
-   "SmpPhysics::ContactSpheres": 7.0148,
-   "SmpPhysics::RigidContact": 7.2917,
-   "SmpPhysics::RigidExport": 0.0123,
-   "SmpPhysics::RigidFrameBegin": 0.1664,
-   "SmpPhysics::RigidIntegrate": 0.0107,
-   "SmpPhysics::RigidPredict": 0.0109,
-   "SmpPhysics::RigidSetup": 0.7066,
-   "SmpPhysics::RigidSolve": 1.7411,
-   "SmpPhysics::SkinPaletteBatch": 0.0172,
-   "SmpPhysics::SurfacePrep": 0.1
+  {
+    "arm": "hdt",
+    "crowd": 0,
+    "fps": 32.28,
+    "frameMs": 30.98,
+    "claims": 0,
+    "stepUs": null
   },
-  "gpuFrames": 483
- },
- {
-  "arm": "hdt",
-  "crowd": 20,
-  "fps": 32.18,
-  "frameMs": 31.072,
-  "claims": 0,
-  "stepUs": null
- },
- {
-  "arm": "hdt",
-  "crowd": 30,
-  "fps": 32.25,
-  "frameMs": 31.008,
-  "claims": 0,
-  "stepUs": null
- },
- {
-  "arm": "pre",
-  "crowd": 30,
-  "fps": 32.28,
-  "frameMs": 30.978,
-  "claims": 38,
-  "stepUs": 408.9
- },
- {
-  "arm": "port",
-  "crowd": 30,
-  "fps": 32.26,
-  "frameMs": 30.999,
-  "claims": 38,
-  "stepUs": 605.2000000000002,
-  "gpuPasses": {
-   "SmpPhysics::ChainContact": 7.8903,
-   "SmpPhysics::ChainSolve": 0.0421,
-   "SmpPhysics::ContactCull": 0.1304,
-   "SmpPhysics::ContactReduce": 0.0371,
-   "SmpPhysics::ContactSpheres": 7.7189,
-   "SmpPhysics::RigidContact": 8.0274,
-   "SmpPhysics::RigidExport": 0.0132,
-   "SmpPhysics::RigidFrameBegin": 0.1858,
-   "SmpPhysics::RigidIntegrate": 0.0107,
-   "SmpPhysics::RigidPredict": 0.0107,
-   "SmpPhysics::RigidSetup": 0.6573,
-   "SmpPhysics::RigidSolve": 1.8407,
-   "SmpPhysics::SkinPaletteBatch": 0.0184,
-   "SmpPhysics::SurfacePrep": 0.1021
+  {
+    "arm": "hdt",
+    "crowd": 5,
+    "fps": 32.24,
+    "frameMs": 31.022,
+    "claims": 0,
+    "stepUs": null
   },
-  "gpuFrames": 484
- },
- {
-  "arm": "hdt",
-  "crowd": 30,
-  "fps": 32.26,
-  "frameMs": 30.998,
-  "claims": 0,
-  "stepUs": null
- }
+  {
+    "arm": "pre",
+    "crowd": 5,
+    "fps": 32.26,
+    "frameMs": 30.999,
+    "claims": 16,
+    "stepUs": 242.8
+  },
+  {
+    "arm": "port",
+    "crowd": 5,
+    "fps": 32.25,
+    "frameMs": 31.004,
+    "claims": 16,
+    "stepUs": 180.6,
+    "gpuPasses": {
+      "SmpPhysics::ChainContact": 1.9598,
+      "SmpPhysics::ChainSolve": 0.0196,
+      "SmpPhysics::ContactCull": 0.0465,
+      "SmpPhysics::ContactReduce": 0.0652,
+      "SmpPhysics::ContactSpheres": 1.8435,
+      "SmpPhysics::RigidContact": 1.9679,
+      "SmpPhysics::RigidExport": 0.0138,
+      "SmpPhysics::RigidFrameBegin": 0.0692,
+      "SmpPhysics::RigidIntegrate": 0.0206,
+      "SmpPhysics::RigidPredict": 0.0283,
+      "SmpPhysics::RigidSetup": 0.7267,
+      "SmpPhysics::RigidSolve": 1.4433,
+      "SmpPhysics::SkinPaletteBatch": 0.0134,
+      "SmpPhysics::SurfacePrep": 0.2058
+    },
+    "gpuFrames": 484
+  },
+  {
+    "arm": "hdt",
+    "crowd": 5,
+    "fps": 32.25,
+    "frameMs": 31.008,
+    "claims": 0,
+    "stepUs": null
+  },
+  {
+    "arm": "hdt",
+    "crowd": 10,
+    "fps": 32.23,
+    "frameMs": 31.027,
+    "claims": 0,
+    "stepUs": null
+  },
+  {
+    "arm": "pre",
+    "crowd": 10,
+    "fps": 31.87,
+    "frameMs": 31.38,
+    "claims": 21,
+    "stepUs": 179.6
+  },
+  {
+    "arm": "port",
+    "crowd": 10,
+    "fps": 32.24,
+    "frameMs": 31.014,
+    "claims": 21,
+    "stepUs": 411.5,
+    "gpuPasses": {
+      "SmpPhysics::ChainContact": 3.3669,
+      "SmpPhysics::ChainSolve": 0.0252,
+      "SmpPhysics::ContactCull": 0.0628,
+      "SmpPhysics::ContactReduce": 0.0393,
+      "SmpPhysics::ContactSpheres": 3.261,
+      "SmpPhysics::RigidContact": 3.3751,
+      "SmpPhysics::RigidExport": 0.0127,
+      "SmpPhysics::RigidFrameBegin": 0.0975,
+      "SmpPhysics::RigidIntegrate": 0.01,
+      "SmpPhysics::RigidPredict": 0.0106,
+      "SmpPhysics::RigidSetup": 0.7963,
+      "SmpPhysics::RigidSolve": 1.6544,
+      "SmpPhysics::SkinPaletteBatch": 0.0149,
+      "SmpPhysics::SurfacePrep": 0.1895
+    },
+    "gpuFrames": 484
+  },
+  {
+    "arm": "hdt",
+    "crowd": 10,
+    "fps": 32.03,
+    "frameMs": 31.218,
+    "claims": 0,
+    "stepUs": null
+  },
+  {
+    "arm": "hdt",
+    "crowd": 20,
+    "fps": 32.27,
+    "frameMs": 30.993,
+    "claims": 0,
+    "stepUs": null
+  },
+  {
+    "arm": "pre",
+    "crowd": 20,
+    "fps": 32.1,
+    "frameMs": 31.153,
+    "claims": 33,
+    "stepUs": 310.9000000000001
+  },
+  {
+    "arm": "port",
+    "crowd": 20,
+    "fps": 32.19,
+    "frameMs": 31.066,
+    "claims": 33,
+    "stepUs": 627.8000000000001,
+    "gpuPasses": {
+      "SmpPhysics::ChainContact": 7.1753,
+      "SmpPhysics::ChainSolve": 0.0368,
+      "SmpPhysics::ContactCull": 0.1151,
+      "SmpPhysics::ContactReduce": 0.0415,
+      "SmpPhysics::ContactSpheres": 7.0148,
+      "SmpPhysics::RigidContact": 7.2917,
+      "SmpPhysics::RigidExport": 0.0123,
+      "SmpPhysics::RigidFrameBegin": 0.1664,
+      "SmpPhysics::RigidIntegrate": 0.0107,
+      "SmpPhysics::RigidPredict": 0.0109,
+      "SmpPhysics::RigidSetup": 0.7066,
+      "SmpPhysics::RigidSolve": 1.7411,
+      "SmpPhysics::SkinPaletteBatch": 0.0172,
+      "SmpPhysics::SurfacePrep": 0.1
+    },
+    "gpuFrames": 483
+  },
+  {
+    "arm": "hdt",
+    "crowd": 20,
+    "fps": 32.18,
+    "frameMs": 31.072,
+    "claims": 0,
+    "stepUs": null
+  },
+  {
+    "arm": "hdt",
+    "crowd": 30,
+    "fps": 32.25,
+    "frameMs": 31.008,
+    "claims": 0,
+    "stepUs": null
+  },
+  {
+    "arm": "pre",
+    "crowd": 30,
+    "fps": 32.28,
+    "frameMs": 30.978,
+    "claims": 38,
+    "stepUs": 408.9
+  },
+  {
+    "arm": "port",
+    "crowd": 30,
+    "fps": 32.26,
+    "frameMs": 30.999,
+    "claims": 38,
+    "stepUs": 605.2000000000002,
+    "gpuPasses": {
+      "SmpPhysics::ChainContact": 7.8903,
+      "SmpPhysics::ChainSolve": 0.0421,
+      "SmpPhysics::ContactCull": 0.1304,
+      "SmpPhysics::ContactReduce": 0.0371,
+      "SmpPhysics::ContactSpheres": 7.7189,
+      "SmpPhysics::RigidContact": 8.0274,
+      "SmpPhysics::RigidExport": 0.0132,
+      "SmpPhysics::RigidFrameBegin": 0.1858,
+      "SmpPhysics::RigidIntegrate": 0.0107,
+      "SmpPhysics::RigidPredict": 0.0107,
+      "SmpPhysics::RigidSetup": 0.6573,
+      "SmpPhysics::RigidSolve": 1.8407,
+      "SmpPhysics::SkinPaletteBatch": 0.0184,
+      "SmpPhysics::SurfacePrep": 0.1021
+    },
+    "gpuFrames": 484
+  },
+  {
+    "arm": "hdt",
+    "crowd": 30,
+    "fps": 32.26,
+    "frameMs": 30.998,
+    "claims": 0,
+    "stepUs": null
+  }
 ]

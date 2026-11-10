@@ -6,10 +6,10 @@ the harness is [perf-data/smp_ab.py](perf-data/smp_ab.py).
 
 ## What was compared
 
-| Arm | What simulates the hair |
-|---|---|
-| `hdt` | hdtSMP64 alone, with both GPU solvers off |
-| `pre` | Open Shaders' in-tree SMP feature (branch `claude/hair-body-capsules` at `1a993b31f5`, `ALL-TRACY` AIO, DLL `7CE718E25DC3C3E3`) |
+| Arm    | What simulates the hair                                                                                                                                          |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hdt`  | hdtSMP64 alone, with both GPU solvers off                                                                                                                        |
+| `pre`  | Open Shaders' in-tree SMP feature (branch `claude/hair-body-capsules` at `1a993b31f5`, `ALL-TRACY` AIO, DLL `7CE718E25DC3C3E3`)                                  |
 | `port` | this plugin (VR run: DLL `352ABEAC24A13D7B...`; SE run: DLL `9C30216D3C56A10C...`, which differs only by the timer thread fix described below, no solver change) |
 
 All three were loaded together and switched at runtime, so the scene, camera and settings are identical.
@@ -31,24 +31,24 @@ Every throttle was lifted for all arms, so no arm simulates fewer actors than an
 Frame time (ms, `hdt` is the mean of its two windows). The null driver caps the frame at about 31 ms
 (32.3 fps), so the arms are indistinguishable here and the table cannot show a frame-time win or loss.
 
-| Crowd | Claims | hdt | pre | port |
-|---|---|---|---|---|
-| 0 | 9 | 31.00 | 31.01 | 31.00 |
-| 5 | 16 | 31.02 | 31.00 | 31.00 |
-| 10 | 21 | 31.12 | 31.38 | 31.01 |
-| 20 | 33 | 31.03 | 31.15 | 31.07 |
-| 30 | 38 | 31.00 | 30.98 | 31.00 |
+| Crowd | Claims | hdt   | pre   | port  |
+| ----- | ------ | ----- | ----- | ----- |
+| 0     | 9      | 31.00 | 31.01 | 31.00 |
+| 5     | 16     | 31.02 | 31.00 | 31.00 |
+| 10    | 21     | 31.12 | 31.38 | 31.01 |
+| 20    | 33     | 31.03 | 31.15 | 31.07 |
+| 30    | 38     | 31.00 | 30.98 | 31.00 |
 
 GPU milliseconds per frame, port (timestamp queries, 484 frames per window at crowd 30). "Solver total"
 adds the non-nested passes (`RigidContact` already contains `ContactPasses` (once `ChainContact`) and its three sub-passes).
 
 | Crowd | RigidContact | RigidSolve | RigidSetup | SurfacePrep | Solver total | Share of VR 11.1 ms |
-|---|---|---|---|---|---|---|
-| 0 | 0.25 | 1.32 | 0.88 | 0.10 | 2.75 | 25% |
-| 5 | 1.97 | 1.44 | 0.73 | 0.21 | 4.51 | 41% |
-| 10 | 3.38 | 1.65 | 0.80 | 0.19 | 6.19 | 56% |
-| 20 | 7.29 | 1.74 | 0.71 | 0.10 | 10.09 | 91% |
-| 30 | 8.03 | 1.84 | 0.66 | 0.10 | 10.91 | 98% |
+| ----- | ------------ | ---------- | ---------- | ----------- | ------------ | ------------------- |
+| 0     | 0.25         | 1.32       | 0.88       | 0.10        | 2.75         | 25%                 |
+| 5     | 1.97         | 1.44       | 0.73       | 0.21        | 4.51         | 41%                 |
+| 10    | 3.38         | 1.65       | 0.80       | 0.19        | 6.19         | 56%                 |
+| 20    | 7.29         | 1.74       | 0.71       | 0.10        | 10.09        | 91%                 |
+| 30    | 8.03         | 1.84       | 0.66       | 0.10        | 10.91        | 98%                 |
 
 Cross-check at crowd 30 against Tracy on the `pre` arm (793 frames, 38 claims), ms per frame:
 `RigidContact` 7.88 (port 8.03), `ContactSpheres` 7.69 (7.72), `RigidSolve` 1.92 (1.84),
@@ -60,13 +60,13 @@ the pre-port build pass for pass, which also validates the new timer.
 SE ran at 74 fps with no crowd, so frame time separates the arms. Same arms, order, throttles and windows as
 VR. Frame ms; `hdt` is the mean of its two windows and the spread is the gap between them (the noise floor).
 
-| Crowd | Claims | hdt (spread) | pre | port | port vs hdt | Port GPU solver ms (share of 16.67) |
-|---|---|---|---|---|---|---|
-| 0 | 14 | 13.49 (0.08) | 13.07 | 13.32 | -0.16 (-1%) | 1.63 (10%) |
-| 5 | 26 | 16.20 (0.79) | 15.22 | 15.20 | -1.01 (-6%) | 2.18 (13%) |
-| 10 | 36 | 18.55 (0.43) | 17.09 | 17.12 | -1.43 (-8%) | 2.83 (17%) |
-| 20 | 58 | 26.72 (0.08) | 25.95 | 25.81 | -0.91 (-3%) | 8.84 (53%) |
-| 30 | 79 | 30.82 (0.42) | 30.91 | 30.95 | +0.13 (0%) | 10.07 (60%) |
+| Crowd | Claims | hdt (spread) | pre   | port  | port vs hdt | Port GPU solver ms (share of 16.67) |
+| ----- | ------ | ------------ | ----- | ----- | ----------- | ----------------------------------- |
+| 0     | 14     | 13.49 (0.08) | 13.07 | 13.32 | -0.16 (-1%) | 1.63 (10%)                          |
+| 5     | 26     | 16.20 (0.79) | 15.22 | 15.20 | -1.01 (-6%) | 2.18 (13%)                          |
+| 10    | 36     | 18.55 (0.43) | 17.09 | 17.12 | -1.43 (-8%) | 2.83 (17%)                          |
+| 20    | 58     | 26.72 (0.08) | 25.95 | 25.81 | -0.91 (-3%) | 8.84 (53%)                          |
+| 30    | 79     | 30.82 (0.42) | 30.91 | 30.95 | +0.13 (0%)  | 10.07 (60%)                         |
 
 - **Port equals pre-port** at every size (within 0.25 ms), as on VR.
 - **Against hdtSMP64 both GPU solvers are 3-8% faster at 10 and 20 characters**, a gap larger than the
@@ -82,13 +82,13 @@ The tables above predate the removal of the chain solver and the in-tree arm. Th
 6 s settle then a 15 s window, sizes run in separate sessions of under 5 minutes. Raw rows:
 `perf-data/smp_ab_se_results_2026-11-09_*.json`. Frame ms; `hdt` is the mean of its two windows.
 
-| Crowd | Claims | hdt (spread) | port | port vs hdt |
-|---|---|---|---|---|
-| 0 | 14 | 24.63 (0.14) | 22.33 | -2.30 (-9%) |
-| 5 | 26 | 27.84 (0.08) | 26.63 | -1.21 (-4%) |
-| 10 | 36 | 31.10 (0.16) | 26.69 | -4.41 (-14%) |
-| 20 | 58 | 41.73 (0.07) | 30.45 | -11.28 (-27%) |
-| 30 | 80 | 48.12 (1.20) | 34.37 | -13.75 (-29%) |
+| Crowd | Claims | hdt (spread) | port  | port vs hdt   |
+| ----- | ------ | ------------ | ----- | ------------- |
+| 0     | 14     | 24.63 (0.14) | 22.33 | -2.30 (-9%)   |
+| 5     | 26     | 27.84 (0.08) | 26.63 | -1.21 (-4%)   |
+| 10    | 36     | 31.10 (0.16) | 26.69 | -4.41 (-14%)  |
+| 20    | 58     | 41.73 (0.07) | 30.45 | -11.28 (-27%) |
+| 30    | 80     | 48.12 (1.20) | 34.37 | -13.75 (-29%) |
 
 - **The machine ran slower than on 2026-11-08** (hdtSMP64 alone 24.6 ms with no crowd against 13.5 ms then), so compare
   within this table only, not against the table above. The cause was not identified.

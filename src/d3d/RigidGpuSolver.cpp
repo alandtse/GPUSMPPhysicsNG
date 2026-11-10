@@ -324,7 +324,7 @@ namespace SmpPhysics
 				input.grabTarget = { pin.target.x, pin.target.y, pin.target.z, 1.0f };
 				const std::vector<int>& parents = claim.setup.parentBody;
 				for (int held = pin.body, hops = 0; held >= 0 && static_cast<std::size_t>(held) < kinematic.size() && hops < static_cast<int>(kinematic.size());
-					 held = static_cast<std::size_t>(held) < parents.size() ? parents[static_cast<std::size_t>(held)] : -1, ++hops)
+					held = static_cast<std::size_t>(held) < parents.size() ? parents[static_cast<std::size_t>(held)] : -1, ++hops)
 					frameScratch[claim.bodyBase + static_cast<std::size_t>(held)].flags.z = 1u;
 			}
 			claim.stepped = true;

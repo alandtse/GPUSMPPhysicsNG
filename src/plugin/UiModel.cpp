@@ -238,8 +238,7 @@ void PluginUi::Register()
 		Text([] {
 			const int worn = TestBench::GetCrowd().WornArmorIndex();
 			const auto& names = TestBench::TestCrowd::ArmorNames();
-			return "Wearing: " + (worn >= 0 && worn < static_cast<int>(names.size()) ? names[static_cast<std::size_t>(worn)] : std::string("none"));
-		}),
+			return "Wearing: " + (worn >= 0 && worn < static_cast<int>(names.size()) ? names[static_cast<std::size_t>(worn)] : std::string("none")); }),
 		Pick("Cloak", "A cloak or cape every test character wears, on top of armor or bare body.", &choices.cloak, [] { return WithFirst("None", TestBench::TestCrowd::CloakNames()); }, [&choices] { RunCrowdCommand("setTestCrowdCloak", { { "index", choices.cloak - 1 } }); }),
 		Header("Animation"),
 		Check("Animate on spawn (characters' AI runs)", "Off, test characters spawn frozen.", &choices.animateOnSpawn, [&choices] { TestBench::GetCrowd().SetAnimateOnSpawn(choices.animateOnSpawn); }),
@@ -248,27 +247,23 @@ void PluginUi::Register()
 			std::vector<std::string> names{ "Default (Cicero)" };
 			for (const TestBench::IdleChoice& idle : TestBench::IdleCache::Snapshot())
 				names.push_back(idle.editorId);
-			return names;
-		}),
+			return names; }),
 		Button("Play on test characters", "Plays the chosen idle on everyone standing, and on each one spawned later.", [&choices] {
 			const auto idles = TestBench::IdleCache::Snapshot();
 			const bool picked = choices.idle > 0 && choices.idle <= static_cast<int>(idles.size());
-			RunCrowdCommand("playTestCrowdAnimation", { { "idle", picked ? idles[static_cast<std::size_t>(choices.idle - 1)].editorId : std::string{} } });
-		}),
+			RunCrowdCommand("playTestCrowdAnimation", { { "idle", picked ? idles[static_cast<std::size_t>(choices.idle - 1)].editorId : std::string{} } }); }),
 		Button("Stop and freeze", "Stops the animation.", [] { RunCrowdCommand("playTestCrowdAnimation", { { "idle", "ResetRoot" } }); }, true),
 		Header("Hair colour"),
 		Pick("Colour", "Sets the hair colour of every base the crowd is made from.", &choices.hairColor, [] {
 			std::vector<std::string> names{ "Natural" };
 			for (const SmpPhysics::HairColorChoice& color : SmpPhysics::TestCrowdHairColors())
 				names.emplace_back(color.name);
-			return names;
-		}),
+			return names; }),
 		Button("Apply", "Applies the chosen colour and refreshes the characters standing.", [&feature, &choices] {
 			const auto& colors = SmpPhysics::TestCrowdHairColors();
 			const bool picked = choices.hairColor > 0 && choices.hairColor <= static_cast<int>(colors.size());
 			const std::string color = picked ? std::string(colors[static_cast<std::size_t>(choices.hairColor - 1)].name) : std::string{};
-			feature.ApplyCrowdHairColor(color);
-		}),
+			feature.ApplyCrowdHairColor(color); }),
 	};
 
 	developerModel.title = "Developer";

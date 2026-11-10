@@ -170,15 +170,15 @@ namespace TestBench
 		std::atomic<bool> animateOnSpawn{ false };
 		std::atomic<bool> loopAnimation{ false };
 		std::unique_ptr<IdleEndSink> idleEndSink;
-		std::vector<CrowdHooks*> hooks;                  ///< Registered by features at load; read on the game thread and by Worn.
-		std::vector<RE::FormID> crowdBases;              ///< The distinct bases of the last spawn, for hooks that change a base. Game thread only.
-		std::unordered_set<RE::FormID> watched;          ///< Characters whose graph idleEndSink listens to. Game thread only.
-		std::unordered_map<RE::FormID, Outfit> outfits;  ///< Touched on the game thread only.
+		std::vector<CrowdHooks*> hooks;                   ///< Registered by features at load; read on the game thread and by Worn.
+		std::vector<RE::FormID> crowdBases;               ///< The distinct bases of the last spawn, for hooks that change a base. Game thread only.
+		std::unordered_set<RE::FormID> watched;           ///< Characters whose graph idleEndSink listens to. Game thread only.
+		std::unordered_map<RE::FormID, Outfit> outfits;   ///< Touched on the game thread only.
 		std::vector<RE::ObjectRefHandle> pendingDisable;  ///< Characters ClearNow has not disabled yet. Game thread only.
 		std::size_t clearTotal = 0;                       ///< How many characters the clear in progress removes. Game thread only.
-		std::atomic<int> armorIndex{ -1 };               ///< Into ArmorNames() for the armor the crowd wears, -1 for none. Written on the game thread.
-		std::atomic<int> cloakIndex{ -1 };               ///< Into CloakNames() for the cloak the crowd wears, -1 for none. Written on the game thread.
-		RE::TESObjectARMO* cloak = nullptr;              ///< The cloak behind cloakIndex. Game thread only.
+		std::atomic<int> armorIndex{ -1 };                ///< Into ArmorNames() for the armor the crowd wears, -1 for none. Written on the game thread.
+		std::atomic<int> cloakIndex{ -1 };                ///< Into CloakNames() for the cloak the crowd wears, -1 for none. Written on the game thread.
+		RE::TESObjectARMO* cloak = nullptr;               ///< The cloak behind cloakIndex. Game thread only.
 	};
 
 	/** @brief The process-wide test crowd. */

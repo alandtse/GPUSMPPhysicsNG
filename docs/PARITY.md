@@ -4,12 +4,12 @@ Verified 2026-11-08 on SkyrimVR (null driver, injected controllers) with the sui
 [tools/hair-tune](../tools/hair-tune). The Open Shaders side is the pre-port build (branch
 `claude/hair-body-capsules` at `1a993b31f5`), run in the same session as this plugin.
 
-| Suite | This plugin | Open Shaders in-tree |
-|---|---|---|
-| `grab_e2e.py` (hand grab, HIGGS gate, hold, pull, drop, haptics) | 22 of 22 | 22 of 22 on 2026-10-21 |
-| `contact_e2e.py` (probe and hand capsules as external colliders) | 5 of 5 | not rerun |
-| `pose_e2e.py` (outfits, idles, overlay, pull) | 12 of 13 | pull check also fails (below) |
-| `smp_parity_e2e.py` (against hdtSMP64) | 11 of 14 | 11 of 14, same checks |
+| Suite                                                            | This plugin | Open Shaders in-tree          |
+| ---------------------------------------------------------------- | ----------- | ----------------------------- |
+| `grab_e2e.py` (hand grab, HIGGS gate, hold, pull, drop, haptics) | 22 of 22    | 22 of 22 on 2026-10-21        |
+| `contact_e2e.py` (probe and hand capsules as external colliders) | 5 of 5      | not rerun                     |
+| `pose_e2e.py` (outfits, idles, overlay, pull)                    | 12 of 13    | pull check also fails (below) |
+| `smp_parity_e2e.py` (against hdtSMP64)                           | 11 of 14    | 11 of 14, same checks         |
 
 ## Known failures, identical in both builds
 

@@ -134,7 +134,8 @@ namespace Util
 				return;
 			}
 			std::ofstream deps(stem.string() + ".dep", std::ios::trunc);
-			deps << kCacheTag << '\n' << StampOf(a_source) << '\n';
+			deps << kCacheTag << '\n'
+			     << StampOf(a_source) << '\n';
 			for (const auto& include : a_includes)
 				deps << StampOf(include) << '\n';
 		}

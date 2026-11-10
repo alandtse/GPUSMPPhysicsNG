@@ -172,12 +172,10 @@ TEST_CASE("Wind pushes a rigid hair claim downwind and a sheltered claim stays p
 	const std::vector<Transform> calm = StepRig(gpu, [](GpuSolver::FrameClaim&) {}, 120);
 	const std::vector<Transform> windy = StepRig(gpu, [](GpuSolver::FrameClaim& a_claim) {
 		a_claim.wind = { 600.0f, 0.0f, 0.0f };
-		a_claim.windFactor = 1.0f;
-	}, 120);
+		a_claim.windFactor = 1.0f; }, 120);
 	const std::vector<Transform> sheltered = StepRig(gpu, [](GpuSolver::FrameClaim& a_claim) {
 		a_claim.wind = { 600.0f, 0.0f, 0.0f };
-		a_claim.windFactor = 0.0f;
-	}, 120);
+		a_claim.windFactor = 0.0f; }, 120);
 	REQUIRE(calm.size() == windy.size());
 	const std::size_t tip = windy.size() - 1;
 	CHECK(windy[tip].translation.x - calm[tip].translation.x > 0.05f);
@@ -194,8 +192,7 @@ TEST_CASE("A grab pin pulls a rigid hair claim's bone toward the hand", "[smpphy
 		Grab grab;
 		grab.bone = static_cast<int>(tip);
 		grab.target = target;
-		a_claim.grabs.push_back(grab);
-	}, 120);
+		a_claim.grabs.push_back(grab); }, 120);
 	for (const Transform& bone : held)
 		REQUIRE(std::isfinite(bone.translation.y));
 	CHECK(held[tip].translation.y - free[tip].translation.y > 1.0f);

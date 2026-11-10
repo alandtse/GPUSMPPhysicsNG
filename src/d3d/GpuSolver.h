@@ -49,9 +49,9 @@ namespace SmpPhysics
 			bool hasPreviousInput{};                                         ///< False on the first frame and after the caller reset the solver.
 			bool resetRequested{};                                           ///< A teleport, so the tree returns to rest before it is stepped.
 			float deltaTime{};
-			Vec3 wind{};         ///< The world wind vector, zero for none.
-			float windTime{};    ///< The gust clock.
-			float windFactor{};  ///< The actor's wind exposure, 0 to 1.
+			Vec3 wind{};              ///< The world wind vector, zero for none.
+			float windTime{};         ///< The gust clock.
+			float windFactor{};       ///< The actor's wind exposure, 0 to 1.
 			bool rigidContacts{};     ///< Move the claim's bodies out of the collision proxies every substep.
 			std::vector<Grab> grabs;  ///< Points a hand holds, by claim-local rig bone; a tree takes the first kMaxGrabPinsPerTree.
 		};

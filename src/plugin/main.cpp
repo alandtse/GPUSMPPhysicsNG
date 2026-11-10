@@ -8,8 +8,8 @@
 #include "Utils/TestBench/IdleCache.h"
 #include "plugin/BoneUploadHook.h"
 #include "plugin/DevBench.h"
-#include "plugin/OverlayHook.h"
 #include "plugin/Instance.h"
+#include "plugin/OverlayHook.h"
 #include "plugin/Settings.h"
 #include "plugin/UiModel.h"
 

@@ -110,9 +110,9 @@ namespace SmpPhysics
 			RigidGpu::Float4 rotation{};
 			RigidGpu::Float4 translation{};
 			RigidGpu::Uint4 flags{};
-			RigidGpu::Float4 wind{};       ///< xyz the world wind vector, w the gust clock
-			RigidGpu::Float4 windScale{};  ///< x the actor's wind exposure
-			RigidGpu::Float4 grabLocal{};  ///< xyz the held point in the body's frame, w the pin's stiffness
+			RigidGpu::Float4 wind{};        ///< xyz the world wind vector, w the gust clock
+			RigidGpu::Float4 windScale{};   ///< x the actor's wind exposure
+			RigidGpu::Float4 grabLocal{};   ///< xyz the held point in the body's frame, w the pin's stiffness
 			RigidGpu::Float4 grabTarget{};  ///< xyz where the hand holds it, w 1 for a pin
 		};
 		static_assert(sizeof(FrameInput) == 112);

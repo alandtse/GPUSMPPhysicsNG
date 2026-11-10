@@ -66,15 +66,15 @@ Coordination with other agents is mandatory (`~/.claude/skyrim-game-coordination
 
 Suites (all need a game running with the plugin and `GPUSMP_STANDALONE=1`):
 
-| Script | Covers |
-|---|---|
-| `tools/hair-tune/grab_e2e.py` | hand grab, HIGGS gate, hold, pull, drop, haptics |
-| `tools/hair-tune/contact_e2e.py` | probe and hand capsules as colliders |
-| `tools/hair-tune/pose_e2e.py` | outfits, idles, overlay, pull |
-| `tools/hair-tune/smp_parity_e2e.py` | comparison against hdtSMP64 (needs its baseline) |
-| `tools/hair-tune/limit_probe.py` | measures joint angles against their limits through a hold and release on real hair |
-| `tools/hair-tune/wind_probe.py` | measures how far the wind moves real hair, in the head frame, per wind strength |
-| `tools/game/check_actions.py`, `check_overlay.py` | quick devbench and overlay sanity (`GSP_PORT`) |
+| Script                                            | Covers                                                                             |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `tools/hair-tune/grab_e2e.py`                     | hand grab, HIGGS gate, hold, pull, drop, haptics                                   |
+| `tools/hair-tune/contact_e2e.py`                  | probe and hand capsules as colliders                                               |
+| `tools/hair-tune/pose_e2e.py`                     | outfits, idles, overlay, pull                                                      |
+| `tools/hair-tune/smp_parity_e2e.py`               | comparison against hdtSMP64 (needs its baseline)                                   |
+| `tools/hair-tune/limit_probe.py`                  | measures joint angles against their limits through a hold and release on real hair |
+| `tools/hair-tune/wind_probe.py`                   | measures how far the wind moves real hair, in the head frame, per wind strength    |
+| `tools/game/check_actions.py`, `check_overlay.py` | quick devbench and overlay sanity (`GSP_PORT`)                                     |
 
 Known failures and their causes are in `docs/PARITY.md`. Clear the test crowd, set the cloak index to `-1` (0 is a real
 cloak) and toggle `Enabled` between suites.
@@ -106,7 +106,7 @@ frame near 31 ms and hides frame time, so use SE for frame time and VR for per-p
   (peak 0.39), about 130 units/s at strength 2, which moves hair by 0.03. A 600 units/s vector (strength 9 in that
   storm) shifts it 0.34 on average (max 2.2), about hdtSMP64's 0.40 at its default. Trees bend 3% of height and grass
   13 degrees per unit of field at full wind, for comparison. A worn linen cape (`wind_probe.py --cloak 3 --solver
-  --prefix "CB "`, 12 bones, 61 units long, same storm) moves with vector: about 145 units/s (strength 2) shifts it
+--prefix "CB "`, 12 bones, 61 units long, same storm) moves with vector: about 145 units/s (strength 2) shifts it
   0.15 units (0.2% of its length), 650 to 740 units/s shifts it 2.3 units (3.9%, max 11%), and 600+ at strength 20
   gives the same because the 900 cap and the field vary. So the cape shows the wind at a vector of 400 to 700 units/s,
   the range where hair matches hdtSMP64 too. The default `WindStrength` is now 6 (a field of 0.2 gives 360 units/s; full

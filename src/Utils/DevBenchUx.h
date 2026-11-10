@@ -88,7 +88,7 @@ namespace Util::DevBenchUx
 		/** @return Whether this owner has any tool command or query. */
 		bool HasToolOwner(std::string_view a_owner) const;
 
-				/** @return `[{name, description, executionThread}, ...]` for this feature's commands. */
+		/** @return `[{name, description, executionThread}, ...]` for this feature's commands. */
 		json ListCommands(std::string_view a_featureShortName) const;
 		/** @return `[{name, description, executionThread}, ...]` for this feature's queries. */
 		json ListQueries(std::string_view a_featureShortName) const;
