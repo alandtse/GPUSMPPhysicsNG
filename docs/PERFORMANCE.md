@@ -144,3 +144,17 @@ The tables above predate the removal of the chain solver and the in-tree arm. Th
   ways between sizes, so it is not a CPU comparison.
 - Frame generation and NR state were not read back (`frameGenActive` was null), and the render resolution
   was not recorded.
+
+## Shader compile time versus runtime cost (2026-11-10)
+
+- **`RigidSetup` takes about 53 s to compile in FXC** (67 s in a parallel run), at any optimisation level. Nearly all of
+  it is the joint's rows living in a struct of six `AxisRows`: each runtime-slot read or write is a six-way chain of
+  whole-struct copies that FXC expands at every call site. The plugin keeps compiled blobs in
+  `Data/SKSE/Plugins/GPUSMPPhysicsNG/ShaderCache` (and the tests in the temp folder), so the cost is paid on the first
+  launch and after a shader edit only.
+- **Keeping the rows in plain local arrays cut the compile to 16 s and was reverted: it made the kernel slower.** SE,
+  20 characters, flush on, Open Shaders not compiling, `gpuPassStats` over 25 s: `RigidSetup` 0.76 ms with the struct
+  rows and 1.27 ms with the arrays; the other passes moved by under 10%. The arrays compile to four runtime-indexed
+  temp arrays of 420 four-component registers each, against one of 3, which points at scratch memory (not confirmed on
+  the hardware). One run per arm, so treat the 0.5 ms as indicative. The GPU-vs-CPU tests passed either way, so they
+  cannot see this cost; runtime cost has to be measured in game.

@@ -20,6 +20,11 @@ std::filesystem::path PluginSettings::ShaderRoot()
 	return PluginFolder() / "Shaders";
 }
 
+std::filesystem::path PluginSettings::ShaderCacheRoot()
+{
+	return PluginFolder() / "ShaderCache";
+}
+
 void PluginSettings::Load(SmpPhysicsFeature& a_feature)
 {
 	json document = json::object();

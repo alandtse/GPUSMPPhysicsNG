@@ -53,6 +53,7 @@ namespace
 			break;
 		case SKSE::MessagingInterface::kPostPostLoad:
 			Util::SetShaderRoot(PluginSettings::ShaderRoot().wstring());
+			Util::SetShaderCacheDir(PluginSettings::ShaderCacheRoot().wstring());
 			BoneUploadHook::Install();
 			OverlayHook::Install();
 			break;

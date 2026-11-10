@@ -45,12 +45,11 @@ namespace
 		static const ContactKernels built = [] {
 			ContactKernels value;
 			value.gpu = CreateDevice(D3D_DRIVER_TYPE_WARP);
-			ShaderInclude include({ std::filesystem::path(SMPPHYSICS_SHADER_DIR), std::filesystem::path(SMPPHYSICS_FEATURE_SHADER_DIR) });
 			const std::filesystem::path path = std::filesystem::path(SMPPHYSICS_FEATURE_SHADER_DIR) / "SmpPhysics" / "ContactCS.hlsl";
 			ID3D11Device* device = value.gpu.device.Get();
-			value.cull = CompileKernel(device, &include, "ContactCull", path);
-			value.spheres = CompileKernel(device, &include, "ContactSpheres", path);
-			value.reduce = CompileKernel(device, &include, "ContactReduce", path);
+			value.cull = CompileKernel(device, "ContactCull", path);
+			value.spheres = CompileKernel(device, "ContactSpheres", path);
+			value.reduce = CompileKernel(device, "ContactReduce", path);
 			return value;
 		}();
 		return built;

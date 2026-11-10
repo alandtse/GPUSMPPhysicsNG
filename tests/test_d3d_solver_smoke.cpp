@@ -68,6 +68,7 @@ TEST_CASE("The GPU solver steps a rigid hair claim on a WARP device", "[smpphysi
 	globals::d3d::context = context.Get();
 	logger::GetSink() = [](logger::Level, const std::string& a_message) { std::cerr << a_message << '\n'; };
 	Util::SetShaderRoot(std::filesystem::path(SMPPHYSICS_SHADER_DIR).wstring());
+	Util::SetShaderCacheDir((std::filesystem::temp_directory_path() / "GPUSMPPhysicsNG-test-shaders").wstring());
 
 	const ParseResult parsed = ParseSmpXml(kRigXml);
 	REQUIRE(parsed.status == ParseStatus::Ok);
@@ -123,6 +124,7 @@ namespace
 			globals::d3d::device = device.Get();
 			globals::d3d::context = context.Get();
 			Util::SetShaderRoot(std::filesystem::path(SMPPHYSICS_SHADER_DIR).wstring());
+			Util::SetShaderCacheDir((std::filesystem::temp_directory_path() / "GPUSMPPhysicsNG-test-shaders").wstring());
 		}
 
 		~WarpDevice()

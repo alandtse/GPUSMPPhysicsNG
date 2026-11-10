@@ -32,6 +32,8 @@ namespace Util
 
 	/** @brief Directory that holds SmpPhysics/*.hlsl and Common/*.hlsli; the plugin sets it from its Data folder, tests from the repo. */
 	void SetShaderRoot(const std::wstring& a_root);
+	/** @brief Folder where compiled shader blobs are kept between runs; empty (the default) compiles every time. */
+	void SetShaderCacheDir(const std::wstring& a_dir);
 	/** @brief Forgets which shaders failed to compile, so the next request compiles them again. */
 	void ClearShaderFailures();
 	const std::wstring& GetShaderRoot();

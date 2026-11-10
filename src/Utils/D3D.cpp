@@ -1,6 +1,8 @@
 #include "Utils/D3D.h"
 
+#include <chrono>
 #include <cstdarg>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -8,7 +10,9 @@
 #include <fstream>
 #include <iterator>
 #include <mutex>
+#include <string_view>
 #include <unordered_set>
+#include <vector>
 
 namespace Util
 {
@@ -17,6 +21,7 @@ namespace Util
 		constexpr GUID kDebugObjectNameT = { 0x4cca5fd8, 0x921f, 0x42c8, { 0x85, 0x66, 0x70, 0xca, 0xf2, 0xa9, 0xb7, 0x41 } };
 
 		std::wstring shaderRoot;
+		std::filesystem::path shaderCacheDir;
 		std::mutex failureMutex;
 		std::unordered_set<std::string> compileFailures;
 
@@ -27,6 +32,8 @@ namespace Util
 			RootInclude(std::filesystem::path a_source, std::filesystem::path a_root) :
 				source(std::move(a_source)), root(std::move(a_root)) {}
 
+			std::vector<std::filesystem::path> opened;
+
 			HRESULT Open(D3D_INCLUDE_TYPE, LPCSTR a_file, LPCVOID, LPCVOID* a_data, UINT* a_size) override
 			{
 				for (const auto& base : { source.parent_path(), root }) {
@@ -34,6 +41,7 @@ namespace Util
 					if (!stream)
 						continue;
 					std::string bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+					opened.push_back(base / a_file);
 					auto* copy = new char[bytes.size()];
 					std::memcpy(copy, bytes.data(), bytes.size());
 					*a_data = copy;
@@ -53,6 +61,73 @@ namespace Util
 			std::filesystem::path source;
 			std::filesystem::path root;
 		};
+
+		constexpr UINT kCompileFlags = D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_OPTIMIZATION_LEVEL3;
+		constexpr std::string_view kCacheTag = "v1";
+
+		std::string StampOf(const std::filesystem::path& a_path)
+		{
+			std::error_code error;
+			const auto size = std::filesystem::file_size(a_path, error);
+			const auto time = std::filesystem::last_write_time(a_path, error);
+			return std::format("{}\t{}\t{}", a_path.string(), size, time.time_since_epoch().count());
+		}
+
+		std::string CacheName(std::string_view a_key)
+		{
+			std::uint64_t hash = 1469598103934665603ull;
+			for (const char character : a_key) {
+				hash ^= static_cast<unsigned char>(character);
+				hash *= 1099511628211ull;
+			}
+			return std::format("{:016x}", hash);
+		}
+
+		/** @brief A cached blob is good only while the source and every include it was built from keep their size and time. */
+		winrt::com_ptr<ID3DBlob> ReadCache(const std::string& a_name)
+		{
+			winrt::com_ptr<ID3DBlob> blob;
+			if (shaderCacheDir.empty())
+				return blob;
+			std::ifstream deps(shaderCacheDir / (a_name + ".dep"));
+			std::string line;
+			if (!deps || !std::getline(deps, line) || line != kCacheTag)
+				return blob;
+			while (std::getline(deps, line)) {
+				const std::filesystem::path file = line.substr(0, line.find('\t'));
+				if (StampOf(file) != line)
+					return blob;
+			}
+			std::ifstream data(shaderCacheDir / (a_name + ".bin"), std::ios::binary);
+			const std::string bytes((std::istreambuf_iterator<char>(data)), std::istreambuf_iterator<char>());
+			if (bytes.empty() || FAILED(D3DCreateBlob(bytes.size(), blob.put())))
+				return nullptr;
+			std::memcpy(blob->GetBufferPointer(), bytes.data(), bytes.size());
+			return blob;
+		}
+
+		void WriteCache(const std::string& a_name, ID3DBlob* a_blob, const std::filesystem::path& a_source, const std::vector<std::filesystem::path>& a_includes)
+		{
+			if (shaderCacheDir.empty())
+				return;
+			std::error_code error;
+			std::filesystem::create_directories(shaderCacheDir, error);
+			const auto stem = shaderCacheDir / a_name;
+			const auto temporary = std::filesystem::path(stem.string() + std::format(".{}.tmp", std::chrono::steady_clock::now().time_since_epoch().count()));
+			{
+				std::ofstream data(temporary, std::ios::binary);
+				data.write(static_cast<const char*>(a_blob->GetBufferPointer()), static_cast<std::streamsize>(a_blob->GetBufferSize()));
+			}
+			std::filesystem::rename(temporary, stem.string() + ".bin", error);
+			if (error) {
+				std::filesystem::remove(temporary, error);
+				return;
+			}
+			std::ofstream deps(stem.string() + ".dep", std::ios::trunc);
+			deps << kCacheTag << '\n' << StampOf(a_source) << '\n';
+			for (const auto& include : a_includes)
+				deps << StampOf(include) << '\n';
+		}
 
 		std::filesystem::path Resolve(const wchar_t* a_path)
 		{
@@ -87,6 +162,11 @@ namespace Util
 		compileFailures.clear();
 	}
 
+	void SetShaderCacheDir(const std::wstring& a_dir)
+	{
+		shaderCacheDir = a_dir;
+	}
+
 	void ClearShaderFailures()
 	{
 		std::lock_guard lock(failureMutex);
@@ -116,6 +196,10 @@ namespace Util
 				return nullptr;
 		}
 
+		const std::string cacheName = CacheName(failureKey + '|' + std::to_string(kCompileFlags));
+		if (auto cached = ReadCache(cacheName))
+			return cached;
+
 		std::ifstream stream(source, std::ios::binary);
 		winrt::com_ptr<ID3DBlob> blob;
 		winrt::com_ptr<ID3DBlob> errors;
@@ -124,7 +208,9 @@ namespace Util
 			const std::string text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
 			RootInclude include(source, shaderRoot);
 			result = D3DCompile(text.data(), text.size(), source.string().c_str(), macros.data(), &include, Program, ProgramType,
-				D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, blob.put(), errors.put());
+				kCompileFlags, 0, blob.put(), errors.put());
+			if (SUCCEEDED(result))
+				WriteCache(cacheName, blob.get(), source, include.opened);
 		} else {
 			logger::error("Failed to compile shader; {} does not exist", source.string());
 		}

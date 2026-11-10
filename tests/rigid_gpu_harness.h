@@ -3,6 +3,7 @@
 // Shared Direct3D plumbing for the rigid-body compute-kernel tests: the device, the kernel compile, one packed step's
 // buffers and views, and a GPU timer. The WARP replay test and the hardware benchmark dispatch the same kernels.
 
+#include "Utils/D3D.h"
 #include "smp/RigidGpuPacking.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -40,48 +41,6 @@ namespace SmpPhysics::RigidGpuTest
 		return text;
 	}
 
-	/** @brief Resolves a shader's includes against the packaged shader tree and the feature's own directory. */
-	class ShaderInclude final : public ID3DInclude
-	{
-	public:
-		explicit ShaderInclude(std::vector<std::filesystem::path> a_roots) :
-			roots(std::move(a_roots)) {}
-
-		HRESULT Open(D3D_INCLUDE_TYPE, LPCSTR a_filename, LPCVOID, LPCVOID* a_data, UINT* a_size) override
-		{
-			for (const std::filesystem::path& root : roots) {
-				std::error_code error;
-				const std::filesystem::path path = root / a_filename;
-				if (!std::filesystem::is_regular_file(path, error))
-					continue;
-				const std::vector<char> bytes = ReadFile(path);
-				char* data = new char[std::max<std::size_t>(bytes.size(), 1)];
-				std::memcpy(data, bytes.data(), bytes.size());
-				*a_data = data;
-				*a_size = static_cast<UINT>(bytes.size());
-				return S_OK;
-			}
-			return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
-		}
-
-		HRESULT Close(LPCVOID a_data) override
-		{
-			delete[] static_cast<const char*>(a_data);
-			return S_OK;
-		}
-
-	private:
-		static std::vector<char> ReadFile(const std::filesystem::path& a_path)
-		{
-			std::vector<char> bytes;
-			std::ifstream stream(a_path, std::ios::binary);
-			bytes.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
-			return bytes;
-		}
-
-		std::vector<std::filesystem::path> roots;
-	};
-
 	struct GpuDevice
 	{
 		ComPtr<ID3D11Device> device;
@@ -105,20 +64,14 @@ namespace SmpPhysics::RigidGpuTest
 		return std::filesystem::path(SMPPHYSICS_FEATURE_SHADER_DIR) / "SmpPhysics" / "RigidSolverCS.hlsl";
 	}
 
-	inline ComPtr<ID3D11ComputeShader> CompileKernel(ID3D11Device* a_device, ID3DInclude* a_include, const char* a_entry,
+	/** @brief Compiles one entry point through the plugin's own path, so its blob cache keeps the test run short. */
+	inline ComPtr<ID3D11ComputeShader> CompileKernel(ID3D11Device* a_device, const char* a_entry,
 		const std::filesystem::path& a_path = KernelPath())
 	{
-		const std::filesystem::path& path = a_path;
-		ComPtr<ID3DBlob> code;
-		ComPtr<ID3DBlob> errors;
-		const HRESULT result = D3DCompileFromFile(path.c_str(), nullptr, a_include, a_entry, "cs_5_0", 0, 0,
-			code.GetAddressOf(), errors.GetAddressOf());
-		if (errors) {
-			INFO("D3DCompileFromFile(" << a_entry << "): "
-			                           << std::string(static_cast<const char*>(errors->GetBufferPointer()), errors->GetBufferSize()));
-		}
-		INFO("D3DCompileFromFile(" << a_entry << ") returned " << Hex(result));
-		REQUIRE(result == S_OK);
+		Util::SetShaderRoot(std::filesystem::path(SMPPHYSICS_SHADER_DIR).wstring());
+		Util::SetShaderCacheDir((std::filesystem::temp_directory_path() / "GPUSMPPhysicsNG-test-shaders").wstring());
+		const winrt::com_ptr<ID3DBlob> code = Util::CompileShaderBlob(a_path.c_str(), {}, "cs_5_0", a_entry);
+		REQUIRE(code);
 
 		ComPtr<ID3D11ComputeShader> shader;
 		INFO("CreateComputeShader returned " << Hex(a_device->CreateComputeShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, shader.GetAddressOf())));
@@ -138,13 +91,12 @@ namespace SmpPhysics::RigidGpuTest
 
 	inline Kernels CompileKernels(ID3D11Device* a_device)
 	{
-		ShaderInclude include({ std::filesystem::path(SMPPHYSICS_SHADER_DIR), std::filesystem::path(SMPPHYSICS_FEATURE_SHADER_DIR) });
 		Kernels kernels;
-		kernels.predict = CompileKernel(a_device, &include, "RigidPredict");
-		kernels.setup = CompileKernel(a_device, &include, "RigidSetup");
-		kernels.solve = CompileKernel(a_device, &include, "RigidSolveIsland");
-		kernels.integrate = CompileKernel(a_device, &include, "RigidIntegrate");
-		kernels.solveColored = CompileKernel(a_device, &include, "RigidSolveIslandColored");
+		kernels.predict = CompileKernel(a_device, "RigidPredict");
+		kernels.setup = CompileKernel(a_device, "RigidSetup");
+		kernels.solve = CompileKernel(a_device, "RigidSolveIsland");
+		kernels.integrate = CompileKernel(a_device, "RigidIntegrate");
+		kernels.solveColored = CompileKernel(a_device, "RigidSolveIslandColored");
 		return kernels;
 	}
 

@@ -10,6 +10,8 @@ namespace PluginSettings
 	std::filesystem::path File();
 	/** @brief Data/SKSE/Plugins/GPUSMPPhysicsNG/Shaders, the HLSL sources the solver compiles at start. */
 	std::filesystem::path ShaderRoot();
+	/** @brief Data/SKSE/Plugins/GPUSMPPhysicsNG/ShaderCache, compiled shader blobs kept between runs so a launch skips the compile. */
+	std::filesystem::path ShaderCacheRoot();
 	void Load(SmpPhysicsFeature& a_feature);
 	void Save(SmpPhysicsFeature& a_feature);
 }
