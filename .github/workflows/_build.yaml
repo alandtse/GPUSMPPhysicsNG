@@ -60,7 +60,10 @@ jobs:
         run: xmake config --mode=releasedbg --yes --verbose
 
       - name: Build
-        run: xmake build --yes GPUSMPPhysicsNG GPUSMPPhysicsNG-Tests
+        run: xmake build --yes GPUSMPPhysicsNG
+
+      - name: Build tests
+        run: xmake build --yes GPUSMPPhysicsNG-Tests
 
       # The suite compiles the solver kernels through the plugin's own shader path (WARP, no GPU needed), so
       # the same run fills the blob cache the release ships. It is keyed by content hash, so it only serves
