@@ -90,22 +90,12 @@ jobs:
           name: ${{ needs.build.outputs.artifact-name }}
           path: bin
 
+      # The shaders and ShaderCache come from the build job: the cache is keyed by content hash of the
+      # shader sources, so it must ship with the exact bytes it was built against.
       - name: Assemble mod archive
         id: pkg
-        run: |
-          set -euo pipefail
-          tag="${{ needs.semantic-release.outputs.new_release_git_tag }}"
-          stage="GPUSMPPhysicsNG-${tag}"
-          # Settings.json stays out of the archive: the plugin writes it on first run and
-          # the in-game menu rewrites it, so an update must not clobber a user's config.
-          # The HLSL sources ship because the plugin compiles them on the user's machine.
-          mkdir -p "$stage/SKSE/Plugins/GPUSMPPhysicsNG"
-          cp -r shaders "$stage/SKSE/Plugins/GPUSMPPhysicsNG/Shaders"
-          cp bin/GPUSMPPhysicsNG.dll bin/GPUSMPPhysicsNG.pdb "$stage/SKSE/Plugins/"
-          7z a -t7z -mx=9 "${stage}.7z" "$stage"
-          echo "archive=${stage}.7z" >> "$GITHUB_OUTPUT"
-          echo "Built ${stage}.7z:"
-          7z l "${stage}.7z"
+        shell: pwsh
+        run: ./tools/release/package.ps1 -Tag '${{ needs.semantic-release.outputs.new_release_git_tag }}' -Bin bin
 
       # semantic-release created the GitHub Release as a draft (changelog body).
       # Attach the .7z, then promote to published â€” only now that the asset exists,

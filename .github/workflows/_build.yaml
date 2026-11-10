@@ -1,5 +1,5 @@
-# Reusable build: compiles GPUSMPPhysicsNG.dll with xmake (releasedbg) and uploads
-# the binaries as an artifact. Called by build.yaml (CI) and release.yaml
+# Reusable build: compiles GPUSMPPhysicsNG.dll with xmake (releasedbg), runs the Catch2 suite, and uploads
+# the binaries, shaders and prebuilt shader cache as an artifact. Called by build.yaml (CI) and release.yaml
 # (packaging), so the toolchain is defined in exactly one place.
 name: "_build"
 
@@ -24,8 +24,9 @@ permissions:
 
 jobs:
   build:
-    name: Build (xmake, releasedbg)
+    name: Build and test (xmake, releasedbg)
     runs-on: windows-2025
+    timeout-minutes: 60
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v7
@@ -59,19 +60,30 @@ jobs:
         run: xmake config --mode=releasedbg --yes --verbose
 
       - name: Build
-        run: xmake build --yes GPUSMPPhysicsNG
+        run: xmake build --yes GPUSMPPhysicsNG GPUSMPPhysicsNG-Tests
+
+      # The suite compiles the solver kernels through the plugin's own shader path (WARP, no GPU needed), so
+      # the same run fills the blob cache the release ships. It is keyed by content hash, so it only serves
+      # these exact shader bytes; the staged Shaders folder below is what the cache was built against.
+      - name: Test (and fill the shader cache)
+        shell: pwsh
+        env:
+          GPUSMP_SHADER_CACHE_DIR: ${{ github.workspace }}/staging/ShaderCache
+        run: |
+          New-Item -ItemType Directory -Force -Path staging/ShaderCache | Out-Null
+          xmake run GPUSMPPhysicsNG-Tests
 
       - name: Stage binaries
         shell: pwsh
         run: |
           $out = "build/windows/x64/releasedbg"
-          New-Item -ItemType Directory -Force -Path staging | Out-Null
           Copy-Item "$out/GPUSMPPhysicsNG.dll" staging/
           Copy-Item "$out/GPUSMPPhysicsNG.pdb" staging/
+          Copy-Item shaders staging/Shaders -Recurse
 
       - name: Upload binaries
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact-name }}
-          path: staging/*
+          path: staging
           if-no-files-found: error

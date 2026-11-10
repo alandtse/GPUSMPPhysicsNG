@@ -1,0 +1,28 @@
+# Manual check that the Nexus credentials the release pipeline needs are present and still valid,
+# using the shared actions in alandtse/nexus-workflows (the same ones CrashLoggerSSE uses).
+name: "Nexus: Check Credentials"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-credentials:
+    runs-on: ubuntu-latest
+    if: github.repository_owner == 'alandtse'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup UNEX
+        uses: alandtse/nexus-workflows/.github/actions/setup-unex@main
+
+      - name: Check Nexus credentials
+        uses: alandtse/nexus-workflows/.github/actions/check-nexus@main
+        with:
+          nexus-session-cookie: ${{ secrets.UNEX_NEXUSMODS_SESSION_COOKIE }}
+          nexus-api-key: ${{ secrets.UNEX_APIKEY }}
