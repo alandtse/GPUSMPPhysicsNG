@@ -108,6 +108,12 @@ The tables above predate the removal of the chain solver and the in-tree arm. Th
   point in the frame. The shader is a 64-thread min/max of two child boxes. The cause is still unknown; an ETW GPU
   trace needs an elevated shell. Tracy GPU zones are D3D11 timestamp queries, so they show duration, not queue waits.
   Captures: `F:	mp	racy_se_20261110_baseline.tracy`, `..._per_dispatch.tracy`.
+  A follow-up with VR confirmed not running (`..._level3_experiment.tracy`): a zero-work pass right before level 3
+  costs 0.000 ms, level 3 takes 9.0 ms, and the same dispatch issued again straight after takes 0.004 ms. The refit
+  levels hold only 64, 32, 16, 8, 4, 2 and 1 entries, so the work is not the cause. It is a once-per-frame wait that
+  starts at level 3 and ends at a fixed point in the frame. The earlier single-group refit moved it to `ContactPasses`,
+  so it follows the first compute dispatch after that point, not the dispatch or its constants. Unexplained; the next
+  step is an ETW trace taken in the same run, which needs the trace tools to run without an elevated shell.
 - **VR, 2026-11-09 (null driver, crowd 20 and 30):** `ContactSpheres` 1.1 ms, solver total about 3.1 to 3.3 ms
   (28% of 11.1 ms), against 10 to 11 ms in the VR table above. The cause of the gap was not identified.
 - **`clearTestCrowd` crashed SE at the end of both sessions**, in the engine: `BipedAnim::dtor` -> `RemoveAllParts` ->

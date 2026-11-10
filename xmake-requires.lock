@@ -133,6 +133,12 @@
                 url = "https://gitlab.com/tboox/xmake-repo.git"
             },
             version = "v5.0.0"
+        },
+        ["tracy v0.15.0#c6b9698c"] = {
+            repo = {
+                url = "xmake-pkgs"
+            },
+            version = "v0.15.0"
         }
     }
 }
