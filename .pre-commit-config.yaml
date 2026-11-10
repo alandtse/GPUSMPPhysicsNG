@@ -1,3 +1,5 @@
+default_install_hook_types: [pre-commit, commit-msg]
+
 ci:
   autoupdate_commit_msg: "chore(deps): update pre-commit hook versions"
 
@@ -38,3 +40,24 @@ repos:
         additional_dependencies: ["prettier@3.1.0"]
         files: \.(json|md|yml|yaml)$
         exclude: ^(lib/|tests/fixtures/)
+
+  # Commits are Conventional Commits (semantic-release reads them to pick the version), so reject anything else before it lands.
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.5.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args:
+          [
+            feat,
+            fix,
+            perf,
+            refactor,
+            docs,
+            style,
+            test,
+            build,
+            ci,
+            chore,
+            revert,
+          ]
