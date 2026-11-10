@@ -75,6 +75,33 @@ VR. Frame ms; `hdt` is the mean of its two windows and the spread is the gap bet
   at. The cause was not identified, so this size says nothing about the arms.
 - Frame generation and NR state were not read back on SE either.
 
+## Rerun on 2026-11-09 (SE, today's code against hdtSMP64)
+
+The tables above predate the removal of the chain solver and the in-tree arm. This run is SE 1.7.104, DLL
+`05CFBFF3B98C79DE`, hdtSMP64 against this plugin only (`hdt`, `port`, `hdt`), same crowd, throttles lifted as above,
+6 s settle then a 15 s window, sizes run in separate sessions of under 5 minutes. Raw rows:
+`perf-data/smp_ab_se_results_2026-11-09_*.json`. Frame ms; `hdt` is the mean of its two windows.
+
+| Crowd | Claims | hdt (spread) | port | port vs hdt |
+|---|---|---|---|---|
+| 0 | 14 | 24.63 (0.14) | 22.33 | -2.30 (-9%) |
+| 5 | 26 | 27.84 (0.08) | 26.63 | -1.21 (-4%) |
+| 10 | 36 | 31.10 (0.16) | 26.69 | -4.41 (-14%) |
+| 20 | 58 | 41.73 (0.07) | 30.45 | -11.28 (-27%) |
+| 30 | 80 | 48.12 (1.20) | 34.37 | -13.75 (-29%) |
+
+- **The machine ran slower than on 2026-11-08** (hdtSMP64 alone 24.6 ms with no crowd against 13.5 ms then), so compare
+  within this table only, not against the table above. The cause was not identified.
+- **Port GPU ms per frame at crowd 30:** `ContactSpheres` 1.17 (two calls), `RigidSolve` 1.10, `RigidSetup` 0.65,
+  `SurfacePrep` 8.88. On SE `SurfacePrep` sits at 8 to 9 ms for every crowd above 0 (0.04 at crowd 0) and does not grow
+  with the crowd, where VR measures 0.05 to 0.1 ms; a flat cost like that looks like a wait inside the timed region
+  rather than compute, but this was not investigated.
+- **VR, 2026-11-09 (null driver, crowd 20 and 30):** `ContactSpheres` 1.1 ms, solver total about 3.1 to 3.3 ms
+  (28% of 11.1 ms), against 10 to 11 ms in the VR table above. The cause of the gap was not identified.
+- **`clearTestCrowd` crashed SE at the end of both sessions**, in the engine: `BipedAnim::dtor` -> `RemoveAllParts` ->
+  `NiAVObject::LookupBoneNodeByName` (`SkyrimSE.exe+0FDDB2D`) on a test character, with no plugin frame in the stack
+  (`crash-2026-11-09-17-13-30.log`, `-17-20-03.log`). The results were already written.
+
 ## What this does and does not show
 
 - **Port equals pre-port.** Same passes, same cost, no regression from moving out of the tree.

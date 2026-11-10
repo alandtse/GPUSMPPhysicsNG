@@ -1,7 +1,7 @@
-"""SMP port A/B on one VR session: hdtSMP64 only vs pre-port Open Shaders SMP vs standalone GPUSMPPhysicsNG.
+"""A/B on one session: hdtSMP64 only vs standalone GPUSMPPhysicsNG (the in-tree Open Shaders arm is gone).
 
-Holds the VR lock already, game running with both plugins loaded and a save loaded.
-Usage: python smp_ab.py [port]   Output: smp_ab_<vr|se>_results.json next to this file and a table.
+Holds the game lock already, game running with both plugins loaded and a save loaded.
+Usage: python smp_ab.py [port] [sizes, e.g. 0,10,20]   Output: smp_ab_<vr|se>_results.json next to this file and a table.
 """
 import json
 import pathlib
@@ -18,10 +18,9 @@ GAME = 'SE' if PORT == 8920 else 'VR'
 BUDGET_MS = 16.67 if GAME == 'SE' else 11.11
 GAME_DIR = {'SE': 'Skyrim Special Edition', 'VR': 'SkyrimVR'}[GAME]
 MIXED = [0xA2C8E, 0x13297, 0x13BA3, 0x13BAB, 0x13BB8, 0x13B99, 0x13BB9, 0x13BB0, 0x13B9C, 0x13B9B]
-SIZES = [0, 5, 10, 20, 30]
+SIZES = [int(n) for n in sys.argv[2].split(',')] if len(sys.argv) > 2 else [0, 5, 10, 20, 30]
 SETTLE = 6
 WINDOW = 15
-pre = ingame.Bench(PORT, standalone=False)
 port = ingame.Bench(PORT, standalone=True)
 
 
@@ -62,9 +61,7 @@ def check_hdt_unthrottled():
 
 
 def arm(name):
-    pre.set_settings(Enabled=(name == 'pre'), **UNTHROTTLED)
     port.set_settings(Enabled=(name == 'port'), **UNTHROTTLED)
-    pre.command('reevaluate')
     port.command('reevaluate')
 
 
@@ -74,8 +71,7 @@ def measure(name, size):
     if name == 'port':
         port.command('gpuPassTiming', enabled=True, reset=True)
     rate = fps(WINDOW)
-    bench = port if name == 'port' else pre
-    status = bench.status() if name != 'hdt' else {}
+    status = port.status() if name == 'port' else {}
     row = {'arm': name, 'crowd': size, 'fps': round(rate, 2), 'frameMs': round(1000.0 / rate, 3),
            'claims': status.get('claimCount', len(status.get('claims', []))), 'stepUs': status.get('totalStepMicroseconds')}
     if name == 'port':
@@ -89,29 +85,29 @@ def measure(name, size):
 
 check_hdt_unthrottled()
 st = state()
-pre.command('spawnTestCrowd', count=5, bases=MIXED[:5])
+port.command('spawnTestCrowd', count=5, bases=MIXED[:5])
 time.sleep(15)
-for warm in ('pre', 'port', 'hdt'):
+for warm in ('port', 'hdt'):
     arm(warm)
     for attempt in range(40):
         if fps(5) > 10:
             break
     time.sleep(5)
-pre.command('clearTestCrowd')
+port.command('clearTestCrowd')
 print('warm-up done', flush=True)
 
 print('state', {k: st.get(k) for k in ('vr', 'frameGenActive', 'frame')}, flush=True)
 results = []
 for size in SIZES:
-    pre.command('clearTestCrowd')
+    port.command('clearTestCrowd')
     arm('hdt')
     time.sleep(2)
     if size:
-        pre.command('spawnTestCrowd', count=size, bases=(MIXED * 3)[:size])
+        port.command('spawnTestCrowd', count=size, bases=(MIXED * 3)[:size])
         time.sleep(10 + size * 0.5)
-    for name in ('hdt', 'pre', 'port', 'hdt'):
+    for name in ('hdt', 'port', 'hdt'):
         results.append(measure(name, size))
 arm('hdt')
-pre.command('clearTestCrowd')
-json.dump(results, open(pathlib.Path(__file__).with_name(f'smp_ab_{GAME.lower()}_results.json'), 'w'), indent=1)
+port.command('clearTestCrowd')
+json.dump(results, open(pathlib.Path(__file__).with_name(f'smp_ab_{GAME.lower()}_results_2026-11-09_{"_".join(map(str, SIZES))}.json'), 'w'), indent=1)
 print('RESULT DONE', flush=True)
