@@ -531,18 +531,42 @@ namespace TestBench
 		SetReport(std::format("Test characters wear {} ({} of {}).", armor->GetName(), a_index + 1, armors.size()));
 	}
 
-	void TestCrowd::ClearNow()
+	void TestCrowd::DisableBatchNow()
 	{
-		const std::size_t removed = spawned.size();
-		for (const RE::ObjectRefHandle& handle : spawned) {
+		// A few a frame: disabling thirty at once made the engine's deferred release queue destroy their BipedAnims together,
+		// and one of them read a skeleton root that was already freed (SkyrimSE.exe+0FDDB2D, seen twice on SE 1.7.104).
+		constexpr std::size_t kBatch = 4;
+		const std::size_t count = std::min(kBatch, pendingDisable.size());
+		for (std::size_t index = 0; index < count; ++index) {
 			// Disabling is enough: they are temporary references the game drops with the cell, and marking an actor deleted
 			// while the engine's job threads still update its movement controller crashes the game.
-			if (auto reference = handle.get()) {
+			if (auto reference = pendingDisable[index].get()) {
 				if (auto* actor = reference->As<RE::Actor>())
 					actor->EnableAI(true);
 				reference->Disable();
 			}
 		}
+		pendingDisable.erase(pendingDisable.begin(), pendingDisable.begin() + static_cast<std::ptrdiff_t>(count));
+		if (!pendingDisable.empty()) {
+			if (auto* task = SKSE::GetTaskInterface())
+				task->AddTask([this] { DisableBatchNow(); });
+			return;
+		}
+		SetReport(std::format("Removed {} test characters.", clearTotal));
+	}
+
+	void TestCrowd::FinishDisableNow()
+	{
+		while (!pendingDisable.empty())
+			DisableBatchNow();
+	}
+
+	void TestCrowd::ClearNow()
+	{
+		FinishDisableNow();
+		const std::size_t removed = spawned.size();
+		clearTotal = removed;
+		pendingDisable = spawned;
 		for (const RE::ObjectRefHandle& handle : spawned) {
 			if (auto reference = handle.get()) {
 				if (auto* actor = reference->As<RE::Actor>())
@@ -557,11 +581,13 @@ namespace TestBench
 		outfits.clear();
 		armorIndex.store(-1, std::memory_order_relaxed);
 		count.store(0, std::memory_order_relaxed);
-		SetReport(std::format("Removed {} test characters.", removed));
+		SetReport(std::format("Removing {} test characters.", removed));
+		DisableBatchNow();
 	}
 
 	void TestCrowd::SpawnNow(std::size_t a_count, const std::vector<std::uint32_t>& a_bases)
 	{
+		FinishDisableNow();
 		auto* player = globals::game::player;
 		if (!player || !player->Is3DLoaded()) {
 			SetReport("Load a save first: there is no player in the world to spawn beside.");

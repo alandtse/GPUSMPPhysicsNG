@@ -153,6 +153,10 @@ namespace TestBench
 		void SpawnNow(std::size_t a_count, const std::vector<std::uint32_t>& a_bases);
 		void TurnNow(int a_index, float a_degrees);
 		void ClearNow();
+		/** @brief Disables the next few characters ClearNow queued and schedules the rest for the next frame. Game thread only. */
+		void DisableBatchNow();
+		/** @brief Disables every character still queued, so a spawn or another clear starts from a settled world. Game thread only. */
+		void FinishDisableNow();
 		/** @brief Starts listening to the character's animation graph so a finished idle can be played again. Game thread only. */
 		void WatchForIdleEnd(RE::Actor& a_actor);
 		struct IdleEndSink;
@@ -170,6 +174,8 @@ namespace TestBench
 		std::vector<RE::FormID> crowdBases;              ///< The distinct bases of the last spawn, for hooks that change a base. Game thread only.
 		std::unordered_set<RE::FormID> watched;          ///< Characters whose graph idleEndSink listens to. Game thread only.
 		std::unordered_map<RE::FormID, Outfit> outfits;  ///< Touched on the game thread only.
+		std::vector<RE::ObjectRefHandle> pendingDisable;  ///< Characters ClearNow has not disabled yet. Game thread only.
+		std::size_t clearTotal = 0;                       ///< How many characters the clear in progress removes. Game thread only.
 		std::atomic<int> armorIndex{ -1 };               ///< Into ArmorNames() for the armor the crowd wears, -1 for none. Written on the game thread.
 		std::atomic<int> cloakIndex{ -1 };               ///< Into CloakNames() for the cloak the crowd wears, -1 for none. Written on the game thread.
 		RE::TESObjectARMO* cloak = nullptr;              ///< The cloak behind cloakIndex. Game thread only.
