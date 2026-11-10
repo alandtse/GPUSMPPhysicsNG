@@ -25,6 +25,16 @@ add_repositories("gsp-pkgs xmake-pkgs")
 add_requires("skse-menu-framework-api 3.7.0")
 add_requires("catch2", "nlohmann_json", "thread-pool", "directxtk", "microsoft-detours")
 
+-- Opt-in profiling: xmake f --tracy=y builds the real Tracy client (v0.15.0 to match the profiler server; on demand, localhost only); off, zones compile away.
+option("tracy")
+set_default(false)
+set_showmenu(true)
+set_description("Build with the Tracy profiler client")
+option_end()
+if has_config("tracy") then
+    add_requires("tracy v0.15.0", { configs = { cmake = false, on_demand = true, only_localhost = true, fibers = false } })
+end
+
 -- Engine-free solver core: rig building, packing, collision, skinning math.
 -- No CommonLib, no D3D; this is what the Catch2 suite exercises.
 target("GPUSMPPhysicsNG-Core")
@@ -41,6 +51,10 @@ add_deps("GPUSMPPhysicsNG-Core")
 add_packages("thread-pool")
 add_includedirs("src", { public = true })
 add_files("src/Utils/D3D.cpp", "src/d3d/*.cpp")
+if has_config("tracy") then
+    add_packages("tracy", { public = true })
+    add_defines("TRACY_ENABLE", { public = true })
+end
 add_defines("WIN32_LEAN_AND_MEAN", "NOMINMAX", { public = true })
 add_syslinks("d3dcompiler", "d3d11", "dxgi", "windowsapp")
 target_end()
@@ -80,6 +94,11 @@ add_files(
 )
 add_headerfiles("src/**.h")
 add_includedirs("src", "vendor/include", "vendor/include/devbench")
+if has_config("tracy") then
+    add_packages("tracy")
+else
+    add_includedirs("vendor/tracy-stub")
+end
 add_syslinks("d3dcompiler", "shell32")
 set_pcxxheader("src/pch.h")
 

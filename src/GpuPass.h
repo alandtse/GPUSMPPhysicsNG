@@ -2,6 +2,7 @@
 
 #include "Globals.h"
 #include "GpuPassTimer.h"
+#include "d3d/TracyGpu.h"
 
 #include <d3d11_1.h>
 #include <string>
@@ -12,7 +13,8 @@
 struct ScopedGpuPass
 {
 	explicit ScopedGpuPass(std::string_view a_name) :
-		timerToken(GpuPassTimer::Begin(a_name))
+		timerToken(GpuPassTimer::Begin(a_name)),
+		tracyZone(a_name)
 	{
 		if (globals::d3d::context && SUCCEEDED(globals::d3d::context->QueryInterface(IID_PPV_ARGS(annotation.put())))) {
 			const std::wstring wide(a_name.begin(), a_name.end());
@@ -32,6 +34,7 @@ struct ScopedGpuPass
 
 private:
 	std::uint64_t timerToken;
+	TracyGpu::Zone tracyZone;
 	winrt::com_ptr<ID3DUserDefinedAnnotation> annotation;
 };
 

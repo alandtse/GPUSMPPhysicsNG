@@ -14,6 +14,7 @@
 #include "Utils/MathUtils.h"
 #include "Utils/StringUtils.h"
 #include "Utils/TestBench/TestCrowd.h"
+#include "d3d/TracyGpu.h"
 #include "engine/ReadyWeaponGate.h"
 #include "smp/CardVertices.h"
 
@@ -921,6 +922,7 @@ RE::BSEventNotifyControl SmpPhysicsFeature::FrameSyncListener::ProcessEvent(
 	const hdt::PluginFrameSyncEvent*, RE::BSTEventSource<hdt::PluginFrameSyncEvent>*)
 {
 	GpuPassTimer::NextFrame();
+	TracyGpu::NextFrame();
 	feature.crowdWigs.Tick();
 	feature.StepClaims();
 	feature.RecordBoneFrame();

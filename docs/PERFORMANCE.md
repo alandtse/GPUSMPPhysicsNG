@@ -100,6 +100,14 @@ The tables above predate the removal of the chain solver and the in-tree arm. Th
   `ContactPasses` and left the frame at 30.9 ms against 30.5 ms. So the SE per-pass timestamps charge the first pass that
   has to wait for the GPU to catch up with the game's rendering, and the solver's own cost is the 3 ms the other passes
   add up to. The single-group change was reverted. The cause of the wait itself was not identified.
+- **Tracy on SE, 2026-11-10 (crowd 20, `xmake f --tracy=y`, client v0.15.0 to match the profiler server):** the
+  `SurfacePrep` 8 to 9 ms is one dispatch. With a GPU zone per dispatch, refit level 3 takes 8.6 ms and the other nine
+  levels, the bone, pose, triangle and leaf passes each take 0.005 ms. A zero-work sentinel pass placed just before
+  `SurfacePrep` costs 0.000 ms with no gap after it, so the wait is not earlier game work draining. Level 3 starts
+  about 3.9 ms after the frame mark and always ends 12.6 ms after it (stdev 0.7 ms), so the GPU resumes at a fixed
+  point in the frame. The shader is a 64-thread min/max of two child boxes. The cause is still unknown; an ETW GPU
+  trace needs an elevated shell. Tracy GPU zones are D3D11 timestamp queries, so they show duration, not queue waits.
+  Captures: `F:	mp	racy_se_20261110_baseline.tracy`, `..._per_dispatch.tracy`.
 - **VR, 2026-11-09 (null driver, crowd 20 and 30):** `ContactSpheres` 1.1 ms, solver total about 3.1 to 3.3 ms
   (28% of 11.1 ms), against 10 to 11 ms in the VR table above. The cause of the gap was not identified.
 - **`clearTestCrowd` crashed SE at the end of both sessions**, in the engine: `BipedAnim::dtor` -> `RemoveAllParts` ->

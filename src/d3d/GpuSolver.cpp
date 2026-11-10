@@ -1051,18 +1051,22 @@ namespace SmpPhysics
 			context->CSSetShaderResources(0, kSurfacePrepViewCount, prepViews);
 			context->CSSetUnorderedAccessViews(0, kSurfacePrepTargetCount, prepTargets, nullptr);
 			if (prep.boneCount > 0u) {
+				CS_GPU_PASS("SmpPhysics::SP_Bones");
 				context->CSSetShader(surfaceBonesShader->get(), nullptr, 0);
 				context->Dispatch(Groups(prep.boneCount), 1, 1);
 			}
 			if (prep.vertexCount > 0u) {
+				CS_GPU_PASS("SmpPhysics::SP_Pose");
 				context->CSSetShader(surfacePoseShader->get(), nullptr, 0);
 				context->Dispatch(Groups(prep.vertexCount), 1, 1);
 			}
 			if (prep.triangleCount > 0u) {
+				CS_GPU_PASS("SmpPhysics::SP_Triangles");
 				context->CSSetShader(surfaceTrianglesShader->get(), nullptr, 0);
 				context->Dispatch(Groups(prep.triangleCount), 1, 1);
 			}
 			if (prep.leafCount > 0u) {
+				CS_GPU_PASS("SmpPhysics::SP_Leaves");
 				context->CSSetShader(surfaceLeavesShader->get(), nullptr, 0);
 				context->Dispatch(Groups(prep.leafCount), 1, 1);
 			}
@@ -1071,6 +1075,7 @@ namespace SmpPhysics
 				prep.refitCount = surfacePrep.refitLevelStart[level + 1u] - prep.refitFirst;
 				if (prep.refitCount == 0u)
 					continue;
+				CS_GPU_PASS("SmpPhysics::SP_Refit");
 				surfacePrepConstants->Update(prep);
 				context->CSSetShader(surfaceRefitShader->get(), nullptr, 0);
 				context->Dispatch(Groups(prep.refitCount), 1, 1);
@@ -1119,6 +1124,7 @@ namespace SmpPhysics
 
 	bool GpuSolver::SubmitFrame(const std::vector<FrameClaim>& a_claims)
 	{
+		ZoneScopedN("GpuSolver::SubmitFrame");
 		try {
 			return SubmitFrameUnchecked(a_claims);
 		} catch (const std::exception& error) {
@@ -1208,6 +1214,7 @@ namespace SmpPhysics
 
 	bool GpuSolver::Poll(std::vector<ClaimResult>& a_results)
 	{
+		ZoneScopedN("GpuSolver::Poll");
 		a_results.clear();
 		if (!available || !outputs || claims.empty())
 			return false;
