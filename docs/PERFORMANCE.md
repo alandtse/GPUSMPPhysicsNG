@@ -93,9 +93,13 @@ The tables above predate the removal of the chain solver and the in-tree arm. Th
 - **The machine ran slower than on 2026-11-08** (hdtSMP64 alone 24.6 ms with no crowd against 13.5 ms then), so compare
   within this table only, not against the table above. The cause was not identified.
 - **Port GPU ms per frame at crowd 30:** `ContactSpheres` 1.17 (two calls), `RigidSolve` 1.10, `RigidSetup` 0.65,
-  `SurfacePrep` 8.88. On SE `SurfacePrep` sits at 8 to 9 ms for every crowd above 0 (0.04 at crowd 0) and does not grow
-  with the crowd, where VR measures 0.05 to 0.1 ms; a flat cost like that looks like a wait inside the timed region
-  rather than compute, but this was not investigated.
+  `SurfacePrep` 8.88. The `SurfacePrep` figure is a wait, not solver work: on SE it sat at 8 to 9 ms for every crowd
+  above 0 (0.04 at crowd 0), all of it in the 10 BVH refit dispatches. Ten empty dispatches of the same shader cost
+  0.014 ms, GPU skinning and the batched palette made no difference, and replacing the 10 dispatches with one thread
+  group (correct on `surfaceCheck`, 0 mismatches) cut `SurfacePrep` to 0.04 ms but moved the same 8 to 11 ms into
+  `ContactPasses` and left the frame at 30.9 ms against 30.5 ms. So the SE per-pass timestamps charge the first pass that
+  has to wait for the GPU to catch up with the game's rendering, and the solver's own cost is the 3 ms the other passes
+  add up to. The single-group change was reverted. The cause of the wait itself was not identified.
 - **VR, 2026-11-09 (null driver, crowd 20 and 30):** `ContactSpheres` 1.1 ms, solver total about 3.1 to 3.3 ms
   (28% of 11.1 ms), against 10 to 11 ms in the VR table above. The cause of the gap was not identified.
 - **`clearTestCrowd` crashed SE at the end of both sessions**, in the engine: `BipedAnim::dtor` -> `RemoveAllParts` ->
