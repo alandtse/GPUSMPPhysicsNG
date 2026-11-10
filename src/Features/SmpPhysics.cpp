@@ -61,7 +61,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	ShowJointDebug,
 	DebugMaxActors,
 	ShowSkeletonDebug,
-	BatchSkinPalette)
+	BatchSkinPalette,
+	FlushAfterSubmit)
 
 using namespace SmpPhysicsLimits;
 
@@ -2665,6 +2666,7 @@ void SmpPhysicsFeature::StepClaims()
 		bool submitted = false;
 		{
 			ZoneScopedN("SmpPhysics::Submit");
+			gpuSolver.SetFlushAfterSubmit(settings.FlushAfterSubmit);
 			submitted = !submissions.empty() && gpuSolver.SubmitFrame(submissions);
 		}
 		const auto worldsView = gpuSolver.WorldsView();

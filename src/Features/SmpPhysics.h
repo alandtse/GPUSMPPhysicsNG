@@ -93,6 +93,7 @@ struct SmpPhysicsFeature final : Feature
 		bool ShowColliderDebug = false;  ///< Developer mode: outline the head, body and armor proxies and other bodies' capsules that hair collides with.
 		bool GrabStrands = true;         ///< In VR, closing a hand on hair holds that strand to the hand.
 		bool BatchSkinPalette = true;    ///< Builds every skinned mesh's matrices once per frame after the solver step, instead of one dispatch per draw.
+		bool FlushAfterSubmit = false;   ///< Sends the solver's commands to the GPU as soon as they are recorded; otherwise the driver holds them until the game flushes, which left the GPU idle for several milliseconds.
 	};
 
 	Settings settings;

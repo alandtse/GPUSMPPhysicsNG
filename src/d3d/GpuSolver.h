@@ -131,6 +131,7 @@ namespace SmpPhysics
 		void RemoveClaim(std::uint64_t a_token);
 		/** @brief Uploads every claim's inputs and steps them with the rigid-body solver, then copies the output for readback. */
 		[[nodiscard]] bool SubmitFrame(const std::vector<FrameClaim>& a_claims);
+		void SetFlushAfterSubmit(bool a_flush) noexcept { flushAfterSubmit = a_flush; }
 		/** @return True when a newer completed result was read; a_results then holds one entry per live claim. */
 		[[nodiscard]] bool Poll(std::vector<ClaimResult>& a_results);
 		/** @brief The counter SubmitFrame stamps into a result's frame; read it right after a successful SubmitFrame. */
@@ -320,6 +321,7 @@ namespace SmpPhysics
 		std::unique_ptr<ConstantBuffer> constants;
 		std::array<Readback, kStagingSlots> readbacks;
 		mutable std::atomic<bool> contactStatsRequested{};
+		bool flushAfterSubmit{ true };
 		winrt::com_ptr<ID3D11Buffer> contactStaging;
 		std::uint32_t contactStagingSlots{};
 		bool contactStagingPending{};

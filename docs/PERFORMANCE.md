@@ -123,7 +123,10 @@ The tables above predate the removal of the chain solver and the in-tree arm. Th
   `RigidSetup` 0.33 ms, `RigidContact` 0.49 ms, a solver total near 1.1 ms against the 3 ms quoted above, while the
   frame stays at 32.6 ms (33.3 ms without the flush). The earlier per-pass figures on SE therefore overstate the
   solver by about 8 ms of misattributed wait, and the frame time was never bound by the solver's GPU work. The flush
-  costs about 0.3 ms of CPU in `SubmitFrame`; it is not in the code. The 3 ms and VR figures were not remeasured with a flush.
+  costs about 0.3 ms of CPU in `SubmitFrame`. An interleaved on/off A/B in one SE session (20 characters, 58 claims, four
+  12 s windows each, windows over 60 ms or with a compiler running discarded) gave 32.9 ms with the flush and 32.5 ms
+  without: no gain, so `FlushAfterSubmit` ships off and is only a switch for GPU timing. The 3 ms and VR figures were
+  not remeasured with a flush.
 - **VR, 2026-11-09 (null driver, crowd 20 and 30):** `ContactSpheres` 1.1 ms, solver total about 3.1 to 3.3 ms
   (28% of 11.1 ms), against 10 to 11 ms in the VR table above. The cause of the gap was not identified.
 - **`clearTestCrowd` crashed SE at the end of both sessions**, in the engine: `BipedAnim::dtor` -> `RemoveAllParts` ->

@@ -1203,6 +1203,8 @@ namespace SmpPhysics
 		context->CSSetUnorderedAccessViews(0, kStepTargetCount, noTargets, nullptr);
 		context->CSSetConstantBuffers(0, 1, &noConstant);
 		context->CSSetShader(nullptr, nullptr, 0);
+		if (flushAfterSubmit)
+			context->Flush();
 		return true;
 	}
 
