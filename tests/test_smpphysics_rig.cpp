@@ -137,7 +137,7 @@ TEST_CASE("Successive unnamed bone defaults accumulate", "[SmpPhysics]")
 	REQUIRE(result.rig.bones[static_cast<std::size_t>(hair)].angularDamping == Approx(0.25f));
 }
 
-TEST_CASE("Empty numbers keep their default and are reported", "[SmpPhysics]")
+TEST_CASE("Empty numbers are reported; an element keeps its default and a vector axis reads as 0", "[SmpPhysics]")
 {
 	const ParseResult result = ParseSmpXml(WrapSystem(R"XML(
 		<bone name="Head"><mass>0</mass></bone>
@@ -151,7 +151,7 @@ TEST_CASE("Empty numbers keep their default and are reported", "[SmpPhysics]")
 	REQUIRE(result.status == ParseStatus::Ok);
 	REQUIRE(result.warnings.size() == 2);
 	REQUIRE(result.rig.joints.size() == 1);
-	REQUIRE(result.rig.joints[0].linearLower.x == Approx(1.0f));
+	REQUIRE(result.rig.joints[0].linearLower.x == Approx(0.0f));
 }
 
 TEST_CASE("A constraint joining a bone to itself is dropped and reported", "[SmpPhysics]")

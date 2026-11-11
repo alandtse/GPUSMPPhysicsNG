@@ -401,8 +401,13 @@ namespace SmpPhysics
 					a_reason = "element '" + a_element.name + "' has no '" + kAxisNames[axis] + "' attribute";
 					return false;
 				}
-				if (RepairEmptyNumber(attribute->value, std::string("attribute '") + kAxisNames[axis] + "' of '" + a_element.name + "'"))
+				// An empty axis is read as 0, as the legacy hdtSMP64 did, not as the default, which for a joint's linear limits is free.
+				if (Trimmed(attribute->value).empty()) {
+					if (g_parseWarnings != nullptr)
+						g_parseWarnings->push_back(std::string("attribute '") + kAxisNames[axis] + "' of '" + a_element.name + "' is empty and reads as 0");
+					components[axis] = 0.0f;
 					continue;
+				}
 				if (!ParseFloatText(attribute->value, components[axis])) {
 					a_reason = std::string("attribute '") + kAxisNames[axis] + "' of '" + a_element.name + "' is not a finite number";
 					return false;
