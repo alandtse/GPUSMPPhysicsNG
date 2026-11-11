@@ -303,3 +303,10 @@ With `YQS.xml`'s empty axes fixed (`<linearUpperLimit x="" y="0" z="" />` on fou
 the same reading as the parser fix in 68eac47), hdtSMP64 does simulate the dress: with 30 dressed characters it reports 101 systems
 and 11,290 rigid bodies, against 71 and 7,570 without it, and its `PhysicsStep` costs 36.5 ms per frame (15.3 to 20.5 ms with
 wigs alone). The plugin arm and a like-for-like dress and dancing comparison have not been rerun on the fixed file yet.
+
+Dress comparison from separate runs: the plugin's cost does not depend on the XML fix (its parser already read an empty axis as
+zero, 68eac47), so its standing run (5.13 + 4.85 + 0.77 = 10.75 ms per frame) stands against hdtSMP64's 36.5 ms on the fixed file:
+a ratio of about 0.29, close to the wig-only 0.25 to 0.32 at 30 characters. The dancing plugin runs (9.4 to 10.2 ms) have no
+hdtSMP64 dancing partner on the fixed file, so a dancing ratio is not stated. Caveats: the two arms come from different launches,
+hdtSMP64 has one run (its wig-only repeats ranged 15.3 to 20.5 ms, about 15%), and the plugin's 0.77 ms hdtSMP64 residual was
+measured before the fix and assumed unchanged.
