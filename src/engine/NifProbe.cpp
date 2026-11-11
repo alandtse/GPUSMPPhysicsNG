@@ -8,10 +8,11 @@
 #include "Utils/TestBench/TestCrowd.h"
 #include "smp/NifPhysicsScan.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <map>
 #include <mutex>
-#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -48,6 +49,7 @@ namespace NifProbe
 		std::size_t bytesRead = 0;
 		double milliseconds = 0.0;
 		std::vector<Hit> hits;
+		std::atomic<std::uint32_t> generation{ 0 };
 
 		std::string ReadHeader(const std::string& a_model, bool& a_found)
 		{
@@ -71,26 +73,29 @@ namespace NifProbe
 		void Run(std::vector<Target> a_targets)
 		{
 			const auto begin = std::chrono::steady_clock::now();
-			std::set<std::string> seen;
+			std::map<std::string, SmpPhysics::NifPhysicsHint> seen;
 			std::size_t missed = 0;
 			std::size_t read = 0;
 			std::vector<Hit> found;
 			std::size_t checked = 0;
 			for (const Target& target : a_targets) {
 				for (const std::string& model : target.models) {
-					if (!seen.insert(model).second)
-						continue;
-					bool exists = false;
-					const std::string bytes = ReadHeader(model, exists);
-					++checked;
-					if (!exists) {
-						++missed;
-						continue;
+					auto known = seen.find(model);
+					if (known == seen.end()) {
+						bool exists = false;
+						const std::string bytes = ReadHeader(model, exists);
+						++checked;
+						SmpPhysics::NifPhysicsHint hint;
+						if (exists) {
+							read += bytes.size();
+							hint = SmpPhysics::ScanNifHeader(bytes);
+						} else {
+							++missed;
+						}
+						known = seen.emplace(model, std::move(hint)).first;
 					}
-					read += bytes.size();
-					const SmpPhysics::NifPhysicsHint hint = SmpPhysics::ScanNifHeader(bytes);
-					if (hint.hasExtraData)
-						found.push_back({ target.armor, target.formID, model, hint.xmlPaths });
+					if (known->second.hasExtraData)
+						found.push_back({ target.armor, target.formID, model, known->second.xmlPaths });
 				}
 				done.fetch_add(1, std::memory_order_relaxed);
 			}
@@ -101,6 +106,7 @@ namespace NifProbe
 			bytesRead = read;
 			milliseconds = elapsed;
 			hits = std::move(found);
+			generation.fetch_add(1, std::memory_order_release);
 			running.store(false, std::memory_order_release);
 		}
 	}
@@ -136,6 +142,37 @@ namespace NifProbe
 		done.store(0, std::memory_order_relaxed);
 		running.store(true, std::memory_order_release);
 		worker = std::thread(Run, std::move(targets));
+	}
+
+	bool Running()
+	{
+		return running.load(std::memory_order_acquire);
+	}
+
+	std::uint32_t Generation()
+	{
+		return generation.load(std::memory_order_acquire);
+	}
+
+	std::pair<std::size_t, std::size_t> Progress()
+	{
+		const std::scoped_lock lock(mutex);
+		return { done.load(std::memory_order_relaxed), armors };
+	}
+
+	std::vector<std::string> XmlPaths(RE::FormID a_armor)
+	{
+		std::vector<std::string> paths;
+		const std::scoped_lock lock(mutex);
+		for (const Hit& hit : hits) {
+			if (hit.formID != a_armor)
+				continue;
+			for (const std::string& path : hit.xml) {
+				if (std::ranges::find(paths, path) == paths.end())
+					paths.push_back(path);
+			}
+		}
+		return paths;
 	}
 
 	json Result()

@@ -9,6 +9,7 @@
 #include "smp/ClaimTally.h"
 #include "smp/Collision.h"
 #include "smp/CollisionOverride.h"
+#include "smp/PhysicsHealth.h"
 #include "smp/RepairLog.h"
 #include "smp/SelfWindShelter.h"
 #include "smp/SkinnedSurface.h"
@@ -174,6 +175,8 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] std::vector<std::string> GetDeclinedLines() const;
 	/** @brief Each physics file with a problem, as text to paste to its author. */
 	[[nodiscard]] std::vector<std::pair<std::string, std::string>> GetRepairReports() const;
+	/** @brief The worst health among each item's physics files, parsing any not yet read; None for an item with no files. Game thread only. */
+	[[nodiscard]] std::vector<SmpPhysics::Health> ItemHealths(const std::vector<std::vector<std::string>>& a_itemFiles);
 
 	/** @brief Link state, live claims and declined physics files, for the devbench status query. */
 	[[nodiscard]] json BuildStatusJson() const;

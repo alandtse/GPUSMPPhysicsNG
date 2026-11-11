@@ -9,10 +9,12 @@
 #include "Utils/TestBench/TestCrowd.h"
 #include "Utils/TestBench/TestCrowdActions.h"
 #include "Utils/TestBench/TestCrowdLayout.h"
+#include "engine/NifProbe.h"
 #include "plugin/Instance.h"
 #include "plugin/Settings.h"
 #include "ui/UiModel.h"
 
+#include <chrono>
 #include <tuple>
 
 namespace
@@ -144,6 +146,43 @@ namespace
 		std::vector<std::string> items{ a_first };
 		items.insert(items.end(), a_rest.begin(), a_rest.end());
 		return items;
+	}
+
+	/** @brief Colours a list by how its items' physics files stand once a scan has found them; a_skip leading entries (such as "None") have no item. */
+	std::function<std::vector<int>()> HealthColours(std::function<std::vector<RE::TESObjectARMO*>()> a_forms, std::size_t a_skip)
+	{
+		struct Cache
+		{
+			std::uint32_t generation{};
+			std::chrono::steady_clock::time_point at{};
+			std::vector<int> values;
+		};
+		return [forms = std::move(a_forms), a_skip, cache = std::make_shared<Cache>()] {
+			const std::uint32_t generation = NifProbe::Generation();
+			if (!generation)
+				return std::vector<int>{};
+			const auto now = std::chrono::steady_clock::now();
+			if (cache->generation == generation && now - cache->at < std::chrono::seconds(1))
+				return cache->values;
+			const std::vector<RE::TESObjectARMO*> items = forms();
+			std::vector<std::vector<std::string>> files;
+			files.reserve(items.size());
+			for (const RE::TESObjectARMO* item : items)
+				files.push_back(NifProbe::XmlPaths(item->GetFormID()));
+			const std::vector<SmpPhysics::Health> health = Instance().ItemHealths(files);
+			cache->values.assign(a_skip, 0);
+			for (const SmpPhysics::Health state : health)
+				cache->values.push_back(static_cast<int>(state));
+			cache->generation = generation;
+			cache->at = now;
+			return cache->values;
+		};
+	}
+
+	Row WithHealth(Row a_row, std::function<std::vector<RE::TESObjectARMO*>()> a_forms, std::size_t a_skip)
+	{
+		a_row.itemStatusFn = HealthColours(std::move(a_forms), a_skip);
+		return a_row;
 	}
 
 	std::uint64_t ClaimLineId(const SmpPhysicsFeature::ClaimRow& a_row)
@@ -286,8 +325,14 @@ void PluginUi::Register()
 			const int worn = TestBench::GetCrowd().WornArmorIndex();
 			const auto& names = TestBench::TestCrowd::ArmorNames();
 			return "Wearing: " + (worn >= 0 && worn < static_cast<int>(names.size()) ? names[static_cast<std::size_t>(worn)] : std::string("none")); }),
-		Browse("Armor list", "Every playable body armor; click one to dress the test characters in it.", &choices.armor, [] { return TestBench::TestCrowd::ArmorNames(); }, [] { return TestBench::GetCrowd().WornArmorIndex(); }, [&choices] { TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(choices.armor)); }),
-		Browse("Cloak", "A cloak or cape every test character wears, on top of armor or bare body.", &choices.cloak, [] { return WithFirst("None", TestBench::TestCrowd::CloakNames()); }, [] { return TestBench::GetCrowd().WornCloakIndex() + 1; }, [&choices] { RunCrowdCommand("setTestCrowdCloak", { { "index", choices.cloak - 1 } }); }),
+		Button("Scan for physics", "Reads every body armor's and cloak's models for physics data and checks each physics file, without dressing anyone. The lists below are coloured by the result.", [] { NifProbe::Start(); }),
+		Text([] {
+			const auto [done, total] = NifProbe::Progress();
+			if (NifProbe::Running())
+				return std::format("Scanning: {} of {}", done, total);
+			return NifProbe::Generation() ? std::string("Green: physics file works. Amber: repaired and used. Red: file fault. Plain: no physics found.") : std::string("Not scanned yet."); }),
+		WithHealth(Browse("Armor list", "Every playable body armor; click one to dress the test characters in it.", &choices.armor, [] { return TestBench::TestCrowd::ArmorNames(); }, [] { return TestBench::GetCrowd().WornArmorIndex(); }, [&choices] { TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(choices.armor)); }), [] { return TestBench::TestCrowd::ArmorForms(); }, 0),
+		WithHealth(Browse("Cloak", "A cloak or cape every test character wears, on top of armor or bare body.", &choices.cloak, [] { return WithFirst("None", TestBench::TestCrowd::CloakNames()); }, [] { return TestBench::GetCrowd().WornCloakIndex() + 1; }, [&choices] { RunCrowdCommand("setTestCrowdCloak", { { "index", choices.cloak - 1 } }); }), [] { return TestBench::TestCrowd::CloakForms(); }, 1),
 		Header("Animation"),
 		Check("Animate on spawn (characters' AI runs)", "Off, test characters spawn frozen.", &choices.animateOnSpawn, [&choices] { TestBench::GetCrowd().SetAnimateOnSpawn(choices.animateOnSpawn); }),
 		Check("Loop the animation", "Plays the animation again each time it ends.", &choices.loopAnimation, [&choices] { RunCrowdCommand("setTestCrowdLoop", { { "enabled", choices.loopAnimation } }); }),

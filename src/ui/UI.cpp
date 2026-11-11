@@ -50,6 +50,13 @@ namespace SettingsUi
 			ImGuiMCP::SetNextItemWidth(kWidth);
 			ImGuiMCP::InputTextWithHint(("##gsp_filter_" + row.label).c_str(), "Filter", row.filterText.data(), row.filterText.size());
 			const std::string filter = Lower(row.filterText.data());
+			std::vector<int> status;
+			if (row.itemStatusFn) {
+				status = row.itemStatusFn();
+				ImGuiMCP::SetNextItemWidth(kWidth);
+				ImGuiMCP::Combo(("##gsp_show_" + row.label).c_str(), &row.showMode, "All\0With physics\0Needs attention\0", -1);
+			}
+			const auto statusOf = [&status](std::size_t a_index) { return a_index < status.size() ? status[a_index] : 0; };
 			const int selected = row.selectedFn ? row.selectedFn() : *row.intValue;
 			const bool scroll = selected != row.lastSelected;
 			bool clicked = false;
@@ -60,16 +67,26 @@ namespace SettingsUi
 					const std::string& name = row.items[index];
 					if (!filter.empty() && Lower(name).find(filter) == std::string::npos)
 						continue;
+					const int state = statusOf(index);
+					if ((row.showMode == 1 && state == 0) || (row.showMode == 2 && state < 2))
+						continue;
 					if (shown >= kMaxRows) {
 						++hidden;
 						continue;
 					}
 					++shown;
 					const bool isSelected = static_cast<int>(index) == selected;
+					const bool coloured = state > 0;
+					if (coloured) {
+						constexpr ImGuiMCP::ImVec4 kColours[] = { { 0.40f, 0.85f, 0.45f, 1.0f }, { 0.95f, 0.65f, 0.10f, 1.0f }, { 0.95f, 0.35f, 0.35f, 1.0f } };
+						ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kColours[state - 1]);
+					}
 					if (ImGuiMCP::Selectable((name + "##gsp_item_" + std::to_string(index)).c_str(), isSelected, 0, { 0, 0 })) {
 						*row.intValue = static_cast<int>(index);
 						clicked = true;
 					}
+					if (coloured)
+						ImGuiMCP::PopStyleColor(1);
 					if (isSelected && scroll)
 						ImGuiMCP::SetScrollHereY(0.5f);
 				}

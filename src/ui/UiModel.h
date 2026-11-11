@@ -36,6 +36,8 @@ namespace SettingsUi
 		std::string joinedItems;                            ///< items as the framework wants them; built once by the page code.
 		std::function<std::string()> textFn;                ///< A Note shows this instead of its label when set, refreshed every frame.
 		std::function<int()> selectedFn;                    ///< A List's highlighted item, read every frame so changes made elsewhere show; intValue when empty.
+		std::function<std::vector<int>()> itemStatusFn;     ///< A List's per-item state read every frame: 0 unknown, 1 working (green), 2 repaired (amber), 3 broken (red). Adds a Show filter.
+		int showMode{};                                     ///< Which items a List with itemStatusFn shows: 0 all, 1 with physics, 2 needing attention.
 		std::array<char, 64> filterText{};                  ///< What a List's filter box holds.
 		int lastSelected{ -2 };                             ///< The item a List last scrolled to.
 		bool sameLine{};

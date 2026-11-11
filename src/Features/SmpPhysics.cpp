@@ -29,6 +29,7 @@
 #include <format>
 #include <functional>
 #include <numbers>
+#include <set>
 #include <string>
 #include <utility>
 
@@ -818,6 +819,43 @@ std::vector<std::pair<std::string, std::string>> SmpPhysicsFeature::GetRepairRep
 	for (const SmpPhysics::RepairLog::FileReport& report : repairLog.Take())
 		reports.emplace_back(report.file, SmpPhysics::RepairLog::Format(report));
 	return reports;
+}
+
+std::vector<SmpPhysics::Health> SmpPhysicsFeature::ItemHealths(const std::vector<std::vector<std::string>>& a_itemFiles)
+{
+	const auto key = [](const std::string& a_path) {
+		std::string normal = Util::ToLowerAscii(a_path);
+		std::ranges::replace(normal, '/', '\\');
+		return normal;
+	};
+	std::set<std::string> repaired;
+	for (const SmpPhysics::RepairLog::FileReport& report : repairLog.Take())
+		repaired.insert(key(report.file));
+	std::map<std::string, std::string> declined;
+	{
+		const std::scoped_lock lock(stateMutex);
+		for (const auto& entry : declinedFiles)
+			declined.emplace(key(entry.first), entry.second);
+	}
+
+	std::map<std::string, SmpPhysics::Health> byFile;
+	std::vector<SmpPhysics::Health> result;
+	result.reserve(a_itemFiles.size());
+	for (const std::vector<std::string>& files : a_itemFiles) {
+		SmpPhysics::Health worst = SmpPhysics::Health::None;
+		for (const std::string& file : files) {
+			const std::string fileKey = key(file);
+			auto found = byFile.find(fileKey);
+			if (found == byFile.end()) {
+				const auto parsed = GetParsedRig(file);
+				const auto reason = declined.find(fileKey);
+				found = byFile.emplace(fileKey, SmpPhysics::ClassifyFile(parsed->status == SmpPhysics::ParseStatus::Ok, parsed->reason, repaired.contains(fileKey) || !parsed->warnings.empty(), reason != declined.end() ? std::string_view(reason->second) : std::string_view{})).first;
+			}
+			worst = SmpPhysics::Worse(worst, found->second);
+		}
+		result.push_back(worst);
+	}
+	return result;
 }
 
 json SmpPhysicsFeature::SurfaceCheckJson() const
