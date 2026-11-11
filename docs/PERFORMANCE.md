@@ -230,3 +230,21 @@ Frame ms, hdtSMP64 (two windows) / this plugin (one window; the run's second plu
 20 characters (52 claims) 45.5, 45.6 / 32.7; 30 characters (72 claims) 61.2, 53.7 / 40.2.
 The plugin frame is 28% shorter at 20 and 25 to 34% shorter at 30. The 30-character hdtSMP64 windows differ by 7 ms, so that
 size is the less certain. Data: `smp_ab_se_results_2026-11-11_{20,30}.json`. A VR run was not taken.
+
+## Tracy A/B against hdtSMP64 at 30 characters (SE, 2026-11-11, perf-test lock)
+
+Both plugins built with Tracy 0.15.0 (on demand; the hdtSMP64 fork's `vs2022-windows-avx2-tracy` preset, its overlay port
+bumped from the 0.14.1 pin to v0.15.0, configured with `-DCOPY_OUTPUT=OFF`). Both clients share port 8086 in one process:
+ours binds 127.0.0.1 and hdtSMP64 the wildcard and IPv6, so `tracy-capture -a ::1 -p 8086` reaches hdtSMP64 and
+`-a 127.0.0.1` ours. 30 test characters, throttles lifted on both, 20 s captured per arm, zone totals from `tracy-csvexport`.
+
+| Arm                                   | What ran                                                    | Mean per frame     |
+| ------------------------------------- | ----------------------------------------------------------- | ------------------ |
+| hdtSMP64 only (plugin disabled)       | `PhysicsStep` (collision 5.0 ms, solve 2.4 ms, read 2.4 ms) | 15.3 ms (max 28.4) |
+| This plugin (hdtSMP64 keeps the rest) | CPU `SmpPhysics::Step` (pack 0.64, step 0.60)               | 2.0 ms             |
+|                                       | GPU `RigidContact` + `RigidSolve`                           | 1.19 + 1.14 ms     |
+|                                       | hdtSMP64 `PhysicsStep` left on other items                  | 0.56 ms            |
+
+About 5 ms of CPU and GPU work against 15.3 ms, so the plugin spends roughly a third of what hdtSMP64 does on the same
+characters. The Tracy GPU zones `SurfacePrep` and `SP_Refit` read 9 ms per frame each, against 0.1 ms from the in-plugin pass
+timer; they open the GPU timeline's busy stretch and look like timestamp artefacts, not cost, so they are left out above.
