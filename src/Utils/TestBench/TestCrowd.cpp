@@ -402,15 +402,56 @@ namespace TestBench
 		outfits.erase(found);
 	}
 
+	std::vector<RE::Actor*> TestCrowd::OutfitTargets()
+	{
+		std::vector<RE::Actor*> targets;
+		for (const RE::ObjectRefHandle& handle : spawned) {
+			auto reference = handle.get();
+			auto* actor = reference ? reference->As<RE::Actor>() : nullptr;
+			if (actor && actor->Is3DLoaded())
+				targets.push_back(actor);
+		}
+		auto* player = globals::game::player;
+		if (includePlayer.load(std::memory_order_relaxed) && player && player->Is3DLoaded())
+			targets.push_back(player);
+		return targets;
+	}
+
+	void TestCrowd::SetIncludePlayer(bool a_include)
+	{
+		if (auto* task = SKSE::GetTaskInterface())
+			task->AddTask([this, a_include] { SetIncludePlayerNow(a_include); });
+	}
+
+	void TestCrowd::SetIncludePlayerNow(bool a_include)
+	{
+		auto* player = globals::game::player;
+		if (!player || !player->Is3DLoaded()) {
+			SetReport("Load a save first: there is no player to dress.");
+			return;
+		}
+		includePlayer.store(a_include, std::memory_order_relaxed);
+		if (a_include) {
+			const int worn = armorIndex.load(std::memory_order_relaxed);
+			if (worn >= 0)
+				DressArmorNow(static_cast<std::size_t>(worn));
+			else if (stripped.load(std::memory_order_relaxed))
+				StripActor(*player);
+			DressCloak(*player);
+			SetReport("The outfit controls now act on the player too.");
+			return;
+		}
+		RestoreActor(*player);
+		if (cloak)
+			Unequip(*player, *cloak);
+		SetReport("The outfit controls leave the player alone again; the player's own outfit is back on.");
+	}
+
 	void TestCrowd::SetStrippedNow(bool a_stripped)
 	{
 		stripped.store(a_stripped, std::memory_order_relaxed);
 		armorIndex.store(-1, std::memory_order_relaxed);
-		for (const RE::ObjectRefHandle& handle : spawned) {
-			auto reference = handle.get();
-			auto* actor = reference ? reference->As<RE::Actor>() : nullptr;
-			if (!actor || !actor->Is3DLoaded())
-				continue;
+		for (RE::Actor* actor : OutfitTargets()) {
 			if (a_stripped)
 				StripActor(*actor);
 			else
@@ -475,11 +516,7 @@ namespace TestBench
 		RE::TESObjectARMO* previous = cloak;
 		cloak = chosen;
 		cloakIndex.store(chosen ? a_index : -1, std::memory_order_relaxed);
-		for (const RE::ObjectRefHandle& handle : spawned) {
-			auto reference = handle.get();
-			auto* actor = reference ? reference->As<RE::Actor>() : nullptr;
-			if (!actor || !actor->Is3DLoaded())
-				continue;
+		for (RE::Actor* actor : OutfitTargets()) {
 			if (previous && previous != chosen)
 				Unequip(*actor, *previous);
 			DressCloak(*actor);
@@ -515,11 +552,7 @@ namespace TestBench
 		armorIndex.store(static_cast<int>(a_index), std::memory_order_relaxed);
 		RE::TESObjectARMO* armor = armors[a_index];
 		stripped.store(true, std::memory_order_relaxed);
-		for (const RE::ObjectRefHandle& handle : spawned) {
-			auto reference = handle.get();
-			auto* actor = reference ? reference->As<RE::Actor>() : nullptr;
-			if (!actor || !actor->Is3DLoaded())
-				continue;
+		for (RE::Actor* actor : OutfitTargets()) {
 			Outfit& outfit = outfits[actor->GetFormID()];
 			if (outfit.cycled)
 				Unequip(*actor, *outfit.cycled);

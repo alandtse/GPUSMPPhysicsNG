@@ -164,6 +164,7 @@ namespace
 		bool anyAdultWoman = true;
 		bool randomOrder = false;
 		bool stripped = false;
+		bool includePlayer = false;
 		bool animateOnSpawn = false;
 		bool loopAnimation = false;
 		int armor = -1;
@@ -277,6 +278,7 @@ void PluginUi::Register()
 		Button("Refresh", "Rebuilds their 3D and redoes what a rebuild undoes.", [] { RunCrowdCommand("refreshTestCrowd"); }, true),
 		Text([] { return std::format("{}  ({} standing)", TestBench::GetCrowd().Report(), TestBench::GetCrowd().Count()); }),
 		Header("Outfit"),
+		Check("Include the player", "Strip, armor and cloak choices below also apply to you; off, your own outfit is put back and the cloak comes off.", &choices.includePlayer, [&choices] { RunCrowdCommand("setTestCrowdIncludePlayer", { { "enabled", choices.includePlayer } }); }),
 		Check("Strip armor and weapons", "Takes armor and weapons off, except the wigs; later spawns start stripped while this is on.", &choices.stripped, [&choices] { RunCrowdCommand("stripTestCrowd", { { "enabled", choices.stripped } }); }),
 		Button("Previous armor", "Dresses everyone in the previous body armor.", [] { RunCrowdCommand("cycleTestCrowdArmor", { { "step", -1 } }); }),
 		Button("Next armor", "Dresses everyone in the next body armor.", [] { RunCrowdCommand("cycleTestCrowdArmor", { { "step", 1 } }); }, true),

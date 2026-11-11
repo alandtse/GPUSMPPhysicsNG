@@ -66,6 +66,12 @@ namespace TestBench
 		void Clear();
 		/** @brief Takes armor and weapons off the characters standing now, except what hooks keep,, or puts it back; characters spawned later start stripped while it is on. */
 		void SetStripped(bool a_stripped);
+		/**
+		 * @brief Makes the outfit controls (stripping, armor and cloak) act on the player as well as the spawned characters, or not.
+		 * @details Turning it on dresses the player in what the crowd wears now; turning it off puts the player's own outfit back and takes the cloak off.
+		 */
+		void SetIncludePlayer(bool a_include);
+		[[nodiscard]] bool IncludesPlayer() const noexcept { return includePlayer.load(std::memory_order_relaxed); }
 		/** @brief Dresses every character in the next (a_step 1) or previous body armor of ArmorNames(), with weapons and other gear off and what hooks keep left on. */
 		void CycleArmor(int a_step);
 		/** @brief Dresses every character in the body armor at a_index of ArmorNames(), as CycleArmor does. */
@@ -144,6 +150,9 @@ namespace TestBench
 		void StripActor(RE::Actor& a_actor);
 		void RestoreActor(RE::Actor& a_actor);
 		void SetStrippedNow(bool a_stripped);
+		void SetIncludePlayerNow(bool a_include);
+		/** @brief The spawned characters with 3D loaded, then the player when included. Game thread only. */
+		[[nodiscard]] std::vector<RE::Actor*> OutfitTargets();
 		void CycleArmorNow(int a_step);
 		void SelectCloakNow(int a_index);
 		/** @brief Puts the chosen cloak on a character that does not wear it; does nothing while none is chosen. */
@@ -167,6 +176,7 @@ namespace TestBench
 		std::string animation;                     ///< The chosen idle's editor ID, or empty for the default. Guarded by mutex.
 		std::atomic<std::size_t> count{ 0 };
 		std::atomic<bool> stripped{ false };
+		std::atomic<bool> includePlayer{ false };
 		std::atomic<bool> animateOnSpawn{ false };
 		std::atomic<bool> loopAnimation{ false };
 		std::unique_ptr<IdleEndSink> idleEndSink;
