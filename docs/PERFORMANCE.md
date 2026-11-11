@@ -221,3 +221,12 @@ Dress crowd of 10/20: `ContactSpheres` 0.39/0.76 ms, `RigidSolve` 0.58/0.59 ms. 
 (`ContactSpheres` 1.00 and `RigidSolve` 0.63 ms at the 72-claim SE dress crowd), and the largest island is 182 constraints as on SE.
 Nothing here reopens the rejected items: the solver is about 0.6 ms and `ContactSpheres` 0.4 to 0.8 ms per substep, 2 substeps per
 frame, so roughly 2.5 ms of an 11.1 ms VR frame at 20 characters. Data: `gpu_pass_cost_vr_base_{wigs,dress}.json`.
+
+## SE frame time at 20 and 30 characters (2026-11-11, perf-test lock)
+
+`smp_ab.py` on SE with hdtSMP64's throttles lifted, one crowd size per run on one launch, `devbench` frame counter (not Tracy:
+hdtSMP64's cost cannot be traced). The machine ran slower than on 2026-11-09, so compare arms within a size only.
+Frame ms, hdtSMP64 (two windows) / this plugin (one window; the run's second plugin window timed out):
+20 characters (52 claims) 45.5, 45.6 / 32.7; 30 characters (72 claims) 61.2, 53.7 / 40.2.
+The plugin frame is 28% shorter at 20 and 25 to 34% shorter at 30. The 30-character hdtSMP64 windows differ by 7 ms, so that
+size is the less certain. Data: `smp_ab_se_results_2026-11-11_{20,30}.json`. A VR run was not taken.
