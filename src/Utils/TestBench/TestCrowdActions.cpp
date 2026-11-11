@@ -63,6 +63,14 @@ void TestBench::RegisterUxActions()
 		[](const json& a_args) { TestBench::GetCrowd().SetIncludePlayer(a_args.value("enabled", true)); });
 	TOOL_COMMAND(kOwnerName, "cycleTestCrowdArmor", "Dress every test character in the next or previous playable body armor, with weapons and other gear off and what hooks keep left on, to compare armor types. Args: step (number, default 1; -1 goes back). Read the armor worn from testCrowdReport.",
 		[](const json& a_args) { TestBench::GetCrowd().CycleArmor(a_args.value("step", 1)); });
+	TOOL_COMMAND(kOwnerName, "setTestCrowdArmor", "Dress every test character in one playable body armor by name, so a run can use a chosen outfit. Args: name (string, case-insensitive part of an armor's name; the first match is worn).",
+		[](const json& a_args) {
+			const std::string name = Util::ToLowerAscii(a_args.value("name", std::string{}));
+			const auto& names = TestBench::TestCrowd::ArmorNames();
+			const auto match = std::find_if(names.begin(), names.end(), [&](const std::string& a_name) { return Util::ToLowerAscii(a_name).find(name) != std::string::npos; });
+			if (!name.empty() && match != names.end())
+				TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(match - names.begin()));
+		});
 	TOOL_COMMAND(kOwnerName, "setTestCrowdCloak", "Put a cloak or cape on every test character standing now, and on each one spawned later; it is a layer of its own that stays on through stripping and armor changes. Args: name (string, case-insensitive part of an entry of testCrowdCloaks; the first match is worn), index (number, an entry of testCrowdCloaks), or neither / index -1 to take the cloak off. Read the outcome from testCrowdReport.",
 		[](const json& a_args) {
 			int index = a_args.value("index", -1);
