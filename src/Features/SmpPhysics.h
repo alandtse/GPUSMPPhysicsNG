@@ -262,6 +262,7 @@ private:
 
 		std::vector<std::vector<SmpPhysics::BoneSphere>> spheres;  ///< one list per rig bone
 		std::vector<std::uint32_t> boneSurfaceMask;                ///< per rig bone, the first 32 surfaces its spheres may touch; empty when every bone may touch every surface
+		std::size_t layerExempted{};                               ///< bone and surface pairs left out because the bone's spheres were authored behind that surface
 		std::vector<SmpPhysics::Collider> colliders;
 		std::vector<ColliderFit> colliderFits;               ///< one per collider, in the same order as colliders
 		std::vector<SmpPhysics::SkinnedSurface> surfaces;    ///< the rig's own collision meshes, posed by the drivers

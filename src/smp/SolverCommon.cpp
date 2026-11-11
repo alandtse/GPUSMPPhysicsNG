@@ -208,4 +208,26 @@ namespace SmpPhysics
 			}
 		}
 	}
+
+	std::size_t ExemptSurfacesBehind(const std::vector<SphereProbe>& a_probes, std::size_t a_surfaceLimit, std::size_t a_boneCount,
+		std::vector<std::uint32_t>& a_boneSurfaceMask)
+	{
+		std::size_t exempted = 0;
+		for (const SphereProbe& probe : a_probes) {
+			if (probe.behind <= kProbeLostBehind || probe.behindSurface < 0 || probe.bone < 0)
+				continue;
+			const auto surface = static_cast<std::size_t>(probe.behindSurface);
+			const auto bone = static_cast<std::size_t>(probe.bone);
+			if (surface >= a_surfaceLimit || surface >= 32 || bone >= a_boneCount)
+				continue;
+			if (a_boneSurfaceMask.size() < a_boneCount)
+				a_boneSurfaceMask.resize(a_boneCount, 0xFFFFFFFFu);
+			const std::uint32_t bit = 1u << surface;
+			if ((a_boneSurfaceMask[bone] & bit) == 0u)
+				continue;
+			a_boneSurfaceMask[bone] &= ~bit;
+			++exempted;
+		}
+		return exempted;
+	}
 }

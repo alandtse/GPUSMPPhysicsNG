@@ -1792,6 +1792,18 @@ bool SmpPhysicsFeature::BuildClaimCollision(const hdt::IMeshClaimContext& a_cont
 	}
 	RetargetRest(state, a_restPose);
 	FinishCollision(state);
+	if (!state.boneShape.empty()) {
+		// The nodes still hold the rest pose, so a sphere behind a layer here was authored inside it.
+		std::vector<SmpPhysics::Transform> boneRestWorld(a_rig.bones.size());
+		for (std::size_t index = 0; index < boneRestWorld.size(); ++index)
+			boneRestWorld[index] = state.restPose && index < state.restPose->size() ? (*state.restPose)[index] : ToSolverTransform(a_boneNodes[index]->world);
+		std::vector<SmpPhysics::Transform> driverWorld(a_collision.drivers.size());
+		for (std::size_t index = 0; index < driverWorld.size(); ++index)
+			driverWorld[index] = ToSolverTransform(a_collision.drivers[index]->world);
+		std::vector<SmpPhysics::SphereProbe> probes;
+		SmpPhysics::ProbeSpheres(a_collision.spheres, a_collision.colliders, a_collision.surfaces, boneRestWorld, driverWorld, probes);
+		a_collision.layerExempted = SmpPhysics::ExemptSurfacesBehind(probes, state.rigSurfaceShapes.size(), a_rig.bones.size(), a_collision.boneSurfaceMask);
+	}
 	std::vector<SmpPhysics::CollisionOverride> overrides;
 	{
 		const std::scoped_lock lock(stateMutex);
