@@ -145,7 +145,7 @@ namespace
 	constexpr float kMinFrameDelta = 0.0f;
 	constexpr float kMaxFrameDelta = 0.1f;
 	constexpr int kRequiredInterfaceMajor = 2;
-	constexpr int kRequiredInterfaceMinor = 1;
+	constexpr int kRequiredInterfaceMinor = 2;
 	constexpr std::size_t kMaxDeclinedFiles = 64;
 	constexpr std::size_t kMaxDeclinedRows = 20;
 	thread_local std::string pendingDeclineReason;  ///< What RecordDecline last noted during the claim on this thread.
@@ -267,7 +267,7 @@ void SmpPhysicsFeature::OnPluginMessage(const SKSE::MessagingInterface::Message*
 
 	// Registered outside stateMutex: these calls take hdtSMP64's own lock, while claim() below is
 	// invoked under that lock and takes stateMutex, so holding both here would invert the order.
-	smpInterface->addMeshOwner(&meshOwner);
+	smpInterface->addMeshOwner(&meshOwner, hdt::MeshOwnerInfo{ "GPUSMPPhysicsNG", 0 });
 	smpInterface->addFrameListener(&frameListener);
 	smpInterface->addFrameSyncListener(&frameSyncListener);
 	{

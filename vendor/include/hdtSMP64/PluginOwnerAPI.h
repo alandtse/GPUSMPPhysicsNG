@@ -43,10 +43,27 @@ namespace hdt
 		virtual const char* getMergedBoneName(const char* originalName) const = 0;
 	};
 
+	// @brief Identity and ordering of one mesh owner, given to PluginInterface::addMeshOwner.
+	// @details hdtSMP64 copies the name, so it only has to stay valid for the call.
+	struct MeshOwnerInfo
+	{
+		// @brief Stable identifier shown in hdtSMP64's log. A null or empty name is logged as "unnamed".
+		const char* name = nullptr;
+
+		// @brief Owners with a higher priority are asked first. Owners with equal priority are asked in
+		// registration order, which follows SKSE plugin load order.
+		std::int32_t priority = 0;
+	};
+
 	// @brief Implemented by a plugin that takes over simulation of specific hdtSMP64 meshes.
-	// @details claim and release run on the game main thread or the Papyrus VM thread, serialized by hdtSMP64's
+	// @details Several owners may be registered. For each mesh hdtSMP64 is about to simulate it asks them in
+	// priority order and the first one whose claim returns true wins; if none does, hdtSMP64 simulates the mesh
+	// itself. A claim is sticky: it holds until release, an actor reload, or PluginInterface::relinquishMesh, so
+	// a later or higher-priority owner never takes a mesh away mid-session. It is asked again the next time the
+	// mesh is created.
+	// claim and release run on the game main thread or the Papyrus VM thread, serialized by hdtSMP64's
 	// actor manager lock. Implementations must not throw and must not call back into hdtSMP64 except to register
-	// or unregister owners.
+	// or unregister owners, or to relinquish a mesh.
 	class IMeshOwner
 	{
 	public:
@@ -55,6 +72,9 @@ namespace hdt
 		// @brief Returning true takes ownership of the described mesh; hdtSMP64 then creates no system for it.
 		// @param claimToken Identifies this claim and is passed to the matching release.
 		virtual bool claim(const IMeshClaimContext& context, std::uint64_t claimToken) = 0;
+
+		// @brief hdtSMP64 is done with the claim (the mesh was rebuilt, its actor unloaded, or physics reset).
+		// Not called for a claim the owner gave back with relinquishMesh, nor after the owner was removed.
 		virtual void release(std::uint64_t claimToken) = 0;
 	};
 }
