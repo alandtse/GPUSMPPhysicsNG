@@ -67,6 +67,8 @@ namespace
 	constexpr float kAuditHeightBucket = 10.0f;
 	/** @brief Most hair bones the audit lists for the vertices behind a target. */
 	constexpr std::size_t kAuditBoneRows = 12;
+	/** @brief How close to a surface a vertex must be for an overlap audit to count it as through that surface, in game units. */
+	constexpr float kOverlapNearReach = 3.0f;
 	constexpr float kAuditPenetrationPercentile = 0.95f;  ///< Fraction of sorted penetrations reported by the audit, unitless.
 	constexpr float kDefaultTorsoHeight = 20.0f;          ///< Height of the fallback torso capsule along Z, Skyrim units.
 
@@ -765,8 +767,11 @@ json SmpPhysicsFeature::DescribeAuditClaims(RE::FormID a_formID) const
 
 namespace
 {
-	/** @brief Measures how far a_hairName's vertices sit behind a_targetName's surface, both posed as drawn, and adds the figures to a_result. */
-	json MeasureMeshPenetration(RE::NiAVObject* a_root, const std::string& a_hairName, const std::string& a_targetName, json a_result)
+	/** @brief Measures how far a_hairName's vertices sit behind a_targetName's surface, both posed as drawn, and adds the figures to a_result.
+	 *  @param a_boneWorld A world transform to pose a skin bone with instead of its node's, for bones the GPU solver moves.
+	 *  @param a_nearReach When above zero, only a vertex this close to the target's nearest triangle counts as penetrating, so two layers of one garment lying far apart are not read as one passing through the other. */
+	json MeasureMeshPenetration(RE::NiAVObject* a_root, const std::string& a_hairName, const std::string& a_targetName, json a_result,
+		const std::map<const RE::NiAVObject*, Transform>& a_boneWorld = {}, float a_nearReach = 0.0f)
 	{
 		RE::NiAVObject* hairObject = a_root->GetObjectByName(RE::BSFixedString(a_hairName.c_str()));
 		RE::NiAVObject* targetObject = a_root->GetObjectByName(RE::BSFixedString(a_targetName.c_str()));
@@ -782,6 +787,12 @@ namespace
 			return { { "error", std::format("the target mesh '{}' {}", a_targetName, reason) } };
 		if (hair.triangles.empty() && target.triangles.empty())
 			return { { "error", "neither mesh has triangles to compare" } };
+		for (SkinnedShape* shape : { &hair, &target }) {
+			for (std::size_t bone = 0; bone < shape->skinBones.size() && bone < shape->boneWorld.size(); ++bone) {
+				if (const auto found = a_boneWorld.find(shape->skinBones[bone]); found != a_boneWorld.end())
+					shape->boneWorld[bone] = found->second;
+			}
+		}
 
 		std::vector<Vec3> hairPoints(hair.positions.size());
 		for (std::size_t index = 0; index < hairPoints.size(); ++index)
@@ -860,7 +871,7 @@ namespace
 			while (bin < std::size(kDistanceBinEdges) && signedDistance >= kDistanceBinEdges[bin])
 				++bin;
 			++distanceHistogram[bin];
-			if (signedDistance >= 0.0f)
+			if (signedDistance >= 0.0f || (a_nearReach > 0.0f && nearest > a_nearReach * a_nearReach))
 				continue;
 			const float depth = -signedDistance;
 			penetrations.push_back(depth);
@@ -935,11 +946,53 @@ json SmpPhysicsFeature::CollisionAuditJson(const json& a_args) const
 	if (!root)
 		return { { "error", "the actor is not loaded" } };
 
+	// The GPU solver moves its bones without writing the engine's nodes, so pose them from its result unless asked for the engine's.
+	std::map<const RE::NiAVObject*, Transform> solverWorld;
+	std::vector<std::pair<std::string, std::string>> overlapPairs;
+	const bool engineOnly = a_args.value("pose", std::string("solver")) == "engine";
+	{
+		const std::scoped_lock lock(stateMutex);
+		for (const auto& entry : claims) {
+			const Claim& claim = entry.second;
+			if (claim.actorFormID != formID || !claim.parsed)
+				continue;
+			const SmpPhysics::SmpRig& rig = claim.parsed->rig;
+			if (!engineOnly) {
+				for (std::size_t bone = 0; bone < rig.bones.size() && bone < claim.nodes.size(); ++bone) {
+					if (!rig.bones[bone].kinematic && claim.nodes[bone])
+						solverWorld[claim.nodes[bone].get()] = claim.BoneWorld(bone);
+				}
+			}
+			const std::vector<RigShape>& triangleShapes = rig.collision.triangleShapes;
+			for (const RigShape& first : triangleShapes) {
+				for (const RigShape& second : triangleShapes) {
+					if (&first != &second && SmpPhysics::ShapesCanCollide(first, second))
+						overlapPairs.emplace_back(first.name, second.name);
+				}
+			}
+		}
+	}
 	json result = json::object();
 	result["claims"] = DescribeAuditClaims(formID);
-	if (hairName.empty())
+	result["pose"] = engineOnly ? "engine" : "solver";
+	if (hairName.empty()) {
+		if (!a_args.value("overlaps", false))
+			return result;
+		// Every pair of the rig's own shapes whose tags let them collide, measured as drawn: what the eye sees as one piece through another.
+		json rows = json::array();
+		for (const auto& [first, second] : overlapPairs) {
+			json measured = MeasureMeshPenetration(root, first, second, json::object(), solverWorld, kOverlapNearReach);
+			json row = { { "hair", first }, { "target", second } };
+			for (const char* key : { "error", "hairVertexCount", "penetratingVertexCount", "maxPenetration", "meanPenetration", "percentile95Penetration", "deepestAt", "insideByBone" }) {
+				if (measured.contains(key))
+					row[key] = measured[key];
+			}
+			rows.push_back(std::move(row));
+		}
+		result["overlaps"] = std::move(rows);
 		return result;
-	return MeasureMeshPenetration(root, hairName, targetName, std::move(result));
+	}
+	return MeasureMeshPenetration(root, hairName, targetName, std::move(result), solverWorld);
 }
 
 /** @brief What the pieces of BuildClaimCollision hand to each other. */
