@@ -116,6 +116,14 @@ namespace
 		return a_row;
 	}
 
+	/** @brief Greys a row out while developer mode is off, since the debug overlay only draws with it on. */
+	Row NeedsDeveloperMode(Row a_row)
+	{
+		a_row.enabled = [inner = std::move(a_row.enabled)] { return globals::state->IsDeveloperMode() && (!inner || inner()); };
+		a_row.tooltip += " Needs developer mode.";
+		return a_row;
+	}
+
 	Row Text(std::function<std::string()> a_text)
 	{
 		Row row;
@@ -302,11 +310,11 @@ void PluginUi::Register()
 	developerModel.rows = {
 		Header("Debug overlay"),
 		Check("Developer mode", "Allows the debug overlay to draw.", &globals::state->developerMode),
-		VrOnly(Check("Show grab debug", "Draws the strands hands hold, those in reach, and the hair hands push.", &settings.ShowGrabDebug)),
-		Check("Show collider debug", "Outlines the head, body and armor proxies and other bodies' capsules that hair collides with.", &settings.ShowColliderDebug),
-		Check("Show joint debug", "Draws each simulated bone from its parent, coloured by who simulates it: lime is the GPU, amber is claimed but not stepped, grey is inactive, purple is hdtSMP64 on the CPU. Orange marks stretched or squeezed joints.", &settings.ShowJointDebug),
-		Check("Show skeleton debug", "Draws the skeletons of nearby actors and the player's hands.", &settings.ShowSkeletonDebug),
-		SlideInt("Overlay actors", "Most actors the overlays draw, nearest first.", &settings.DebugMaxActors, 1, 8),
+		NeedsDeveloperMode(VrOnly(Check("Show grab debug", "Draws the strands hands hold, those in reach, and the hair hands push.", &settings.ShowGrabDebug))),
+		NeedsDeveloperMode(Check("Show collider debug", "Outlines the head, body and armor proxies and other bodies' capsules that hair collides with.", &settings.ShowColliderDebug)),
+		NeedsDeveloperMode(Check("Show joint debug", "Draws each simulated bone from its parent, coloured by who simulates it: lime is the GPU, amber is claimed but not stepped, grey is inactive, purple is hdtSMP64 on the CPU. Orange marks stretched or squeezed joints.", &settings.ShowJointDebug)),
+		NeedsDeveloperMode(Check("Show skeleton debug", "Draws the skeletons of nearby actors and the player's hands.", &settings.ShowSkeletonDebug)),
+		NeedsDeveloperMode(SlideInt("Overlay actors", "Most actors the overlays draw, nearest first.", &settings.DebugMaxActors, 1, 8)),
 		Header("Shaders"),
 		Button("Reload shaders", "Recompiles the skinning and debug line shaders from the shader folder on the next frame.", [&feature] { feature.ReloadVisualShaders(); }),
 	};
