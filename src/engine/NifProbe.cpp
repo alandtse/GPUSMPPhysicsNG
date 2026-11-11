@@ -1,0 +1,152 @@
+// SPDX-License-Identifier: GPL-3.0-or-later WITH LicenseRef-Modding-Exception
+
+#include "engine/NifProbe.h"
+
+#include "RE/B/BSResourceNiBinaryStream.h"
+#include "RE/T/TESObjectARMA.h"
+#include "RE/T/TESObjectARMO.h"
+#include "Utils/TestBench/TestCrowd.h"
+#include "smp/NifPhysicsScan.h"
+
+#include <atomic>
+#include <chrono>
+#include <mutex>
+#include <set>
+#include <string>
+#include <thread>
+#include <vector>
+
+namespace NifProbe
+{
+	namespace
+	{
+		constexpr std::uint32_t kHeaderBytes = 65536;
+		constexpr std::uint32_t kChunk = 4096;
+
+		struct Target
+		{
+			std::string armor;
+			RE::FormID formID{};
+			std::vector<std::string> models;
+		};
+
+		struct Hit
+		{
+			std::string armor;
+			RE::FormID formID{};
+			std::string model;
+			std::vector<std::string> xml;
+		};
+
+		std::mutex mutex;
+		std::thread worker;
+		std::atomic<bool> running{ false };
+		std::atomic<std::size_t> done{ 0 };
+		std::size_t total = 0;
+		std::size_t armors = 0;
+		std::size_t missing = 0;
+		std::size_t bytesRead = 0;
+		double milliseconds = 0.0;
+		std::vector<Hit> hits;
+
+		std::string ReadHeader(const std::string& a_model, bool& a_found)
+		{
+			RE::BSResourceNiBinaryStream stream("Meshes\\" + a_model);
+			a_found = stream.good();
+			std::string bytes;
+			if (!a_found)
+				return bytes;
+			std::vector<char> buffer(kChunk);
+			while (bytes.size() < kHeaderBytes) {
+				const std::uint32_t before = stream.tell();
+				const bool whole = stream.read(buffer.data(), kChunk);
+				const std::uint32_t got = std::min<std::uint32_t>(stream.tell() - before, kChunk);
+				bytes.append(buffer.data(), got);
+				if (!whole || got == 0)
+					break;
+			}
+			return bytes;
+		}
+
+		void Run(std::vector<Target> a_targets)
+		{
+			const auto begin = std::chrono::steady_clock::now();
+			std::set<std::string> seen;
+			std::size_t missed = 0;
+			std::size_t read = 0;
+			std::vector<Hit> found;
+			std::size_t checked = 0;
+			for (const Target& target : a_targets) {
+				for (const std::string& model : target.models) {
+					if (!seen.insert(model).second)
+						continue;
+					bool exists = false;
+					const std::string bytes = ReadHeader(model, exists);
+					++checked;
+					if (!exists) {
+						++missed;
+						continue;
+					}
+					read += bytes.size();
+					const SmpPhysics::NifPhysicsHint hint = SmpPhysics::ScanNifHeader(bytes);
+					if (hint.hasExtraData)
+						found.push_back({ target.armor, target.formID, model, hint.xmlPaths });
+				}
+				done.fetch_add(1, std::memory_order_relaxed);
+			}
+			const double elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
+			const std::scoped_lock lock(mutex);
+			total = checked;
+			missing = missed;
+			bytesRead = read;
+			milliseconds = elapsed;
+			hits = std::move(found);
+			running.store(false, std::memory_order_release);
+		}
+	}
+
+	void Start()
+	{
+		if (running.load(std::memory_order_acquire))
+			return;
+		if (worker.joinable())
+			worker.join();
+		std::vector<Target> targets;
+		for (const auto& list : { TestBench::TestCrowd::ArmorForms(), TestBench::TestCrowd::CloakForms() }) {
+			for (const RE::TESObjectARMO* armor : list) {
+				Target target{ armor->GetName(), armor->GetFormID(), {} };
+				for (const RE::TESObjectARMA* addon : armor->armorAddons) {
+					if (!addon)
+						continue;
+					for (const auto& model : addon->bipedModels) {
+						if (const char* path = model.GetModel(); path && *path)
+							target.models.emplace_back(path);
+					}
+				}
+				targets.push_back(std::move(target));
+			}
+		}
+		{
+			const std::scoped_lock lock(mutex);
+			armors = targets.size();
+			total = missing = bytesRead = 0;
+			milliseconds = 0.0;
+			hits.clear();
+		}
+		done.store(0, std::memory_order_relaxed);
+		running.store(true, std::memory_order_release);
+		worker = std::thread(Run, std::move(targets));
+	}
+
+	json Result()
+	{
+		const std::scoped_lock lock(mutex);
+		json rows = json::array();
+		for (const Hit& hit : hits)
+			rows.push_back({ { "armor", hit.armor }, { "formId", hit.formID }, { "model", hit.model }, { "xml", hit.xml } });
+		const bool finished = !running.load(std::memory_order_acquire);
+		return { { "running", !finished }, { "armorsDone", done.load(std::memory_order_relaxed) }, { "armors", armors }, { "modelsRead", total },
+			{ "modelsMissing", missing }, { "bytesRead", bytesRead }, { "elapsedMs", milliseconds },
+			{ "msPerModel", total ? milliseconds / static_cast<double>(total) : 0.0 }, { "withPhysicsExtraData", hits.size() }, { "hits", std::move(rows) } };
+	}
+}

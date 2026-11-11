@@ -81,6 +81,10 @@ namespace TestBench
 		 * @details Enchanted armors and armors that look like an earlier one (same models) are left out, so every entry looks different. Built once; safe from any thread.
 		 */
 		[[nodiscard]] static const std::vector<std::string>& ArmorNames();
+		/** @brief The armors behind ArmorNames(), in the same order. Safe from any thread once the game has loaded. */
+		[[nodiscard]] static std::vector<RE::TESObjectARMO*> ArmorForms();
+		/** @brief The cloaks behind CloakNames(), in the same order. */
+		[[nodiscard]] static std::vector<RE::TESObjectARMO*> CloakForms();
 		/** @brief The entry of ArmorNames() the crowd wears now, or -1 while it wears none of them. */
 		[[nodiscard]] int WornArmorIndex() const noexcept { return armorIndex.load(std::memory_order_relaxed); }
 		/**

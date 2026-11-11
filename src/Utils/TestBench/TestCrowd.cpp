@@ -477,6 +477,16 @@ namespace TestBench
 		return names;
 	}
 
+	std::vector<RE::TESObjectARMO*> TestCrowd::ArmorForms()
+	{
+		return BodyArmors();
+	}
+
+	std::vector<RE::TESObjectARMO*> TestCrowd::CloakForms()
+	{
+		return CloakArmors();
+	}
+
 	const std::vector<std::string>& TestCrowd::CloakNames()
 	{
 		static std::vector<std::string> names;

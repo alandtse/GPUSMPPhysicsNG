@@ -1,4 +1,5 @@
 #include "Features/SmpPhysics.h"
+#include "engine/NifProbe.h"
 
 #include "Features/Wind/Wind.h"
 #include "Features/Wind/WindShelterQuery.h"
@@ -456,6 +457,10 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->SetCollisionOverride(a_args.value("piece", std::string{}), a_args.value("target", std::string{}), a_args.value("off", true)); });
 	FEATURE_COMMAND("clearCollisionOverrides", "Remove every setCollisionOverride switch; run reevaluatePlayer afterwards.",
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->SetCollisionOverride({}, {}, false); });
+	FEATURE_COMMAND("nifPhysicsProbe", "Prototype: read the leading bytes of every body armor's and cloak's models on a worker thread and look for hdtSMP64's physics extra data, to time a scan that does not dress anyone. Read the outcome from nifPhysicsProbeResult.",
+		[](Feature*, const json&) { NifProbe::Start(); });
+	FEATURE_QUERY("nifPhysicsProbeResult", "The nifPhysicsProbe outcome: running, armors done of total, models read and missing, bytes read, elapsed milliseconds and milliseconds per model, and the models whose header names the physics extra data with the xml paths it holds.",
+		[](const Feature*, const json&) -> json { return NifProbe::Result(); });
 	FEATURE_COMMAND("claimTallyReset", "Clear the claim tally, then run reevaluate to count every actor's meshes again.",
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->ResetClaimTally(); });
 	FEATURE_COMMAND("reevaluate", "Ask hdtSMP64 to re-run claiming for every loaded actor, so the current settings take effect.",
