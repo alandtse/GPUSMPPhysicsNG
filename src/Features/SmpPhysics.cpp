@@ -850,41 +850,50 @@ void SmpPhysicsFeature::ResetSettings()
 
 void SmpPhysicsFeature::ReevaluateAllActors()
 {
-	hdt::PluginInterface* smpInterface = nullptr;
-	{
-		const std::scoped_lock lock(stateMutex);
-		smpInterface = linkedInterface;
-	}
-	if (!smpInterface)
+	// The settings page calls this from the menu thread; hdtSMP64 must rebuild an actor's physics on the game thread.
+	auto* task = SKSE::GetTaskInterface();
+	if (!task)
 		return;
-
-	Util::ForEachLoadedActor([smpInterface](RE::Actor* a_actor) {
-		if (a_actor)
-			smpInterface->reloadActorPhysics(a_actor);
+	task->AddTask([this] {
+		hdt::PluginInterface* smpInterface = nullptr;
+		{
+			const std::scoped_lock lock(stateMutex);
+			smpInterface = linkedInterface;
+		}
+		if (!smpInterface)
+			return;
+		Util::ForEachLoadedActor([smpInterface](RE::Actor* a_actor) {
+			if (a_actor)
+				smpInterface->reloadActorPhysics(a_actor);
+		});
 	});
 }
 
 void SmpPhysicsFeature::ReevaluateClaimedActors()
 {
-	hdt::PluginInterface* smpInterface = nullptr;
-	std::vector<RE::FormID> actorFormIDs;
-	{
-		const std::scoped_lock lock(stateMutex);
-		smpInterface = linkedInterface;
-		actorFormIDs.reserve(claims.size());
-		for (const auto& entry : claims) {
-			const RE::FormID formID = entry.second.actorFormID;
-			if (formID != 0 && std::find(actorFormIDs.begin(), actorFormIDs.end(), formID) == actorFormIDs.end())
-				actorFormIDs.push_back(formID);
-		}
-	}
-	if (!smpInterface)
+	auto* task = SKSE::GetTaskInterface();
+	if (!task)
 		return;
-
-	for (const RE::FormID formID : actorFormIDs) {
-		if (auto* actor = RE::TESForm::LookupByID<RE::Actor>(formID))
-			smpInterface->reloadActorPhysics(actor);
-	}
+	task->AddTask([this] {
+		hdt::PluginInterface* smpInterface = nullptr;
+		std::vector<RE::FormID> actorFormIDs;
+		{
+			const std::scoped_lock lock(stateMutex);
+			smpInterface = linkedInterface;
+			actorFormIDs.reserve(claims.size());
+			for (const auto& entry : claims) {
+				const RE::FormID formID = entry.second.actorFormID;
+				if (formID != 0 && std::find(actorFormIDs.begin(), actorFormIDs.end(), formID) == actorFormIDs.end())
+					actorFormIDs.push_back(formID);
+			}
+		}
+		if (!smpInterface)
+			return;
+		for (const RE::FormID formID : actorFormIDs) {
+			if (auto* actor = RE::TESForm::LookupByID<RE::Actor>(formID))
+				smpInterface->reloadActorPhysics(actor);
+		}
+	});
 }
 
 void SmpPhysicsFeature::SetClaimEnabled(RE::FormID a_actorFormID, const std::string& a_file, bool a_enabled)
