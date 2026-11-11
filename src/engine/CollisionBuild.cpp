@@ -980,6 +980,9 @@ struct SmpPhysicsFeature::CollisionBuildState
 	std::vector<std::string> hairNames;                 ///< The meshes the rig builds its own shapes from, which are never body.
 	std::map<const RE::NiAVObject*, int> driverOfNode;  ///< Collision driver index of every node already used as one.
 	std::vector<RE::NiAVObject*> rigSurfaceMeshes;      ///< The meshes the rig's own collision surfaces were built from.
+	std::vector<const RigShape*> sphereShapes;          ///< The shapes the collision spheres were built from; a cloth rig builds them from every triangle shape that skins to its bones.
+	std::vector<const RigShape*> boneShape;             ///< Per rig bone, the shape its spheres came from; empty unless sphereShapes holds more than one shape.
+	std::vector<RigShape> rigSurfaceShapes;             ///< The shapes the first collision surfaces were built from, in surface order.
 
 	/** @brief A shape is posed through the skeleton nodes its mesh is skinned to, so each becomes a driver shared by every surface built from it. */
 	void BindSurfaceDrivers(const SkinnedShape& a_skinned, SmpPhysics::SkinnedSurface& a_surface)
@@ -1156,13 +1159,31 @@ bool SmpPhysicsFeature::BuildHairSpheres(CollisionBuildState& s, std::string& a_
 		sphereShapes.push_back(&shape);
 	if (std::ranges::find(sphereShapes, hairShape) == sphereShapes.end())
 		sphereShapes.push_back(hairShape);
+	// A cloth rig declares only triangle shapes. Each piece of the outfit that skins to its bones gets spheres of its own, so
+	// the pieces collide with one another as their tags say, not only the one the hair shape picked.
+	const bool perShape = shapes.vertexShapes.empty();
+	if (perShape) {
+		for (const RigShape& shape : shapes.triangleShapes) {
+			if (&shape != hairShape)
+				sphereShapes.push_back(&shape);
+		}
+	}
+	std::vector<SkinnedVertex> shapeVertices;
+	std::vector<const RigShape*> boneShape(a_rig.bones.size(), nullptr);
+	std::vector<const RigShape*> contributing;
+	std::vector<std::vector<BoneSphere>> mergedSpheres;
 	for (const RigShape* sphereShape : sphereShapes) {
 		const RigShape& shape = *sphereShape;
+		const bool extraCloth = perShape && &shape != hairShape;
 		RE::NiAVObject* mesh = &shape == hairShape ? hairMesh : FindMeshObject(a_context, meshRoot, shape.name);
+		if (extraCloth && (!mesh || !SkinsToDynamicBone(mesh, a_rig, a_context)))
+			continue;
 		if (!mesh) {
 			logger::warn("[GPU SMP Physics] per-vertex-shape '{}' names no mesh below the actor, so it adds no collision spheres", shape.name);
 			continue;
 		}
+		shapeVertices.clear();
+		std::vector<SkinnedVertex>& gathered = perShape ? shapeVertices : hairVertices;
 		std::vector<SkinnedVertex> vertices;
 		if (!ReadShape(mesh, true, vertices, readReason)) {
 			if (&shape == hairShape) {
@@ -1214,12 +1235,32 @@ bool SmpPhysicsFeature::BuildHairSpheres(CollisionBuildState& s, std::string& a_
 				local.position = ToSolverTransform(skin->skinData->GetBoneDataSkinToBone(static_cast<std::uint32_t>(skinBone))).TransformPoint(vertex.position);
 				local.bone[0] = rigBone;
 				local.weight[0] = vertex.weight[slot];
-				hairVertices.push_back(local);
+				gathered.push_back(local);
 			}
+		}
+		if (perShape) {
+			std::vector<std::vector<BoneSphere>> reduced = SmpPhysics::ReduceHairSpheres(shapeVertices, vertexToBone, dynamicBone, shape.margin, marginMultiplier);
+			mergedSpheres.resize(reduced.size());
+			bool any = false;
+			for (std::size_t bone = 0; bone < reduced.size(); ++bone) {
+				if (reduced[bone].empty())
+					continue;
+				any = true;
+				mergedSpheres[bone].insert(mergedSpheres[bone].end(), reduced[bone].begin(), reduced[bone].end());
+				if (bone < boneShape.size() && boneShape[bone] == nullptr)
+					boneShape[bone] = &shape;
+			}
+			if (any)
+				contributing.push_back(&shape);
 		}
 	}
 
-	a_collision.spheres = SmpPhysics::ReduceHairSpheres(hairVertices, vertexToBone, dynamicBone, hairShape->margin, marginMultiplier);
+	a_collision.spheres = perShape ? std::move(mergedSpheres) : SmpPhysics::ReduceHairSpheres(hairVertices, vertexToBone, dynamicBone, hairShape->margin, marginMultiplier);
+	if (a_collision.spheres.size() != a_rig.bones.size())
+		a_collision.spheres.resize(a_rig.bones.size());
+	s.sphereShapes = !contributing.empty() ? contributing : std::vector<const RigShape*>{ hairShape };
+	if (contributing.size() > 1)
+		s.boneShape = std::move(boneShape);
 	for (const std::vector<BoneSphere>& spheres : a_collision.spheres)
 		a_collision.sphereCount += static_cast<int>(spheres.size());
 	if (a_collision.sphereCount == 0) {
@@ -1419,7 +1460,11 @@ void SmpPhysicsFeature::BuildRigSurfaces(CollisionBuildState& s) const
 
 	std::vector<RE::NiAVObject*>& rigSurfaceMeshes = s.rigSurfaceMeshes;
 	for (const RigShape& shape : surfaceShapes) {
-		if (shape.tag.empty() || shape.name == hairShape->name || !SmpPhysics::ShapesCanCollide(*hairShape, shape))
+		if (shape.tag.empty())
+			continue;
+		const bool hairAllows = shape.name != hairShape->name && SmpPhysics::ShapesCanCollide(*hairShape, shape);
+		const bool otherAllows = std::ranges::any_of(s.sphereShapes, [&shape](const RigShape* a_sphereShape) { return a_sphereShape->name != shape.name && SmpPhysics::ShapesCanCollide(*a_sphereShape, shape); });
+		if (!hairAllows && !otherAllows)
 			continue;
 		RE::NiAVObject* surfaceMesh = FindMeshObject(a_context, meshRoot, shape.name);
 		SkinnedShape skinned;
@@ -1434,6 +1479,7 @@ void SmpPhysicsFeature::BuildRigSurfaces(CollisionBuildState& s) const
 		surface.margin = shape.margin;
 		surface.contactPenetration = shape.penetration;
 		surface.deepPush = false;
+		surface.clothOnly = !hairAllows;
 		surface.vertices.reserve(skinned.positions.size());
 		for (std::size_t vertex = 0; vertex < skinned.positions.size(); ++vertex)
 			surface.vertices.push_back(VertexOf(skinned, vertex));
@@ -1456,6 +1502,7 @@ void SmpPhysicsFeature::BuildRigSurfaces(CollisionBuildState& s) const
 		if (surface.indices.empty())
 			continue;
 		a_collision.surfaces.push_back(std::move(surface));
+		s.rigSurfaceShapes.push_back(shape);
 	}
 
 	if (!a_collision.surfaces.empty()) {
@@ -1682,6 +1729,14 @@ bool SmpPhysicsFeature::BuildClaimCollision(const hdt::IMeshClaimContext& a_cont
 	BuildRigSurfaces(state);
 	BuildArmorSurfaces(state);
 	BuildClothSurfaces(state);
+	if (!state.boneShape.empty()) {
+		std::vector<const RigShape*> surfaceShapes(a_collision.surfaces.size(), nullptr);
+		for (std::size_t index = 0; index < state.rigSurfaceShapes.size() && index < surfaceShapes.size(); ++index)
+			surfaceShapes[index] = &state.rigSurfaceShapes[index];
+		a_collision.boneSurfaceMask.assign(a_rig.bones.size(), 0xFFFFFFFFu);
+		for (std::size_t bone = 0; bone < state.boneShape.size(); ++bone)
+			a_collision.boneSurfaceMask[bone] = SmpPhysics::AllowedSurfaceMask(state.boneShape[bone], surfaceShapes);
+	}
 	RetargetRest(state, a_restPose);
 	FinishCollision(state);
 	return true;
@@ -1698,8 +1753,19 @@ void SmpPhysicsFeature::RetargetRest(CollisionBuildState& s, std::vector<SmpPhys
 	for (std::size_t index = 0; index < driverWorld.size(); ++index)
 		driverWorld[index] = ToSolverTransform(a_collision.drivers[index]->world);
 	const SmpPhysics::RetargetLoad load{ SmpPhysics::SolverParams{}.gravity * settings.GravityScale, settings.StiffnessScale };
-	SmpPhysics::RestRetarget retarget = drape ? SmpPhysics::DrapeRestOntoSupports(s.rig, a_restPose, a_collision.spheres, a_collision.surfaces, driverWorld, axis, load) :
-	                                            SmpPhysics::RetargetRestToSurfaces(s.rig, a_restPose, a_collision.spheres, a_collision.surfaces, driverWorld, axis, load);
+	std::vector<SmpPhysics::SkinnedSurface> retargetSurfaces;
+	const bool anyClothOnly = std::ranges::any_of(a_collision.surfaces, [](const SmpPhysics::SkinnedSurface& a_surface) { return a_surface.clothOnly; });
+	if (anyClothOnly) {
+		for (const SmpPhysics::SkinnedSurface& surface : a_collision.surfaces) {
+			if (!surface.clothOnly)
+				retargetSurfaces.push_back(surface);
+		}
+		if (retargetSurfaces.empty())
+			return;
+	}
+	const std::vector<SmpPhysics::SkinnedSurface>& supports = anyClothOnly ? retargetSurfaces : a_collision.surfaces;
+	SmpPhysics::RestRetarget retarget = drape ? SmpPhysics::DrapeRestOntoSupports(s.rig, a_restPose, a_collision.spheres, supports, driverWorld, axis, load) :
+	                                            SmpPhysics::RetargetRestToSurfaces(s.rig, a_restPose, a_collision.spheres, supports, driverWorld, axis, load);
 	a_collision.retargetBehind = retarget.behindSpheres;
 	a_collision.retargetSagMaxMove = retarget.sagMaxMove;
 	a_collision.sagPose = std::move(retarget.sagPose);

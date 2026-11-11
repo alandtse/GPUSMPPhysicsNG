@@ -945,3 +945,26 @@ TEST_CASE("A top-level element SMP does not know is skipped, one it knows but we
 	)XML"));
 	CHECK(declined.status == ParseStatus::Unsupported);
 }
+
+TEST_CASE("A bone's surface mask follows the collide tags of its shape and spares the surface it was built from", "[SmpPhysics]")
+{
+	RigShape tassel;
+	tassel.name = "Tassel";
+	tassel.tag = "tassel";
+	tassel.collidesWith = { "skirt1", "skirt2" };
+	RigShape skirt1;
+	skirt1.name = "Skirt1";
+	skirt1.tag = "skirt1";
+	skirt1.noCollidesWith = { "skirt1" };
+	skirt1.collidesWith = { "skirt2", "tassel" };
+	RigShape skirt2;
+	skirt2.name = "Skirt2";
+	skirt2.tag = "skirt2";
+	skirt2.noCollidesWith = { "skirt2" };
+
+	const std::vector<const RigShape*> surfaces = { &skirt1, &skirt2, nullptr, &tassel };
+	CHECK(AllowedSurfaceMask(&tassel, surfaces) == 0b0111u);
+	CHECK(AllowedSurfaceMask(&skirt1, surfaces) == 0b1110u);
+	CHECK(AllowedSurfaceMask(&skirt2, surfaces) == 0b1101u);
+	CHECK(AllowedSurfaceMask(nullptr, surfaces) == 0xFFFFFFFFu);
+}

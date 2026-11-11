@@ -105,6 +105,14 @@ namespace SmpPhysics
 	 */
 	[[nodiscard]] bool AllowsCollisionWithTag(const RigShape& a_shape, const std::string& a_tag);
 
+	/**
+	 * @brief Which of a claim's first 32 surfaces a bone built from a_boneShape may touch, one bit each.
+	 * @param a_surfaceShapes One entry per surface: the shape it was built from, or null for a surface that is not one of the rig's
+	 *        (worn armor, the body), which every bone may touch. A shape never touches the surface it was built from.
+	 * @return All bits set when a_boneShape is null.
+	 */
+	[[nodiscard]] std::uint32_t AllowedSurfaceMask(const RigShape* a_boneShape, const std::vector<const RigShape*>& a_surfaceShapes);
+
 	/** @brief Whether two shapes collide: each one's lists must allow the other's tag. */
 	[[nodiscard]] bool ShapesCanCollide(const RigShape& a_first, const RigShape& a_second);
 

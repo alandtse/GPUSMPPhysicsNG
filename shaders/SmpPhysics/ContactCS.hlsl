@@ -11,7 +11,7 @@ struct HairTreeStatic
 
 struct HairBoneSphere
 {
-	uint4 range;   // x = first sphere in the sphere list, y = how many
+	uint4 range;   // x = first sphere in the sphere list, y = how many, w = 1 when z is the mask of surfaces the bone may touch
 	float4 bound;  // xyz = centre in the bone's rest frame, w = radius that encloses every sphere
 };
 
@@ -425,8 +425,12 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 	if (sphereRange.range.y != 0u) {
 		HairBoneWorld world = HairBoneWorlds[bone];
 		HairCollision::Transform pose = LoadTransform(world.rotation, world.translation);
-		if (BoneBoundReaches(treeStatic, input.surface, sphereRange, pose, input.contact.z, surfaceMask, colliderMask))
-			state = kCullWork;
+		if (BoneBoundReaches(treeStatic, input.surface, sphereRange, pose, input.contact.z, surfaceMask, colliderMask)) {
+			if (sphereRange.range.w != 0u)
+				surfaceMask &= sphereRange.range.z;
+			if (surfaceMask != 0u || colliderMask != 0u || input.surface.y > 32u)
+				state = kCullWork;
+		}
 	}
 	HairBoneCull[bone] = uint4(surfaceMask, state, colliderMask, 0u);
 }

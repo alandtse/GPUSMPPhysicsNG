@@ -147,7 +147,7 @@ namespace SmpPhysics::GpuRig
 	}
 
 	CollisionData PackCollision(const std::vector<std::vector<BoneSphere>>& a_spheres,
-		const std::vector<Collider>& a_colliders, std::uint32_t a_driverCount)
+		const std::vector<Collider>& a_colliders, std::uint32_t a_driverCount, const std::vector<std::uint32_t>& a_boneSurfaceMask)
 	{
 		CollisionData data;
 		data.driverCount = a_driverCount;
@@ -158,7 +158,8 @@ namespace SmpPhysics::GpuRig
 				spheres.resize(kMaxContactSpheresPerBone);
 			const SphereBound bound = BoundSpheres(spheres);
 			BoneSpheres& packed = data.spheres[bone];
-			packed.range = { static_cast<std::uint32_t>(data.sphereList.size()), static_cast<std::uint32_t>(spheres.size()), 0u, 0u };
+			const bool masked = bone < a_boneSurfaceMask.size();
+			packed.range = { static_cast<std::uint32_t>(data.sphereList.size()), static_cast<std::uint32_t>(spheres.size()), masked ? a_boneSurfaceMask[bone] : 0u, masked ? 1u : 0u };
 			packed.bound = { bound.centre.x, bound.centre.y, bound.centre.z, bound.radius };
 			for (const BoneSphere& sphere : spheres) {
 				// The rest-exemption masks are one bit per claim-local collider, so laying the claim out does not move them.

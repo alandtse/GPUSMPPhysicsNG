@@ -1091,6 +1091,19 @@ namespace SmpPhysics
 		return AllowsCollisionWithTag(a_first, a_second.tag) && AllowsCollisionWithTag(a_second, a_first.tag);
 	}
 
+	std::uint32_t AllowedSurfaceMask(const RigShape* a_boneShape, const std::vector<const RigShape*>& a_surfaceShapes)
+	{
+		if (a_boneShape == nullptr)
+			return 0xFFFFFFFFu;
+		std::uint32_t mask = 0u;
+		for (std::size_t index = 0; index < a_surfaceShapes.size() && index < 32u; ++index) {
+			const RigShape* surface = a_surfaceShapes[index];
+			if (surface == nullptr || (surface->name != a_boneShape->name && ShapesCanCollide(*a_boneShape, *surface)))
+				mask |= 1u << index;
+		}
+		return mask;
+	}
+
 	SmpRig DropUnjointedBones(const SmpRig& a_rig, const std::vector<bool>& a_drop)
 	{
 		std::vector<bool> jointed(a_rig.bones.size(), false);

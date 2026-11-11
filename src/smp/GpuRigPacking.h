@@ -69,7 +69,7 @@ namespace SmpPhysics::GpuRig
 	/** @brief One dynamic bone's slice of the claim's sphere list, and a sphere enclosing all of it. */
 	struct BoneSpheres
 	{
-		Uint4 range{};   ///< x first sphere in the sphere list, y how many; 0 for a bone whose cluster is empty
+		Uint4 range{};   ///< x first sphere in the sphere list, y how many; 0 for a bone whose cluster is empty; w 1 when z holds the surfaces the bone may touch, one bit each
 		Float4 bound{};  ///< xyz centre in the bone's rest frame, w radius
 	};
 	static_assert(sizeof(BoneSpheres) == 32);
@@ -264,9 +264,10 @@ namespace SmpPhysics::GpuRig
 	 *                  the same way SetCollision truncates it, so both solvers see the same spheres.
 	 * @param a_colliders The proxies, each naming its driver by that driver's index in the frame's driver list.
 	 * @param a_driverCount The size of that list, which is what a collider's driver index is checked against.
+	 * @param a_boneSurfaceMask Per rig bone, the first 32 surfaces it may touch, one bit each; empty lets every bone touch every surface.
 	 */
 	[[nodiscard]] CollisionData PackCollision(const std::vector<std::vector<BoneSphere>>& a_spheres,
-		const std::vector<Collider>& a_colliders, std::uint32_t a_driverCount);
+		const std::vector<Collider>& a_colliders, std::uint32_t a_driverCount, const std::vector<std::uint32_t>& a_boneSurfaceMask = {});
 
 	/** @brief One collider packed for the compute shader; a collider with no driver packs as one the shader skips. */
 	[[nodiscard]] ColliderPacked PackCollider(const Collider& a_collider);
