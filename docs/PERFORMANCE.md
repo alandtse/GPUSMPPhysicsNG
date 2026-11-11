@@ -166,3 +166,25 @@ The tables above predate the removal of the chain solver and the in-tree arm. Th
 - **An earlier attempt kept the rows in plain local arrays.** It cut the compile to 16 s and was reverted (`fc6fb7a`): it
   made the kernel slower, 0.76 ms with the struct rows and 1.27 ms with the arrays, because the arrays compiled to four
   runtime-indexed temp arrays of 420 four-component registers each. The streamed version adds no array.
+
+## FXC audit of every kernel (2026-11-11)
+
+`docs/perf-data/fxc_audit.py` compiles each kernel (`cs_5_0`, `/O3`) and reports slots, temp registers, loops and runtime-indexed
+temp arrays, to look for another flaw like the `RigidSetup` one. None of the other kernels shows it:
+
+| Kernel                    | Compile s | Slots | Temps | Indexable temps |
+| ------------------------- | --------- | ----- | ----- | --------------- |
+| `RigidSetup`              | 3.5       | 3179  | 120   | 3 x 4           |
+| `RigidSolveIslandColored` | 1.1       | 707   | 42    | 6 x 4           |
+| `ContactSpheres`          | 0.1       | 396   | 19    | none            |
+| `RigidIntegrate`          | 0.1       | 394   | 15    | none            |
+| `RigidFrameBegin`         | 0.1       | 343   | 21    | none            |
+| `RigidPredict`            | 0.1       | 271   | 21    | none            |
+| `ContactCull`             | 0.1       | 265   | 14    | none            |
+| `RigidSolveIsland`        | 0.2       | 214   | 24    | none            |
+| `SurfacePose`             | 0.0       | 101   | 9     | 4 x 4           |
+| the rest                  | 0.0       | 18-77 | 5-9   | none            |
+
+- Only `RigidSetup` is large, and it is already cheap at run time (0.03 ms). The solve and contact kernels are small, so
+  their cost is memory access and divergence, not register pressure or unrolled copies.
+- The two runtime-indexed arrays are small: the six colour offsets in the coloured solve and four rows in `SurfacePose`.
