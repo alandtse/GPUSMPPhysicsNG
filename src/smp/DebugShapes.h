@@ -10,18 +10,22 @@ namespace SmpPhysics
 	/** @brief What a debug line shows; each has its own colour. */
 	enum class DebugColor : std::uint32_t
 	{
-		Held,         ///< A strand a hand holds (yellow).
-		InReach,      ///< A strand a closing grip would take (green).
-		Influenced,   ///< Hair a hand's capsules push.
-		Pull,         ///< From a held point to where the hand wants it.
-		Hand,         ///< A capsule of another body's hand or held item.
-		Collider,     ///< A proxy of the wearer's own head, body or armor that hair collides with.
-		Joint,        ///< A bone of the simulated chain, drawn from its parent, with a cross at its origin.
-		Stretched,    ///< A joint whose length differs from its rest length by more than the tolerance.
-		Skeleton,     ///< A node of an actor's skeleton, drawn from its parent.
-		Fingers,      ///< A node of the player's hand skeleton, fingers included.
-		SphereGap,    ///< A hair collision sphere with clear space between it and the nearest collision surface.
-		SphereTouch,  ///< A hair collision sphere resting on a collision surface.
+		Held,          ///< A strand a hand holds (yellow).
+		InReach,       ///< A strand a closing grip would take (green).
+		Influenced,    ///< Hair a hand's capsules push.
+		Pull,          ///< From a held point to where the hand wants it.
+		Hand,          ///< A capsule of another body's hand or held item.
+		Collider,      ///< A proxy of the wearer's own head, body or armor that hair collides with.
+		Joint,         ///< A bone of the simulated chain, drawn from its parent, with a cross at its origin.
+		Stretched,     ///< A joint whose length differs from its rest length by more than the tolerance.
+		Skeleton,      ///< A node of an actor's skeleton, drawn from its parent.
+		Fingers,       ///< A node of the player's hand skeleton, fingers included.
+		SphereGap,     ///< A hair collision sphere with clear space between it and the nearest collision surface.
+		SphereTouch,   ///< A hair collision sphere resting on a collision surface.
+		SolverGpu,     ///< A joint of a claim this plugin simulates on the GPU.
+		SolverCulled,  ///< A joint of a claim this plugin owns but is not stepping (over budget, out of view or too small).
+		SolverIdle,    ///< A joint of a claim hdtSMP64 would not simulate this frame, so neither is it.
+		SolverHdt,     ///< A joint of a mesh this plugin declined, so hdtSMP64 simulates it on the CPU.
 		Count
 	};
 

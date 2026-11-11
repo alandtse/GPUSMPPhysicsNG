@@ -1973,6 +1973,9 @@ void SmpPhysicsFeature::AppendJointLines(const Claim& a_claim, std::vector<SmpPh
 		a_at = *positions[static_cast<std::size_t>(a_bone)];
 		return true;
 	};
+	const SmpPhysics::DebugColor ownerColor = a_claim.inactive                           ? SmpPhysics::DebugColor::SolverIdle :
+	                                          a_claim.culled() || !a_claim.gpuRegistered ? SmpPhysics::DebugColor::SolverCulled :
+	                                                                                       SmpPhysics::DebugColor::SolverGpu;
 	for (const SmpPhysics::RigJoint& joint : a_claim.parsed->rig.joints) {
 		SmpPhysics::Vec3 parent;
 		SmpPhysics::Vec3 child;
@@ -1984,7 +1987,7 @@ void SmpPhysicsFeature::AppendJointLines(const Claim& a_claim, std::vector<SmpPh
 			const float now = SmpPhysics::Length(child - parent);
 			stretched = rest > kJointMinimumRestLength && std::abs(now / rest - 1.0f) > kJointLengthTolerance;
 		}
-		SmpPhysics::DebugColor color = stretched ? SmpPhysics::DebugColor::Stretched : SmpPhysics::DebugColor::Joint;
+		SmpPhysics::DebugColor color = stretched ? SmpPhysics::DebugColor::Stretched : ownerColor;
 		for (const DebugGrabBone& grab : a_grabBones) {
 			if (grab.token != a_claim.token || (grab.bone != joint.parent && grab.bone != joint.child))
 				continue;
@@ -1994,6 +1997,45 @@ void SmpPhysicsFeature::AppendJointLines(const Claim& a_claim, std::vector<SmpPh
 		}
 		a_out.push_back({ parent, child, color });
 		SmpPhysics::AppendCross(a_out, child, kJointCrossSize, color);
+	}
+}
+
+void SmpPhysicsFeature::AppendDeclinedLines(std::vector<SmpPhysics::DebugSegment>& a_out)
+{
+	// Only as accurate as the decline record: a pair is drawn while its latest outcome is a decline, from the engine's own pose.
+	const auto* camera = RE::PlayerCamera::GetSingleton();
+	const RE::NiPoint3 eye = camera && camera->cameraRoot ? camera->cameraRoot->world.translate : RE::NiPoint3{};
+	std::size_t actorsDrawn = 0;
+	std::vector<std::uint32_t> drawn;
+	for (const auto& [formID, file] : claimTally.DeclinedPairs()) {
+		const auto* actor = RE::TESForm::LookupByID<RE::Actor>(formID);
+		RE::NiNode* root = actor && actor->Is3DLoaded() ? actor->Get3D()->AsNode() : nullptr;
+		if (!root || root->world.translate.GetDistance(eye) > kDebugMaxDistance)
+			continue;
+		if (std::find(drawn.begin(), drawn.end(), formID) == drawn.end()) {
+			if (actorsDrawn >= static_cast<std::size_t>(std::max(settings.DebugMaxActors, 0)))
+				continue;
+			drawn.push_back(formID);
+			++actorsDrawn;
+		}
+		// stateMutex is already held, so this cannot go through GetParsedRig.
+		auto cached = parsedRigs.find(file);
+		if (cached == parsedRigs.end())
+			cached = parsedRigs.try_emplace(file, std::make_shared<SmpPhysics::ParseResult>(ReadPhysicsFile(file))).first;
+		const auto& parsed = cached->second;
+		if (!parsed)
+			continue;
+		for (const SmpPhysics::RigJoint& joint : parsed->rig.joints) {
+			if (joint.parent < 0 || joint.child < 0 || static_cast<std::size_t>(std::max(joint.parent, joint.child)) >= parsed->rig.bones.size())
+				continue;
+			const auto* from = root->GetObjectByName(RE::BSFixedString(parsed->rig.bones[static_cast<std::size_t>(joint.parent)].name));
+			const auto* to = root->GetObjectByName(RE::BSFixedString(parsed->rig.bones[static_cast<std::size_t>(joint.child)].name));
+			if (!from || !to)
+				continue;
+			const SmpPhysics::Vec3 end{ to->world.translate.x, to->world.translate.y, to->world.translate.z };
+			a_out.push_back({ { from->world.translate.x, from->world.translate.y, from->world.translate.z }, end, SmpPhysics::DebugColor::SolverHdt });
+			SmpPhysics::AppendCross(a_out, end, kJointCrossSize, SmpPhysics::DebugColor::SolverHdt);
+		}
 	}
 }
 
@@ -2228,6 +2270,8 @@ void SmpPhysicsFeature::UpdateGrabDebug()
 					push(claim.externalColliders[index].segmentA, claim.externalColliders[index].segmentB, SmpPhysics::DebugColor::Hand);
 			}
 		}
+		if (settings.ShowJointDebug)
+			AppendDeclinedLines(segments);
 		if (settings.ShowSkeletonDebug)
 			AppendSkeletonLines(segments, settings.DebugMaxActors);
 	}

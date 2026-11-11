@@ -101,3 +101,17 @@ TEST_CASE("Storage is bounded and Reset clears it", "[smpphysics][claimtally]")
 	CHECK(snapshot.files.empty());
 	CHECK_FALSE(snapshot.pairsTruncated);
 }
+
+TEST_CASE("DeclinedPairs lists the pairs whose latest outcome is a decline and skips actorless ones", "[smpphysics][claimtally]")
+{
+	ClaimTally tally;
+	tally.Record(Kind::Armor, 1, "A.xml", false, "limit");
+	tally.Record(Kind::Armor, 2, "b.xml", false, "limit");
+	tally.Record(Kind::Armor, 2, "b.xml", true, "");
+	tally.Record(Kind::Armor, 0, "c.xml", false, "limit");
+
+	const auto declined = tally.DeclinedPairs();
+	REQUIRE(declined.size() == 1);
+	CHECK(declined[0].first == 1);
+	CHECK(declined[0].second == "a.xml");
+}

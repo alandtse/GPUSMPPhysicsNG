@@ -30,7 +30,7 @@ namespace SmpPhysics
 		constexpr UINT kVertexConstantSlots = 14;
 		constexpr std::uintptr_t kVrStereoBufferOffset = 0x3180688;
 		/** @brief Colours of DebugColor, in order. */
-		constexpr float kPalette[static_cast<std::size_t>(DebugColor::Count)][3] = { { 1.0f, 0.9f, 0.1f }, { 0.1f, 1.0f, 0.2f }, { 1.0f, 0.15f, 0.1f }, { 0.1f, 0.9f, 1.0f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.2f, 1.0f }, { 0.45f, 0.55f, 1.0f }, { 1.0f, 0.5f, 0.0f }, { 0.7f, 0.7f, 0.7f }, { 1.0f, 0.8f, 0.5f }, { 1.0f, 0.55f, 0.75f }, { 0.0f, 0.7f, 0.6f } };
+		constexpr float kPalette[static_cast<std::size_t>(DebugColor::Count)][3] = { { 1.0f, 0.9f, 0.1f }, { 0.1f, 1.0f, 0.2f }, { 1.0f, 0.15f, 0.1f }, { 0.1f, 0.9f, 1.0f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.2f, 1.0f }, { 0.45f, 0.55f, 1.0f }, { 1.0f, 0.5f, 0.0f }, { 0.7f, 0.7f, 0.7f }, { 1.0f, 0.8f, 0.5f }, { 1.0f, 0.55f, 0.75f }, { 0.0f, 0.7f, 0.6f }, { 0.55f, 1.0f, 0.1f }, { 0.8f, 0.6f, 0.15f }, { 0.5f, 0.5f, 0.5f }, { 0.7f, 0.3f, 1.0f } };
 
 		/** @brief One end of a line, as the vertex shader reads it. */
 		struct DebugLineVertex

@@ -130,6 +130,17 @@ namespace SmpPhysics
 		return snapshot;
 	}
 
+	std::vector<std::pair<std::uint32_t, std::string>> ClaimTally::DeclinedPairs() const
+	{
+		const std::scoped_lock lock(mutex);
+		std::vector<std::pair<std::uint32_t, std::string>> declined;
+		for (const auto& entry : pairs) {
+			if (!entry.second.accepted && entry.first.first != 0)
+				declined.push_back(entry.first);
+		}
+		return declined;
+	}
+
 	void ClaimTally::Reset()
 	{
 		const std::scoped_lock lock(mutex);

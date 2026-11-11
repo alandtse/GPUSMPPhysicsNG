@@ -69,6 +69,9 @@ namespace SmpPhysics
 
 		[[nodiscard]] Snapshot Take() const;
 
+		/** @brief The (actor, lowercase file) pairs whose latest outcome was a decline; actor 0 (no actor) is left out. */
+		[[nodiscard]] std::vector<std::pair<std::uint32_t, std::string>> DeclinedPairs() const;
+
 		void Reset();
 
 		/** @brief a_reason with each quoted name replaced by '?' and each run of digits by N. */

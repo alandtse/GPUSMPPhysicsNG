@@ -480,6 +480,8 @@ private:
 	/** @brief Appends each of a claim's joints as a line from its parent bone to the bone, orange where its length is off its rest length. */
 	/** @brief Appends the skeletons of the actors near the camera, and the player's hand skeletons. */
 	static void AppendSkeletonLines(std::vector<SmpPhysics::DebugSegment>& a_out, int a_maxActors);
+	/** @brief Draws the meshes hdtSMP64 simulates. Called with stateMutex held. */
+	void AppendDeclinedLines(std::vector<SmpPhysics::DebugSegment>& a_out);
 	static void AppendJointLines(const Claim& a_claim, std::vector<SmpPhysics::DebugSegment>& a_out, const std::vector<DebugGrabBone>& a_grabBones);
 	/** @brief Appends the edges of a claim's collision meshes (worn armor, head) that lie within reach of its hair. */
 	static void AppendSurfaceEdgesNearHair(const Claim& a_claim, std::vector<SmpPhysics::DebugSegment>& a_out);

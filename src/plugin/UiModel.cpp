@@ -304,7 +304,7 @@ void PluginUi::Register()
 		Check("Developer mode", "Allows the debug overlay to draw.", &globals::state->developerMode),
 		VrOnly(Check("Show grab debug", "Draws the strands hands hold, those in reach, and the hair hands push.", &settings.ShowGrabDebug)),
 		Check("Show collider debug", "Outlines the head, body and armor proxies and other bodies' capsules that hair collides with.", &settings.ShowColliderDebug),
-		Check("Show joint debug", "Draws each simulated bone from its parent and flags those stretched or squeezed from rest length.", &settings.ShowJointDebug),
+		Check("Show joint debug", "Draws each simulated bone from its parent, coloured by who simulates it: lime is the GPU, amber is claimed but not stepped, grey is inactive, purple is hdtSMP64 on the CPU. Orange marks stretched or squeezed joints.", &settings.ShowJointDebug),
 		Check("Show skeleton debug", "Draws the skeletons of nearby actors and the player's hands.", &settings.ShowSkeletonDebug),
 		SlideInt("Overlay actors", "Most actors the overlays draw, nearest first.", &settings.DebugMaxActors, 1, 8),
 		Header("Shaders"),
