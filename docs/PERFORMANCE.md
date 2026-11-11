@@ -200,3 +200,10 @@ Routing small islands to the sequential `RigidSolveIsland` kernel was slower: at
 ms coloured-only, 1.48 ms for islands of at most 8 constraints, 2.23 ms for 16 and 2.83 ms for 32 (`small_island_sweep_se_20.json`).
 One thread walking an island serially costs more than a coloured group, so the change was reverted. Tighter deep-push BVH leaf
 bounds for `ContactSpheres` and prepacked body slots are not tried; the solve kernels are already small (see the FXC audit).
+
+Upper bound for tighter deep-push leaf bounds: with the deep-push reach set to 0 for every surface (which also drops the
+behaviour), `ContactSpheres` on the Yue Qingshu Dress crowd was 0.36 ms per call at crowd 10 (0.57 before) and 0.73 ms at
+crowd 20 (1.00 before). Baking the reach into the leaf boxes can only remove the front-side part of that extension, so it is
+bounded by about 0.13 ms per call (about 0.35 ms per frame at crowd 20, about 5% of the solver), and it needs a new per-leaf
+record in the shader and host packing plus GPU/CPU parity re-checks. Not worth that cost; not implemented
+(`gpu_pass_cost_se_nodeep_dress.json`). Prepacked body slots for the coloured solve were not measured.
