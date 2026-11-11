@@ -62,7 +62,8 @@ Coordination with other agents is mandatory (`~/.claude/skyrim-game-coordination
   `backgroundCompile` first and loads the test save. VR uses the SteamVR null driver (`~/vr-null-toggle.ps1`).
 - Quit with the `qqq` console command, never taskkill. Release the lock and turn the null driver off afterwards.
 - Perf runs mark the machine do-not-disturb; keep every run under 5 minutes.
-- An OS modal blocks SE captures; test and screenshot on VR.
+- SE can show a warning modal that blocks devbench captures until it is dismissed. Dismiss it and carry on; do not switch to VR
+  to avoid it. When SE captures look wrong, check for a modal first.
 
 Suites (all need a game running with the plugin and `GPUSMP_STANDALONE=1`):
 
