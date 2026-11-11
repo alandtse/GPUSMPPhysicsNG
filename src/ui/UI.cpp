@@ -93,6 +93,9 @@ namespace SettingsUi
 				// The SMF API has no PushID, so each control's label carries its own unique suffix.
 				const std::string id = row.label + "##gsp_" + row.label;
 				bool changed = false;
+				const bool disabled = row.enabled && !row.enabled();
+				if (disabled)
+					ImGuiMCP::BeginDisabled(true);
 				switch (row.kind) {
 				case Row::Kind::Checkbox:
 					changed = ImGuiMCP::Checkbox(id.c_str(), row.boolValue);
@@ -139,6 +142,8 @@ namespace SettingsUi
 					changed = RenderList(row, id);
 					break;
 				}
+				if (disabled)
+					ImGuiMCP::EndDisabled();
 				if (changed && row.onChanged)
 					row.onChanged();
 			}
@@ -168,6 +173,12 @@ namespace SettingsUi
 			ImGuiMCP::SameLine(0.0f, -1.0f);
 			if (model->onSave && ImGuiMCP::Button("Save settings##gsp_save", { 0, 0 }))
 				model->onSave();
+			if (model->onReset) {
+				ImGuiMCP::SameLine(0.0f, -1.0f);
+				if (ImGuiMCP::Button("Reset to defaults##gsp_reset", { 0, 0 }))
+					model->onReset();
+				Tip("Puts every setting on every page back to its default. Nothing is written until you press Save settings.");
+			}
 		}
 	}
 

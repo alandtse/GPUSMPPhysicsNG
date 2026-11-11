@@ -42,6 +42,7 @@ namespace SettingsUi
 		float minimum{};
 		float maximum{};
 		const char* format{ "%.2f" };
+		std::function<bool()> enabled;    ///< When set and false the control is drawn greyed out and cannot be edited.
 		std::function<void()> onChanged;  ///< Runs after the user edits the control; may be empty.
 	};
 
@@ -63,6 +64,7 @@ namespace SettingsUi
 		std::function<std::string()> status;                 ///< Text shown above the controls, refreshed every frame.
 		std::function<void()> onSave;                        ///< Writes Settings.json.
 		std::function<void()> onReevaluate;                  ///< Asks hdtSMP64 to offer every actor's meshes again.
+		std::function<void()> onReset;                       ///< Puts every setting back to its default; the page then shows them and Save writes them.
 	};
 
 	/** @brief Registers one page per model, in order, with SKSE Menu Framework; a no-op when it is not installed. The models must outlive the game session. */

@@ -108,6 +108,14 @@ namespace
 		return row;
 	}
 
+	/** @brief Greys a row out on flat Skyrim, for controls that only act on VR hands. */
+	Row VrOnly(Row a_row)
+	{
+		a_row.enabled = [] { return REL::Module::IsVR(); };
+		a_row.tooltip += " Needs VR.";
+		return a_row;
+	}
+
 	Row Text(std::function<std::string()> a_text)
 	{
 		Row row;
@@ -176,7 +184,7 @@ void PluginUi::Register()
 		Check("Simulate head parts", "Hair, wigs and other head parts.", &settings.ClaimHeadParts, reclaim),
 		Check("Simulate armor", "Armor and clothing with physics.", &settings.ClaimArmor, reclaim),
 		Check("React to nearby bodies and hands", "Other characters, the player's VR hands and held weapons or objects push the hair.", &settings.BodyContacts),
-		Check("Hold hair with a closed hand", "In VR, closing a hand on a strand of hair holds it to the hand until the hand opens.", &settings.GrabStrands),
+		VrOnly(Check("Hold hair with a closed hand", "Closing a hand on a strand of hair holds it to the hand until the hand opens.", &settings.GrabStrands)),
 		Header("Capes and cloaks"),
 		Check("Capes rest on the floor", "A cape stops at the floor under the character instead of hanging through it.", &settings.ClothFloor),
 		Check("Capes react to loose objects", "A cape is pushed by loose objects the physics world moves.", &settings.ClothObjects),
@@ -208,6 +216,7 @@ void PluginUi::Register()
 	};
 	model.onSave = [&feature] { PluginSettings::Save(feature); };
 	model.onReevaluate = [&feature] { feature.ReevaluateAllActors(); };
+	model.onReset = [&feature] { feature.ResetSettings(); };
 
 	claimsModel.title = "Claims";
 	claimsModel.showFooter = false;
@@ -289,10 +298,11 @@ void PluginUi::Register()
 
 	developerModel.title = "Developer";
 	developerModel.onSave = model.onSave;
+	developerModel.onReset = model.onReset;
 	developerModel.rows = {
 		Header("Debug overlay"),
 		Check("Developer mode", "Allows the debug overlay to draw.", &globals::state->developerMode),
-		Check("Show grab debug", "Draws the strands hands hold, those in reach, and the hair hands push.", &settings.ShowGrabDebug),
+		VrOnly(Check("Show grab debug", "Draws the strands hands hold, those in reach, and the hair hands push.", &settings.ShowGrabDebug)),
 		Check("Show collider debug", "Outlines the head, body and armor proxies and other bodies' capsules that hair collides with.", &settings.ShowColliderDebug),
 		Check("Show joint debug", "Draws each simulated bone from its parent and flags those stretched or squeezed from rest length.", &settings.ShowJointDebug),
 		Check("Show skeleton debug", "Draws the skeletons of nearby actors and the player's hands.", &settings.ShowSkeletonDebug),

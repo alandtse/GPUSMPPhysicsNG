@@ -838,6 +838,15 @@ void SmpPhysicsFeature::ReevaluatePlayer()
 	ReevaluateActor(globals::game::player);
 }
 
+void SmpPhysicsFeature::ResetSettings()
+{
+	{
+		const std::scoped_lock lock(stateMutex);
+		settings = Settings{};
+	}
+	ReevaluateAllActors();
+}
+
 void SmpPhysicsFeature::ReevaluateAllActors()
 {
 	hdt::PluginInterface* smpInterface = nullptr;

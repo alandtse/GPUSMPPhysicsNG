@@ -137,6 +137,8 @@ struct SmpPhysicsFeature final : Feature
 
 	/** @brief Asks hdtSMP64 to re-run claiming for every loaded actor, so a newly enabled feature picks meshes up. */
 	void ReevaluateAllActors();
+	/** @brief Puts every setting back to its default and asks hdtSMP64 to offer every actor's meshes again; the saved file is not touched. */
+	void ResetSettings();
 	/** @brief Asks hdtSMP64 to re-run claiming for the player alone. */
 	void ReevaluatePlayer();
 	/** @brief Asks hdtSMP64 to re-run claiming for the actors this feature currently holds. */
