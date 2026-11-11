@@ -248,3 +248,26 @@ ours binds 127.0.0.1 and hdtSMP64 the wildcard and IPv6, so `tracy-capture -a ::
 About 5 ms of CPU and GPU work against 15.3 ms, so the plugin spends roughly a third of what hdtSMP64 does on the same
 characters. The Tracy GPU zones `SurfacePrep` and `SP_Refit` read 9 ms per frame each, against 0.1 ms from the in-plugin pass
 timer; they open the GPU timeline's busy stretch and look like timestamp artefacts, not cost, so they are left out above.
+
+### Sizes, repeats, a dress crowd and default throttles (same day, same method)
+
+Per frame, ms: hdtSMP64's `PhysicsStep` with the plugin disabled, against the plugin's CPU `Step` + GPU `RigidContact` +
+`RigidSolve` + hdtSMP64's residual step on what the plugin does not claim (GPU time is asynchronous, so the sum is a
+conservative total).
+
+| Crowd (throttles lifted) | hdtSMP64         | Plugin cpu + gpu + residual | Ratio            |
+| ------------------------ | ---------------- | --------------------------- | ---------------- |
+| 5                        | 3.36             | 0.76 + 1.42 + 0.14 = 2.3    | 0.68             |
+| 10                       | 4.75             | 1.16 + 1.79 + 0.25 = 3.2    | 0.67             |
+| 20, Yue Qingshu Dress    | 12.04            | 2.42 + 2.78 + 0.42 = 5.6    | 0.47             |
+| 30 (three runs)          | 15.3, 20.5, 15.5 | 4.9, 5.2, 5.0               | 0.32, 0.25, 0.32 |
+| 60                       | 32.03            | 3.34 + 5.73 + 2.58 = 11.65  | 0.36             |
+
+The plugin is cheaper at every size, including 5 characters. The gap widens with crowd size up to 30 and holds at 60. One
+hdtSMP64 run in three at 30 read 20.5 ms against 15.3 and 15.5, so its cost has more run-to-run spread than ours.
+At 60, hdtSMP64's residual on unclaimed items grows to 2.6 ms; the plugin's CPU `Step` grows to 3.3 ms.
+
+With each plugin at its **default throttles** (30 characters, hdtSMP64 `maximumActiveSkeletons` 5 and its culling on, ours
+`SimulationDistance` 2000 and no other cull), hdtSMP64's step costs 2.9 ms per frame and the plugin 1.7 + 2.2 + 0.1 = 4.1 ms.
+At defaults hdtSMP64 is cheaper in absolute terms because it simulates about 5 skeletons while the plugin simulates all 72
+claims. The per-character cost is the plugin's advantage; the default-throttle total is not. Not measured: capes, VR.
