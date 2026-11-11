@@ -54,7 +54,10 @@ namespace SettingsUi
 			if (row.itemStatusFn) {
 				status = row.itemStatusFn();
 				ImGuiMCP::SetNextItemWidth(kWidth);
+				const int before = row.showMode;
 				ImGuiMCP::Combo(("##gsp_show_" + row.label).c_str(), &row.showMode, "All\0With physics\0Needs attention\0", -1);
+				if (row.showMode != before && row.showMode != 0 && row.onShowFiltered)
+					row.onShowFiltered();
 			}
 			const auto statusOf = [&status](std::size_t a_index) { return a_index < status.size() ? status[a_index] : 0; };
 			const int selected = row.selectedFn ? row.selectedFn() : *row.intValue;

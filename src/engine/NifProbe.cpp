@@ -2,6 +2,7 @@
 
 #include "engine/NifProbe.h"
 
+#include "RE/B/BGSHeadPart.h"
 #include "RE/B/BSResourceNiBinaryStream.h"
 #include "RE/T/TESObjectARMA.h"
 #include "RE/T/TESObjectARMO.h"
@@ -16,6 +17,7 @@
 #include <fstream>
 #include <map>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -160,18 +162,32 @@ namespace NifProbe
 		if (worker.joinable())
 			worker.join();
 		std::vector<Target> targets;
-		for (const auto& list : { TestBench::TestCrowd::ArmorForms(), TestBench::TestCrowd::CloakForms() }) {
-			for (const RE::TESObjectARMO* armor : list) {
-				Target target{ armor->GetName(), armor->GetFormID(), {} };
-				for (const RE::TESObjectARMA* addon : armor->armorAddons) {
-					if (!addon)
-						continue;
-					for (const auto& model : addon->bipedModels) {
-						if (const char* path = model.GetModel(); path && *path)
-							target.models.emplace_back(path);
-					}
+		std::set<RE::FormID> listed;
+		const auto addArmor = [&](const RE::TESObjectARMO* a_armor) {
+			if (!a_armor || !listed.insert(a_armor->GetFormID()).second)
+				return;
+			Target target{ a_armor->GetName(), a_armor->GetFormID(), {} };
+			for (const RE::TESObjectARMA* addon : a_armor->armorAddons) {
+				if (!addon)
+					continue;
+				for (const auto& model : addon->bipedModels) {
+					if (const char* path = model.GetModel(); path && *path)
+						target.models.emplace_back(path);
 				}
-				targets.push_back(std::move(target));
+			}
+			targets.push_back(std::move(target));
+		};
+		for (const auto& list : { TestBench::TestCrowd::ArmorForms(), TestBench::TestCrowd::CloakForms() }) {
+			for (const RE::TESObjectARMO* armor : list)
+				addArmor(armor);
+		}
+		// Every other armor and every head part is read too, so an xml they use is not reported as unused.
+		if (auto* handler = RE::TESDataHandler::GetSingleton()) {
+			for (const RE::TESObjectARMO* armor : handler->GetFormArray<RE::TESObjectARMO>())
+				addArmor(armor);
+			for (const RE::BGSHeadPart* part : handler->GetFormArray<RE::BGSHeadPart>()) {
+				if (const char* path = part ? part->GetModel() : nullptr; path && *path)
+					targets.push_back({ part->GetFormEditorID(), part->GetFormID(), { path } });
 			}
 		}
 		{

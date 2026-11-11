@@ -206,6 +206,26 @@ namespace
 		};
 	}
 
+	std::vector<std::string> ArmorNames()
+	{
+		return TestBench::TestCrowd::ArmorNames();
+	}
+
+	std::vector<std::string> CloakNames()
+	{
+		return WithFirst("None", TestBench::TestCrowd::CloakNames());
+	}
+
+	std::vector<RE::TESObjectARMO*> ArmorForms()
+	{
+		return TestBench::TestCrowd::ArmorForms();
+	}
+
+	std::vector<RE::TESObjectARMO*> CloakForms()
+	{
+		return TestBench::TestCrowd::CloakForms();
+	}
+
 	/** @brief A line about the selected item's physics. */
 	Row ItemNote(std::function<std::vector<RE::TESObjectARMO*>()> a_forms, const int* a_index, int a_skip)
 	{
@@ -219,9 +239,9 @@ namespace
 	}
 
 	/** @brief A button that copies the selected item's full report for its mod author. */
-	Row ItemCopy(std::function<std::vector<RE::TESObjectARMO*>()> a_forms, const int* a_index, int a_skip)
+	Row ItemCopy(const char* a_label, std::function<std::vector<RE::TESObjectARMO*>()> a_forms, const int* a_index, int a_skip)
 	{
-		Row copy = Button("Copy report for the selected item", "Copies the item's name, plugin, physics files and what is wrong with each, to send to its mod author. Scan first.", [] {});
+		Row copy = Button(a_label, "Copies the item's name, plugin, physics files and what is wrong with each, to send to its mod author. Scan first.", [] {});
 		copy.clipboardFn = SelectedItemReport(std::move(a_forms), a_index, a_skip);
 		return copy;
 	}
@@ -229,7 +249,25 @@ namespace
 	Row WithHealth(Row a_row, std::function<std::vector<RE::TESObjectARMO*>()> a_forms, std::size_t a_skip)
 	{
 		a_row.itemStatusFn = HealthColours(std::move(a_forms), a_skip);
+		a_row.onShowFiltered = [] {
+			if (!NifProbe::Generation() && !NifProbe::Running())
+				NifProbe::Start();
+		};
 		return a_row;
+	}
+
+	/** @brief A coloured list of items with the selected one's physics state and a button to copy its report; picking only selects. */
+	std::vector<Row> ItemBrowser(const char* a_label, const char* a_copyLabel, const char* a_dressLabel, std::function<void()> a_dress, const char* a_tooltip, int* a_index, std::function<std::vector<std::string>()> a_names, std::function<std::vector<RE::TESObjectARMO*>()> a_forms, int a_skip)
+	{
+		Row dress = Button(a_dressLabel, "Dresses every test character in the selected item. Spawn them on the Test crowd page first.", std::move(a_dress), true);
+		dress.enabled = [a_index] { return *a_index >= 0; };
+		return { WithHealth(Browse(a_label, a_tooltip, a_index, std::move(a_names), {}, {}), a_forms, static_cast<std::size_t>(a_skip)), ItemNote(a_forms, a_index, a_skip), ItemCopy(a_copyLabel, a_forms, a_index, a_skip), std::move(dress) };
+	}
+
+	std::vector<Row> Join(std::vector<Row> a_first, std::vector<Row> a_second)
+	{
+		a_first.insert(a_first.end(), std::make_move_iterator(a_second.begin()), std::make_move_iterator(a_second.end()));
+		return a_first;
 	}
 
 	std::uint64_t ClaimLineId(const SmpPhysicsFeature::ClaimRow& a_row)
@@ -240,6 +278,7 @@ namespace
 	SettingsUi::Model model;
 	SettingsUi::Model claimsModel;
 	SettingsUi::Model reportModel;
+	SettingsUi::Model physicsModel;
 	SettingsUi::Model crowdModel;
 	SettingsUi::Model developerModel;
 
@@ -258,6 +297,13 @@ namespace
 		int idle = 0;
 		int hairColor = 0;
 	} crowdChoices;
+
+	/** @brief What the Armor physics page has selected; separate from the crowd's, since picking there dresses nobody. */
+	struct BrowseChoices
+	{
+		int armor = -1;
+		int cloak = 0;
+	} browseChoices;
 }
 
 void PluginUi::Register()
@@ -359,6 +405,18 @@ void PluginUi::Register()
 		return blocks;
 	};
 
+	physicsModel.title = "Armor physics";
+	physicsModel.showFooter = false;
+	physicsModel.rows = Join(
+		{ Text([] { return std::string("Finds which armors and cloaks carry physics and whether their files work, without dressing anyone."); }),
+			Button("Scan for physics", "Reads every armor's, cloak's and head part's models for physics data and checks each physics file, then lists physics files nothing uses. Takes a few seconds.", [] { NifProbe::Start(); }),
+			Text([] {
+				const auto [done, total] = NifProbe::Progress();
+				if (NifProbe::Running())
+					return std::format("Scanning: {} of {}", done, total);
+				return NifProbe::Generation() ? std::string("Green: physics file works. Amber: repaired and used. Red: file fault. Plain: no physics found.") : std::string("Not scanned yet."); }) },
+		Join(ItemBrowser("Armors", "Copy report for the selected armor", "Dress test characters in it", [] { TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(browseChoices.armor)); }, "Every playable body armor. Click one to see its physics and copy a report for its mod author.", &browseChoices.armor, ArmorNames, ArmorForms, 0), ItemBrowser("Cloaks", "Copy report for the selected cloak", "Put it on test characters", [] { RunCrowdCommand("setTestCrowdCloak", { { "index", browseChoices.cloak - 1 } }); }, "Every cloak and cape. Click one to see its physics and copy a report for its mod author.", &browseChoices.cloak, CloakNames, CloakForms, 1)));
+
 	auto& choices = crowdChoices;
 	crowdModel.title = "Test crowd";
 	crowdModel.showFooter = false;
@@ -382,18 +440,8 @@ void PluginUi::Register()
 			const int worn = TestBench::GetCrowd().WornArmorIndex();
 			const auto& names = TestBench::TestCrowd::ArmorNames();
 			return "Wearing: " + (worn >= 0 && worn < static_cast<int>(names.size()) ? names[static_cast<std::size_t>(worn)] : std::string("none")); }),
-		Button("Scan for physics", "Reads every body armor's and cloak's models for physics data and checks each physics file, without dressing anyone. The lists below are coloured by the result.", [] { NifProbe::Start(); }),
-		Text([] {
-			const auto [done, total] = NifProbe::Progress();
-			if (NifProbe::Running())
-				return std::format("Scanning: {} of {}", done, total);
-			return NifProbe::Generation() ? std::string("Green: physics file works. Amber: repaired and used. Red: file fault. Plain: no physics found.") : std::string("Not scanned yet."); }),
-		WithHealth(Browse("Armor list", "Every playable body armor; click one to dress the test characters in it.", &choices.armor, [] { return TestBench::TestCrowd::ArmorNames(); }, [] { return TestBench::GetCrowd().WornArmorIndex(); }, [&choices] { TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(choices.armor)); }), [] { return TestBench::TestCrowd::ArmorForms(); }, 0),
-		ItemNote([] { return TestBench::TestCrowd::ArmorForms(); }, &choices.armor, 0),
-		ItemCopy([] { return TestBench::TestCrowd::ArmorForms(); }, &choices.armor, 0),
-		WithHealth(Browse("Cloak", "A cloak or cape every test character wears, on top of armor or bare body.", &choices.cloak, [] { return WithFirst("None", TestBench::TestCrowd::CloakNames()); }, [] { return TestBench::GetCrowd().WornCloakIndex() + 1; }, [&choices] { RunCrowdCommand("setTestCrowdCloak", { { "index", choices.cloak - 1 } }); }), [] { return TestBench::TestCrowd::CloakForms(); }, 1),
-		ItemNote([] { return TestBench::TestCrowd::CloakForms(); }, &choices.cloak, 1),
-		ItemCopy([] { return TestBench::TestCrowd::CloakForms(); }, &choices.cloak, 1),
+		WithHealth(Browse("Armor list", "Every playable body armor; click one to dress the test characters in it. Coloured by the scan on the Armor physics page.", &choices.armor, ArmorNames, [] { return TestBench::GetCrowd().WornArmorIndex(); }, [&choices] { TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(choices.armor)); }), ArmorForms, 0),
+		WithHealth(Browse("Cloak", "A cloak or cape every test character wears, on top of armor or bare body.", &choices.cloak, CloakNames, [] { return TestBench::GetCrowd().WornCloakIndex() + 1; }, [&choices] { RunCrowdCommand("setTestCrowdCloak", { { "index", choices.cloak - 1 } }); }), CloakForms, 1),
 		Header("Animation"),
 		Check("Animate on spawn (characters' AI runs)", "Off, test characters spawn frozen.", &choices.animateOnSpawn, [&choices] { TestBench::GetCrowd().SetAnimateOnSpawn(choices.animateOnSpawn); }),
 		Check("Loop the animation", "Plays the animation again each time it ends.", &choices.loopAnimation, [&choices] { RunCrowdCommand("setTestCrowdLoop", { { "enabled", choices.loopAnimation } }); }),
@@ -438,5 +486,5 @@ void PluginUi::Register()
 		Button("Reload shaders", "Recompiles the skinning and debug line shaders from the shader folder on the next frame.", [&feature] { feature.ReloadVisualShaders(); }),
 	};
 
-	SettingsUi::Register({ &model, &claimsModel, &reportModel, &crowdModel, &developerModel });
+	SettingsUi::Register({ &model, &claimsModel, &physicsModel, &reportModel, &crowdModel, &developerModel });
 }
