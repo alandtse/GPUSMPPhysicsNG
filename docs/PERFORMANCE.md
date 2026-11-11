@@ -212,3 +212,12 @@ Cost of building the coloured solve's body table (item 3): repeating its insert 
 `CacheIslandBodies` (each with its barrier) left `RigidSolve` at 0.56 ms per call at crowd 10 and 0.55 ms at crowd 20, where
 the run without the repeat read 0.60 and 0.63 (`gpu_pass_cost_se_dblcache_dress.json`). Extra build work adds no measurable
 time, so prepacking those mappings on the CPU has nothing to remove. Rejected.
+
+## VR check (2026-11-11)
+
+`gpu_pass_cost.py` on VR (null driver, committed build, throttles lifted; 21 to 38 claims as VR culls more than SE did).
+Per call, wigs crowd of 10/20/30: `ContactSpheres` 0.33/0.69/0.75 ms, `RigidSolve` 0.56/0.60/0.58 ms, 2.0 substeps per frame.
+Dress crowd of 10/20: `ContactSpheres` 0.39/0.76 ms, `RigidSolve` 0.58/0.59 ms. The per-call costs sit at or below SE's
+(`ContactSpheres` 1.00 and `RigidSolve` 0.63 ms at the 72-claim SE dress crowd), and the largest island is 182 constraints as on SE.
+Nothing here reopens the rejected items: the solver is about 0.6 ms and `ContactSpheres` 0.4 to 0.8 ms per substep, 2 substeps per
+frame, so roughly 2.5 ms of an 11.1 ms VR frame at 20 characters. Data: `gpu_pass_cost_vr_base_{wigs,dress}.json`.
