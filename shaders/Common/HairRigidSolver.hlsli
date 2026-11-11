@@ -4,7 +4,7 @@
 // HLSL counterpart of RigidReference.cpp (hdtSMP64's Bullet 3.25 step); names and operation order match so the two diff.
 //
 // FXC cannot index a struct's array member at runtime, so arrays are named fields with accessors, and an inout
-// parameter is stored back whole. Unrolled copies of the row builder crash FXC, so GetInfo2 walks its axes on a count.
+// parameter is stored back whole. Unrolled copies of the row builder crash FXC, so the caller walks the axes on a count.
 
 namespace HairRigidSolver
 {
@@ -329,19 +329,6 @@ namespace HairRigidSolver
 		uint present;  ///< one bit per slot that holds a row
 	};
 
-	/** @brief One constraint's rows: the three angular axes in their processing order, then the three linear ones. */
-	struct JointRows
-	{
-		AxisRows axis0;
-		AxisRows axis1;
-		AxisRows axis2;
-		AxisRows axis3;
-		AxisRows axis4;
-		AxisRows axis5;
-		float rowCfm;        ///< the constraint's row 0 cfm, which a later axis reads
-		bool rowCfmWritten;  ///< a slot 0 row has already stored its cfm
-	};
-
 	/** @brief An empty axis block. */
 	AxisRows ZeroAxisRows()
 	{
@@ -354,83 +341,6 @@ namespace HairRigidSolver
 		result.spring = empty;
 		result.present = 0u;
 		return result;
-	}
-
-	/** @brief An empty set of constraint rows, with the reference's row 0 cfm. */
-	JointRows ZeroJointRows()
-	{
-		JointRows result;
-		result.axis0 = ZeroAxisRows();
-		result.axis1 = ZeroAxisRows();
-		result.axis2 = ZeroAxisRows();
-		result.axis3 = ZeroAxisRows();
-		result.axis4 = ZeroAxisRows();
-		result.axis5 = ZeroAxisRows();
-		result.rowCfm = 0.0f;
-		result.rowCfmWritten = false;
-		return result;
-	}
-
-	SolverRow GetAxisRow(in AxisRows a_rows, in int a_slot)
-	{
-		if (a_slot == 0)
-			return a_rows.limitLower;
-		if (a_slot == 1)
-			return a_rows.limitUpper;
-		if (a_slot == 2)
-			return a_rows.motor;
-		if (a_slot == 3)
-			return a_rows.servo;
-		return a_rows.spring;
-	}
-
-	AxisRows SetAxisRow(in AxisRows a_rows, in int a_slot, in SolverRow a_row)
-	{
-		AxisRows rows = a_rows;
-		if (a_slot == 0)
-			rows.limitLower = a_row;
-		else if (a_slot == 1)
-			rows.limitUpper = a_row;
-		else if (a_slot == 2)
-			rows.motor = a_row;
-		else if (a_slot == 3)
-			rows.servo = a_row;
-		else
-			rows.spring = a_row;
-		return rows;
-	}
-
-	JointRows SetAxisRows(in JointRows a_rows, in int a_slot, in AxisRows a_block)
-	{
-		JointRows rows = a_rows;
-		if (a_slot == 0)
-			rows.axis0 = a_block;
-		else if (a_slot == 1)
-			rows.axis1 = a_block;
-		else if (a_slot == 2)
-			rows.axis2 = a_block;
-		else if (a_slot == 3)
-			rows.axis3 = a_block;
-		else if (a_slot == 4)
-			rows.axis4 = a_block;
-		else
-			rows.axis5 = a_block;
-		return rows;
-	}
-
-	AxisRows GetAxisRows(in JointRows a_rows, in int a_slot)
-	{
-		if (a_slot == 0)
-			return a_rows.axis0;
-		if (a_slot == 1)
-			return a_rows.axis1;
-		if (a_slot == 2)
-			return a_rows.axis2;
-		if (a_slot == 3)
-			return a_rows.axis3;
-		if (a_slot == 4)
-			return a_rows.axis4;
-		return a_rows.axis5;
 	}
 
 	/** @brief A joint with every runtime field cleared, as the reference's Joint() default-initialises it. */
@@ -1488,14 +1398,14 @@ namespace HairRigidSolver
 	}
 
 	/**
-	 * @brief getInfo2's six axes, in the order the solver walks them: the three angular axes, then the three linear ones.
-	 * @details btGeneric6DofSpring2Constraint builds the angular rows and then the linear ones; one loop over all six
-	 *          slots keeps a single copy of the row builder in the compiled shader.
+	 * @brief One of getInfo2's six axes, in the order the solver walks them: the three angular axes, then the three linear ones.
+	 * @details btGeneric6DofSpring2Constraint builds the angular rows and then the linear ones. The caller walks the slots in
+	 *          one rolled loop, so the compiled shader holds a single copy of this builder, and writes each block out as it
+	 *          returns: the only state that crosses slots is the row 0 cfm. An axis with no rows returns an empty block.
 	 */
-	JointRows SetLimits(in JointRows a_rows, in Joint a_joint, in ConstraintConfig a_config,
-		in BodyState a_bodyA, in BodyState a_bodyB, in SolverSettings a_solver, in float a_framesPerSecond, in uint a_axisSlots)
+	AxisRows BuildAxisRows(in int a_slot, in Joint a_joint, in ConstraintConfig a_config,
+		in BodyState a_bodyA, in BodyState a_bodyB, in SolverSettings a_solver, in float a_framesPerSecond, in float a_rowCfm)
 	{
-		JointRows rows = a_rows;
 		int order[3] = { 0, 1, 2 };
 		if (a_config.rotationOrder == kRotateOrderXZY) {
 			order[0] = 0;
@@ -1519,107 +1429,90 @@ namespace HairRigidSolver
 			order[2] = 0;
 		}
 
-		for (int slot = 0; slot < (int)a_axisSlots; ++slot) {
-			const bool rotational = slot < 3;
-			const int axis = rotational ? order[slot % 3] : (slot - 3);
-			LimitMotor limot;
-			bool neighboursViolated = false;
-			if (rotational) {
-				const MotorSettings motor = GetMotorSettings(a_config, axis);
-				const MotorState state = GetAngularState(a_joint, axis);
-				if (state.limit == 0 && !HasFlag(motor.flags, (int)kAxisMotor) && !HasFlag(motor.flags, (int)kAxisSpring))
-					continue;
+		const bool rotational = a_slot < 3;
+		const int axis = rotational ? order[a_slot % 3] : (a_slot - 3);
+		LimitMotor limot;
+		bool neighboursViolated = false;
+		if (rotational) {
+			const MotorSettings motor = GetMotorSettings(a_config, axis);
+			const MotorState state = GetAngularState(a_joint, axis);
+			if (state.limit == 0 && !HasFlag(motor.flags, (int)kAxisMotor) && !HasFlag(motor.flags, (int)kAxisSpring))
+				return ZeroAxisRows();
 
-				limot.loLimit = motor.lower;
-				limot.hiLimit = motor.upper;
-				limot.bounce = motor.bounce;
-				limot.stopErp = motor.stopErp;
-				limot.stopCfm = motor.stopCfm;
-				limot.motorErp = motor.motorErp;
-				limot.motorCfm = motor.motorCfm;
-				limot.enableMotor = HasFlag(motor.flags, (int)kAxisMotor);
-				limot.targetVelocity = motor.targetVelocity;
-				limot.maxMotorForce = motor.maxMotorForce;
-				limot.servoMotor = HasFlag(motor.flags, (int)kAxisServo);
-				limot.servoTarget = motor.servoTarget;
-				limot.enableSpring = HasFlag(motor.flags, (int)kAxisSpring);
-				limot.springStiffness = motor.springStiffness;
-				limot.springStiffnessLimited = HasFlag(motor.flags, (int)kAxisSpringStiffnessLimited);
-				limot.springDamping = motor.springDamping;
-				limot.springDampingLimited = HasFlag(motor.flags, (int)kAxisSpringDampingLimited);
-				limot.equilibriumPoint = motor.equilibrium;
-				limot.nonHookeanDamping = motor.nonHookeanDamping;
-				limot.nonHookeanStiffness = motor.nonHookeanStiffness;
-				limot.currentPosition = state.position;
-				limot.currentLimit = state.limit;
-				limot.currentLimitError = state.error;
-				limot.currentLimitErrorHi = state.errorHi;
+			limot.loLimit = motor.lower;
+			limot.hiLimit = motor.upper;
+			limot.bounce = motor.bounce;
+			limot.stopErp = motor.stopErp;
+			limot.stopCfm = motor.stopCfm;
+			limot.motorErp = motor.motorErp;
+			limot.motorCfm = motor.motorCfm;
+			limot.enableMotor = HasFlag(motor.flags, (int)kAxisMotor);
+			limot.targetVelocity = motor.targetVelocity;
+			limot.maxMotorForce = motor.maxMotorForce;
+			limot.servoMotor = HasFlag(motor.flags, (int)kAxisServo);
+			limot.servoTarget = motor.servoTarget;
+			limot.enableSpring = HasFlag(motor.flags, (int)kAxisSpring);
+			limot.springStiffness = motor.springStiffness;
+			limot.springStiffnessLimited = HasFlag(motor.flags, (int)kAxisSpringStiffnessLimited);
+			limot.springDamping = motor.springDamping;
+			limot.springDampingLimited = HasFlag(motor.flags, (int)kAxisSpringDampingLimited);
+			limot.equilibriumPoint = motor.equilibrium;
+			limot.nonHookeanDamping = motor.nonHookeanDamping;
+			limot.nonHookeanStiffness = motor.nonHookeanStiffness;
+			limot.currentPosition = state.position;
+			limot.currentLimit = state.limit;
+			limot.currentLimitError = state.error;
+			limot.currentLimitErrorHi = state.errorHi;
 
-				const int flags = a_config.flags >> ((axis + 3) * kFlagAxisShift);
-				if (!(flags & kFlagCfmStop))
-					limot.stopCfm = rows.rowCfm;
-				if (!(flags & kFlagErpStop))
-					limot.stopErp = a_solver.erp;
-				if (!(flags & kFlagCfmMotor))
-					limot.motorCfm = rows.rowCfm;
-				if (!(flags & kFlagErpMotor))
-					limot.motorErp = a_solver.erp;
-			} else {
-				const LinearLimits limits = a_config.linearLimits;
-				if (GetLinearLimit(a_joint, axis) == 0 && !HasFlag(Component(limits.flags, axis), (int)kAxisMotor) &&
-					!HasFlag(Component(limits.flags, axis), (int)kAxisSpring))
-					continue;
+			const int flags = a_config.flags >> ((axis + 3) * kFlagAxisShift);
+			if (!(flags & kFlagCfmStop))
+				limot.stopCfm = a_rowCfm;
+			if (!(flags & kFlagErpStop))
+				limot.stopErp = a_solver.erp;
+			if (!(flags & kFlagCfmMotor))
+				limot.motorCfm = a_rowCfm;
+			if (!(flags & kFlagErpMotor))
+				limot.motorErp = a_solver.erp;
+		} else {
+			const LinearLimits limits = a_config.linearLimits;
+			if (GetLinearLimit(a_joint, axis) == 0 && !HasFlag(Component(limits.flags, axis), (int)kAxisMotor) &&
+				!HasFlag(Component(limits.flags, axis), (int)kAxisSpring))
+				return ZeroAxisRows();
 
-				limot.bounce = Component(limits.bounce, axis);
-				limot.currentLimit = GetLinearLimit(a_joint, axis);
-				limot.currentPosition = Component(a_joint.linearDiff, axis);
-				limot.currentLimitError = Component(a_joint.linearError, axis);
-				limot.currentLimitErrorHi = Component(a_joint.linearErrorHi, axis);
-				limot.enableMotor = HasFlag(Component(limits.flags, axis), (int)kAxisMotor);
-				limot.servoMotor = HasFlag(Component(limits.flags, axis), (int)kAxisServo);
-				limot.servoTarget = Component(limits.servoTarget, axis);
-				limot.enableSpring = HasFlag(Component(limits.flags, axis), (int)kAxisSpring);
-				limot.springStiffness = Component(limits.springStiffness, axis);
-				limot.springStiffnessLimited = HasFlag(Component(limits.flags, axis), (int)kAxisSpringStiffnessLimited);
-				limot.springDamping = Component(limits.springDamping, axis);
-				limot.springDampingLimited = HasFlag(Component(limits.flags, axis), (int)kAxisSpringDampingLimited);
-				limot.equilibriumPoint = Component(limits.equilibrium, axis);
-				limot.nonHookeanDamping = Component(limits.nonHookeanDamping, axis);
-				limot.nonHookeanStiffness = Component(limits.nonHookeanStiffness, axis);
-				limot.hiLimit = Component(limits.upper, axis);
-				limot.loLimit = Component(limits.lower, axis);
-				limot.maxMotorForce = Component(limits.maxMotorForce, axis);
-				limot.targetVelocity = Component(limits.targetVelocity, axis);
+			limot.bounce = Component(limits.bounce, axis);
+			limot.currentLimit = GetLinearLimit(a_joint, axis);
+			limot.currentPosition = Component(a_joint.linearDiff, axis);
+			limot.currentLimitError = Component(a_joint.linearError, axis);
+			limot.currentLimitErrorHi = Component(a_joint.linearErrorHi, axis);
+			limot.enableMotor = HasFlag(Component(limits.flags, axis), (int)kAxisMotor);
+			limot.servoMotor = HasFlag(Component(limits.flags, axis), (int)kAxisServo);
+			limot.servoTarget = Component(limits.servoTarget, axis);
+			limot.enableSpring = HasFlag(Component(limits.flags, axis), (int)kAxisSpring);
+			limot.springStiffness = Component(limits.springStiffness, axis);
+			limot.springStiffnessLimited = HasFlag(Component(limits.flags, axis), (int)kAxisSpringStiffnessLimited);
+			limot.springDamping = Component(limits.springDamping, axis);
+			limot.springDampingLimited = HasFlag(Component(limits.flags, axis), (int)kAxisSpringDampingLimited);
+			limot.equilibriumPoint = Component(limits.equilibrium, axis);
+			limot.nonHookeanDamping = Component(limits.nonHookeanDamping, axis);
+			limot.nonHookeanStiffness = Component(limits.nonHookeanStiffness, axis);
+			limot.hiLimit = Component(limits.upper, axis);
+			limot.loLimit = Component(limits.lower, axis);
+			limot.maxMotorForce = Component(limits.maxMotorForce, axis);
+			limot.targetVelocity = Component(limits.targetVelocity, axis);
 
-				const int flags = a_config.flags >> (axis * kFlagAxisShift);
-				limot.stopCfm = (flags & kFlagCfmStop) ? Component(limits.stopCfm, axis) : rows.rowCfm;
-				limot.stopErp = (flags & kFlagErpStop) ? Component(limits.stopErp, axis) : a_solver.erp;
-				limot.motorCfm = (flags & kFlagCfmMotor) ? Component(limits.motorCfm, axis) : rows.rowCfm;
-				limot.motorErp = (flags & kFlagErpMotor) ? Component(limits.motorErp, axis) : a_solver.erp;
+			const int flags = a_config.flags >> (axis * kFlagAxisShift);
+			limot.stopCfm = (flags & kFlagCfmStop) ? Component(limits.stopCfm, axis) : a_rowCfm;
+			limot.stopErp = (flags & kFlagErpStop) ? Component(limits.stopErp, axis) : a_solver.erp;
+			limot.motorCfm = (flags & kFlagCfmMotor) ? Component(limits.motorCfm, axis) : a_rowCfm;
+			limot.motorErp = (flags & kFlagErpMotor) ? Component(limits.motorErp, axis) : a_solver.erp;
 
-				neighboursViolated = IsLimitViolated(GetAngularState(a_joint, (axis + 1) % 3)) &&
-				                     IsLimitViolated(GetAngularState(a_joint, (axis + 2) % 3));
-			}
-
-			const float3 rowAxis = rotational ? GetAxis(a_joint, axis) : Column(a_joint.calculatedA.basis, axis);
-			const AxisRows block = GetLimitMotorInfo2(GetAxisRows(rows, slot), a_joint, limot, rowAxis, rotational,
-				!neighboursViolated, a_bodyA, a_bodyB, a_framesPerSecond);
-			if (block.present != 0u && !rows.rowCfmWritten) {
-				rows.rowCfm = BlockRowCfm(rows.rowCfm, block);
-				rows.rowCfmWritten = true;
-			}
-			rows = SetAxisRows(rows, slot, block);
+			neighboursViolated = IsLimitViolated(GetAngularState(a_joint, (axis + 1) % 3)) &&
+			                     IsLimitViolated(GetAngularState(a_joint, (axis + 2) % 3));
 		}
-		return rows;
-	}
 
-	/** @brief btGeneric6DofSpring2Constraint::getInfo2, whose angular rows come first and its linear rows second. */
-	JointRows GetInfo2(in Joint a_joint, in ConstraintConfig a_config, in BodyState a_bodyA, in BodyState a_bodyB,
-		in SolverSettings a_solver, in float a_framesPerSecond, in uint a_axisSlots)
-	{
-		JointRows rows = ZeroJointRows();
-		rows.rowCfm = a_solver.globalCfm;
-		return SetLimits(rows, a_joint, a_config, a_bodyA, a_bodyB, a_solver, a_framesPerSecond, a_axisSlots);
+		const float3 rowAxis = rotational ? GetAxis(a_joint, axis) : Column(a_joint.calculatedA.basis, axis);
+		return GetLimitMotorInfo2(ZeroAxisRows(), a_joint, limot, rowAxis, rotational,
+			!neighboursViolated, a_bodyA, a_bodyB, a_framesPerSecond);
 	}
 
 	/** @brief btSequentialImpulseConstraintSolver::convertJoint's per-row finalisation. */
@@ -1645,17 +1538,6 @@ namespace HairRigidSolver
 		row.rhs = row.rhs * row.jacDiagABInv + velocityError * row.jacDiagABInv;
 		row.appliedImpulse = 0.0f;
 		return row;
-	}
-
-	AxisRows FinalizeRows(in AxisRows a_rows, in BodyState a_bodyA, in BodyState a_bodyB,
-		in SolverBody a_solverBodyA, in SolverBody a_solverBodyB, in float a_damping)
-	{
-		AxisRows rows = a_rows;
-		for (int slot = 0; slot < kRowsPerAxis; ++slot) {
-			if ((rows.present & (1u << slot)) != 0u)
-				rows = SetAxisRow(rows, slot, FinalizeRow(GetAxisRow(rows, slot), a_bodyA, a_bodyB, a_solverBodyA, a_solverBodyB, a_damping));
-		}
-		return rows;
 	}
 
 	/** @brief btSequentialImpulseConstraintSolver's scalar gResolveSingleConstraintRowGeneric. */

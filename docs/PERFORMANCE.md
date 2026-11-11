@@ -150,14 +150,19 @@ The tables above predate the removal of the chain solver and the in-tree arm. Th
 
 ## Shader compile time versus runtime cost (2026-11-10)
 
-- **`RigidSetup` takes about 53 s to compile in FXC** (67 s in a parallel run), at any optimisation level. Nearly all of
-  it is the joint's rows living in a struct of six `AxisRows`: each runtime-slot read or write is a six-way chain of
-  whole-struct copies that FXC expands at every call site. The plugin keeps compiled blobs in
-  `Data/SKSE/Plugins/GPUSMPPhysicsNG/ShaderCache` (and the tests in the temp folder), so the cost is paid on the first
-  launch and after a shader edit only.
-- **Keeping the rows in plain local arrays cut the compile to 16 s and was reverted: it made the kernel slower.** SE,
-  20 characters, flush on, Open Shaders not compiling, `gpuPassStats` over 25 s: `RigidSetup` 0.76 ms with the struct
-  rows and 1.27 ms with the arrays; the other passes moved by under 10%. The arrays compile to four runtime-indexed
-  temp arrays of 420 four-component registers each, against one of 3, which points at scratch memory (not confirmed on
-  the hardware). One run per arm, so treat the 0.5 ms as indicative. The GPU-vs-CPU tests passed either way, so they
-  cannot see this cost; runtime cost has to be measured in game.
+- **`RigidSetup` took 52 s to compile in FXC (67 to 86 s in a parallel run), at any optimisation level.** Nearly all of
+  it was the joint's rows living in a `JointRows` struct of six `AxisRows`: each runtime-slot read or write was a six-way
+  chain of whole-struct copies that FXC expanded at every call site, and the setup kernel built every axis into it, then
+  walked the slots again to finalise and store them.
+- **Streaming the rows out fixed both costs.** `BuildAxisRows` builds one axis, and one `[loop]` bounded by the cbuffer
+  `HairRigidAxisSlots` (a constant bound lets FXC unroll the builder, which crashes it) finalises each present row and
+  stores it straight to `HairRigidRows`, carrying only the row 0 cfm between axes. `JointRows` and its accessors are gone.
+  `fxc /T cs_5_0 /O3`: 51.5 s to 2.8 s, 4616 to 3179 instruction slots, 285 to 120 temp registers, and still only the
+  one 3-element indexable temp. The GPU-versus-CPU tests pass unchanged.
+- **Runtime fell too.** SE, 20 characters, flush on, one session switching shaders with `reloadSolverShaders`, three
+  interleaved pairs of 25 s `gpuPassStats` windows: `RigidSetup` 0.37, 0.46 and 0.50 ms with the struct rows against 0.034,
+  0.030 and 0.030 ms with the streamed rows. `RigidSolve` (0.63 to 0.86 ms against 0.81 to 0.90) and the contact passes
+  moved with run-to-run noise in both arms, so the rows the solver reads are the same.
+- **An earlier attempt kept the rows in plain local arrays.** It cut the compile to 16 s and was reverted (`fc6fb7a`): it
+  made the kernel slower, 0.76 ms with the struct rows and 1.27 ms with the arrays, because the arrays compiled to four
+  runtime-indexed temp arrays of 420 four-component registers each. The streamed version adds no array.

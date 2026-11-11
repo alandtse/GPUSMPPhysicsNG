@@ -393,6 +393,17 @@ void SetupContact(uint a_constraint, int a_bodyA, int a_bodyB, in HairRigidConta
 	HairRigidRowMasks[a_constraint * (uint)HairRigidSolver::kAxisSlots] = mask;
 }
 
+/** @brief Finalises one joint row and stores it, tagged with the two bodies it acts between. */
+void StoreSetupRow(uint a_destination, in HairRigidSolver::SolverRow a_row, int a_bodyA, int a_bodyB,
+	in HairRigidSolver::BodyState a_stateA, in HairRigidSolver::BodyState a_stateB,
+	in HairRigidSolver::SolverBody a_solverBodyA, in HairRigidSolver::SolverBody a_solverBodyB)
+{
+	HairRigidSolver::SolverRow solved = HairRigidSolver::FinalizeRow(a_row, a_stateA, a_stateB, a_solverBodyA, a_solverBodyB, HairRigidDamping);
+	solved.solverBodyA = a_bodyA;
+	solved.solverBodyB = a_bodyB;
+	HairRigidRows[a_destination] = StoreRow(solved);
+}
+
 /** @brief One constraint's solver rows, into its fixed slot: getInfo2 and convertJoint for one joint. */
 [numthreads(64, 1, 1)] void RigidSetup(uint3 a_dispatchThreadId : SV_DispatchThreadID) {
 	uint index = a_dispatchThreadId.x;
@@ -455,21 +466,31 @@ void SetupContact(uint a_constraint, int a_bodyA, int a_bodyB, in HairRigidConta
 		for (int axis = 0; axis < 3; ++axis)
 			joint = HairRigidSolver::TestAngularLimitMotor(joint, config, axis);
 		if (HairRigidSolver::CountRows(joint, config) > 0) {
-			HairRigidSolver::JointRows rows = HairRigidSolver::GetInfo2(joint, config, stateA, stateB, LoadSolverSettings(), HairRigidFramesPerSecond, HairRigidAxisSlots);
+			const HairRigidSolver::SolverSettings solver = LoadSolverSettings();
 			const HairRigidSolver::SolverBody solverBodyA = LoadSolverBody(HairRigidSolverBodies[bodyA]);
 			const HairRigidSolver::SolverBody solverBodyB = LoadSolverBody(HairRigidSolverBodies[bodyB]);
 			const uint rowBase = index * (uint)HairRigidSolver::kRowsPerConstraint;
-			for (int axisSlot = 0; axisSlot < HairRigidSolver::kAxisSlots; ++axisSlot) {
-				const HairRigidSolver::AxisRows block = HairRigidSolver::FinalizeRows(HairRigidSolver::GetAxisRows(rows, axisSlot),
-					stateA, stateB, solverBodyA, solverBodyB, HairRigidDamping);
-				for (int rowIndex = 0; rowIndex < HairRigidSolver::kRowsPerAxis; ++rowIndex) {
-					if ((block.present & (1u << rowIndex)) == 0u)
-						continue;
-					HairRigidSolver::SolverRow solved = HairRigidSolver::GetAxisRow(block, rowIndex);
-					solved.solverBodyA = bodyA;
-					solved.solverBodyB = bodyB;
-					HairRigidRows[rowBase + (uint)axisSlot * (uint)HairRigidSolver::kRowsPerAxis + (uint)rowIndex] = StoreRow(solved);
+			float rowCfm = solver.globalCfm;
+			bool rowCfmWritten = false;
+			[loop] for (int axisSlot = 0; axisSlot < (int)HairRigidAxisSlots; ++axisSlot) {
+				const HairRigidSolver::AxisRows block = HairRigidSolver::BuildAxisRows(axisSlot, joint, config, stateA, stateB, solver, HairRigidFramesPerSecond, rowCfm);
+				if (block.present == 0u)
+					continue;
+				if (!rowCfmWritten) {
+					rowCfm = HairRigidSolver::BlockRowCfm(rowCfm, block);
+					rowCfmWritten = true;
 				}
+				const uint slotBase = rowBase + (uint)axisSlot * (uint)HairRigidSolver::kRowsPerAxis;
+				if ((block.present & HairRigidSolver::kRowLimitLower) != 0u)
+					StoreSetupRow(slotBase + 0u, block.limitLower, bodyA, bodyB, stateA, stateB, solverBodyA, solverBodyB);
+				if ((block.present & HairRigidSolver::kRowLimitUpper) != 0u)
+					StoreSetupRow(slotBase + 1u, block.limitUpper, bodyA, bodyB, stateA, stateB, solverBodyA, solverBodyB);
+				if ((block.present & HairRigidSolver::kRowMotor) != 0u)
+					StoreSetupRow(slotBase + 2u, block.motor, bodyA, bodyB, stateA, stateB, solverBodyA, solverBodyB);
+				if ((block.present & HairRigidSolver::kRowServo) != 0u)
+					StoreSetupRow(slotBase + 3u, block.servo, bodyA, bodyB, stateA, stateB, solverBodyA, solverBodyB);
+				if ((block.present & HairRigidSolver::kRowSpring) != 0u)
+					StoreSetupRow(slotBase + 4u, block.spring, bodyA, bodyB, stateA, stateB, solverBodyA, solverBodyB);
 				HairRigidRowMasks[maskBase + (uint)axisSlot] = block.present;
 			}
 		}
