@@ -17,6 +17,7 @@
 #include "d3d/TracyGpu.h"
 #include "engine/ReadyWeaponGate.h"
 #include "smp/CardVertices.h"
+#include "smp/SceneParent.h"
 
 #include <algorithm>
 #include <array>
@@ -1012,8 +1013,14 @@ bool SmpPhysicsFeature::ResolveRigNodes(const hdt::IMeshClaimContext& a_context,
 			continue;
 		const auto* parentNode = a_nodes[static_cast<std::size_t>(joint.parent)]->AsNode();
 		const RE::NiAVObject* childNode = a_nodes[static_cast<std::size_t>(joint.child)].get();
-		if (!parentNode || childNode->parent != parentNode) {
-			RecordDecline(a_path, "the scene graph parent differs from the physics parent");
+		const RE::NiAVObject* sceneParent = SmpPhysics::NearestBoneAncestor(
+			childNode, [](const RE::NiAVObject* a_node) -> const RE::NiAVObject* { return a_node->parent; },
+			[&a_nodes](const RE::NiAVObject* a_node) { return std::any_of(a_nodes.begin(), a_nodes.end(), [a_node](const auto& a_bone) { return a_bone.get() == a_node; }); });
+		if (!parentNode || sceneParent != parentNode) {
+			const std::string parentName = a_rig.bones[static_cast<std::size_t>(joint.parent)].name;
+			const std::string childName = a_rig.bones[static_cast<std::size_t>(joint.child)].name;
+			RecordDecline(a_path, std::format("the nearest rig bone above '{}' is '{}', not the physics parent '{}'", childName,
+									  sceneParent ? sceneParent->name.c_str() : "nothing", parentName));
 			return false;
 		}
 	}
