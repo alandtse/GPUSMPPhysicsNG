@@ -20,7 +20,7 @@ ARMOR = sys.argv[4] if len(sys.argv) > 4 else ''
 CLOAK = sys.argv[5] if len(sys.argv) > 5 else ''
 GAME = 'SE' if PORT == 8920 else 'VR'
 MIXED = [0xA2C8E, 0x13297, 0x13BA3, 0x13BAB, 0x13BB8, 0x13B99, 0x13BB9, 0x13BB0, 0x13B9C, 0x13B9B]
-UNTHROTTLED = dict(Enabled=True, GrabStrands=False, MaxClaims=256, MaxSimulatedClaims=256, SimulationDistance=20000.0, MinScreenSizePercent=0.0)
+UNTHROTTLED = dict(Enabled=True, GrabStrands=False, FlushAfterSubmit=True, MaxClaims=256, MaxSimulatedClaims=256, SimulationDistance=20000.0, MinScreenSizePercent=0.0)
 SETTLE = 8
 WINDOW = 15
 port = ingame.Bench(PORT, standalone=True)

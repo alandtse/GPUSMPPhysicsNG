@@ -188,3 +188,15 @@ temp arrays, to look for another flaw like the `RigidSetup` one. None of the oth
 - Only `RigidSetup` is large, and it is already cheap at run time (0.03 ms). The solve and contact kernels are small, so
   their cost is memory access and divergence, not register pressure or unrolled copies.
 - The two runtime-indexed arrays are small: the six colour offsets in the coloured solve and four rows in `SurfacePose`.
+
+## Per-pass baseline and a rejected change (SE, 2026-11-11)
+
+`docs/perf-data/gpu_pass_cost.py` on SE with the throttles lifted and `FlushAfterSubmit` on. Per call, wigs crowd of 10/20/30:
+`ContactSpheres` 0.64/1.18/1.13 ms, `RigidSolve` 0.74/0.77/0.82 ms, 4.0/3.9/2.8 substeps per frame. Dress crowd (Yue Qingshu
+Dress) of 20 (72 claims): `ContactSpheres` 1.00 ms, `RigidSolve` 0.63 ms, so contact is the largest pass with dresses.
+Data: `gpu_pass_cost_se_base_wigs.json`, `gpu_pass_cost_se_base_dress.json`.
+
+Routing small islands to the sequential `RigidSolveIsland` kernel was slower: at crowd 20, `RigidSolve` per call was 0.62-0.64
+ms coloured-only, 1.48 ms for islands of at most 8 constraints, 2.23 ms for 16 and 2.83 ms for 32 (`small_island_sweep_se_20.json`).
+One thread walking an island serially costs more than a coloured group, so the change was reverted. Tighter deep-push BVH leaf
+bounds for `ContactSpheres` and prepacked body slots are not tried; the solve kernels are already small (see the FXC audit).

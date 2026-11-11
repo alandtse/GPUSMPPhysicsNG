@@ -17,7 +17,7 @@ EYE_HEIGHT = 1.6  # tracking-space height of the headset, in metres
 
 CROWD_NAMES = {'spawnTestCrowd', 'clearTestCrowd', 'refreshTestCrowd', 'turnTestCrowd', 'stripTestCrowd', 'cycleTestCrowdArmor',
                'playTestCrowdAnimation', 'setTestCrowdLoop', 'testCrowdAnimations', 'testCrowdOutfit', 'testCrowdReport',
-               'setTestCrowdCloak', 'testCrowdCloaks'}
+               'setTestCrowdCloak', 'testCrowdCloaks', 'setTestCrowdArmor'}
 
 
 class Bench:
@@ -37,7 +37,7 @@ class Bench:
         """The devbench owner of a command: the test crowd has its own tool owner, TestCrowd, apart from the hair colour commands."""
         return 'TestCrowd' if name in CROWD_NAMES else 'SmpPhysics'
 
-    def command(self, name, **args):
+    def command(self, name, /, **args):
         return self.post(self.actions_tool, {'action': 'invokeCommand', 'shortName': self.owner(name), 'name': name, 'args': args})
 
     def query(self, name, **args):
