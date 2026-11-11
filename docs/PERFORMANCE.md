@@ -310,3 +310,15 @@ a ratio of about 0.29, close to the wig-only 0.25 to 0.32 at 30 characters. The 
 hdtSMP64 dancing partner on the fixed file, so a dancing ratio is not stated. Caveats: the two arms come from different launches,
 hdtSMP64 has one run (its wig-only repeats ranged 15.3 to 20.5 ms, about 15%), and the plugin's 0.77 ms hdtSMP64 residual was
 measured before the fix and assumed unchanged.
+
+### hdtSMP64 with the fixed dress, standing and dancing (perf lock, VR idle)
+
+hdtSMP64 alone (plugin disabled), 30 characters in the fixed Yue Qingshu Dress, 101 systems and 11,290 rigid bodies, throttles
+lifted. `PhysicsStep` per frame: standing 36.6 ms (the earlier 36.5 ms reading, taken with another agent's VR game open, was not
+inflated), dancing 37.9 ms and 28.0 ms (collision 4.9 to 5.3 ms and constraint solve 2.5 ms per internal step in all three). The
+second dancing run had 409 frames in its 20 s against 266, so its step count per frame was lower (3.2 against 4.0); hdtSMP64's
+cost per frame follows the frame time through its fixed-step catch-up.
+
+Against the plugin's dress runs (standing 10.75 ms, dancing 9.4 to 10.2 ms, cpu + gpu + residual) the ratio is about 0.29 standing
+and 0.25 to 0.36 dancing. The dress costs hdtSMP64 about 2.4 times its wig-only cost at 30 characters and the plugin about 2.1
+times, so cloth does not erode the plugin's lead.
