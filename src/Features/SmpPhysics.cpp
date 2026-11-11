@@ -799,6 +799,14 @@ std::vector<std::string> SmpPhysicsFeature::GetDeclinedLines() const
 	return lines;
 }
 
+std::vector<std::pair<std::string, std::string>> SmpPhysicsFeature::GetRepairReports() const
+{
+	std::vector<std::pair<std::string, std::string>> reports;
+	for (const SmpPhysics::RepairLog::FileReport& report : repairLog.Take())
+		reports.emplace_back(report.file, SmpPhysics::RepairLog::Format(report));
+	return reports;
+}
+
 json SmpPhysicsFeature::SurfaceCheckJson() const
 {
 	const SmpPhysics::GpuSolver::SurfacePrepCheckResult check = gpuSolver.LastSurfacePrepCheck();
@@ -1031,6 +1039,10 @@ bool SmpPhysicsFeature::ResolveRigNodes(const hdt::IMeshClaimContext& a_context,
 			RecordDecline(a_path, std::format("the nearest rig bone above '{}' is '{}', not the physics parent '{}'", childName,
 									  sceneParent ? sceneParent->name.c_str() : "nothing", parentName));
 			return false;
+		}
+		if (childNode->parent != parentNode) {
+			repairLog.Record(a_path, std::format("'{}' hangs under '{}', a node hdtSMP64 added when it merged the armor, not directly under '{}' as the file says", a_rig.bones[static_cast<std::size_t>(joint.child)].name, childNode->parent ? childNode->parent->name.c_str() : "nothing", a_rig.bones[static_cast<std::size_t>(joint.parent)].name),
+				"accepted it and simulated the bone from where the scene graph puts it");
 		}
 	}
 	return true;
@@ -1300,8 +1312,10 @@ std::shared_ptr<const SmpPhysics::ParseResult> SmpPhysicsFeature::GetParsedRig(c
 	}
 
 	auto parsed = std::make_shared<SmpPhysics::ParseResult>(ReadPhysicsFile(a_path));
-	for (const std::string& warning : parsed->warnings)
+	for (const std::string& warning : parsed->warnings) {
 		logger::warn("{} '{}': {}", kLogPrefix, a_path, warning);
+		repairLog.Record(a_path, warning, "repaired it and used the file");
+	}
 
 	const std::scoped_lock lock(stateMutex);
 	const auto entry = parsedRigs.try_emplace(a_path, std::move(parsed));
@@ -1378,6 +1392,8 @@ void SmpPhysicsFeature::RecordDecline(const std::string& a_file, const std::stri
 	}
 	if (shouldLog)
 		logger::info("{} Declined '{}': {}", kLogPrefix, a_file, a_reason);
+	if (SmpPhysics::RepairLog::IsFileFault(a_reason))
+		repairLog.Record(a_file, a_reason, "declined the file, so hdtSMP64 simulates it");
 }
 
 void SmpPhysicsFeature::ReleaseMesh(std::uint64_t a_token)

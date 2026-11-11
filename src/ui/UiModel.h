@@ -54,6 +54,13 @@ namespace SettingsUi
 		std::uint64_t id{};
 	};
 
+	/** @brief One physics file's problems as text, for the Reports page to show and copy. */
+	struct ReportBlock
+	{
+		std::string title;
+		std::string text;
+	};
+
 	struct Model
 	{
 		std::string title;  ///< The page's name in the framework's menu.
@@ -61,6 +68,7 @@ namespace SettingsUi
 		std::function<std::vector<ClaimLine>()> claims;      ///< When set, the page lists these with a GPU switch each.
 		std::function<void(std::uint64_t, bool)> onEnabled;  ///< Runs with a line's id and whether the GPU should simulate it.
 		bool showFooter{ true };                             ///< Whether the page ends with Re-evaluate and Save.
+		std::function<std::vector<ReportBlock>()> reports;   ///< When set, the page lists these, each with a Copy button.
 		std::function<std::string()> status;                 ///< Text shown above the controls, refreshed every frame.
 		std::function<void()> onSave;                        ///< Writes Settings.json.
 		std::function<void()> onReevaluate;                  ///< Asks hdtSMP64 to offer every actor's meshes again.

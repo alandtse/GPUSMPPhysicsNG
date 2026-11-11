@@ -165,6 +165,23 @@ namespace SettingsUi
 					ImGuiMCP::PopID();
 				}
 			}
+			if (model->reports) {
+				const std::vector<ReportBlock> blocks = model->reports();
+				if (blocks.empty())
+					ImGuiMCP::TextDisabled("No physics file has needed a repair or been declined for its own fault yet.");
+				std::string all;
+				for (std::size_t index = 0; index < blocks.size(); ++index) {
+					ImGuiMCP::PushID(static_cast<int>(index));
+					ImGuiMCP::SeparatorText(blocks[index].title.c_str());
+					ImGuiMCP::TextWrapped("%s", blocks[index].text.c_str());
+					if (ImGuiMCP::Button("Copy##gsp_report_copy", { 0, 0 }))
+						ImGuiMCP::SetClipboardText(blocks[index].text.c_str());
+					ImGuiMCP::PopID();
+					all += blocks[index].text + '\n';
+				}
+				if (!blocks.empty() && ImGuiMCP::Button("Copy all##gsp_report_copy_all", { 0, 0 }))
+					ImGuiMCP::SetClipboardText(all.c_str());
+			}
 			if (!model->showFooter)
 				return;
 			ImGuiMCP::Separator();

@@ -153,6 +153,7 @@ namespace
 
 	SettingsUi::Model model;
 	SettingsUi::Model claimsModel;
+	SettingsUi::Model reportModel;
 	SettingsUi::Model crowdModel;
 	SettingsUi::Model developerModel;
 
@@ -251,6 +252,16 @@ void PluginUi::Register()
 		}
 	};
 
+	reportModel.title = "Physics file report";
+	reportModel.showFooter = false;
+	reportModel.rows = { Text([] { return std::string("Problems found in physics files this session and what was done about them, as text to paste to each file's author."); }) };
+	reportModel.reports = [&feature] {
+		std::vector<SettingsUi::ReportBlock> blocks;
+		for (auto& [file, text] : feature.GetRepairReports())
+			blocks.push_back({ file, std::move(text) });
+		return blocks;
+	};
+
 	auto& choices = crowdChoices;
 	crowdModel.title = "Test crowd";
 	crowdModel.showFooter = false;
@@ -319,5 +330,5 @@ void PluginUi::Register()
 		Button("Reload shaders", "Recompiles the skinning and debug line shaders from the shader folder on the next frame.", [&feature] { feature.ReloadVisualShaders(); }),
 	};
 
-	SettingsUi::Register({ &model, &claimsModel, &crowdModel, &developerModel });
+	SettingsUi::Register({ &model, &claimsModel, &reportModel, &crowdModel, &developerModel });
 }

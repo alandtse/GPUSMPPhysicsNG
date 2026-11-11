@@ -8,6 +8,7 @@
 #include "engine/GpuSkinning.h"
 #include "smp/ClaimTally.h"
 #include "smp/Collision.h"
+#include "smp/RepairLog.h"
 #include "smp/SelfWindShelter.h"
 #include "smp/SkinnedSurface.h"
 #include "smp/SmpRig.h"
@@ -168,6 +169,8 @@ struct SmpPhysicsFeature final : Feature
 	void ResetClaimTally();
 	/** @brief Up to the first few declined physics files, each as "file: reason". */
 	[[nodiscard]] std::vector<std::string> GetDeclinedLines() const;
+	/** @brief Each physics file with a problem, as text to paste to its author. */
+	[[nodiscard]] std::vector<std::pair<std::string, std::string>> GetRepairReports() const;
 
 	/** @brief Link state, live claims and declined physics files, for the devbench status query. */
 	[[nodiscard]] json BuildStatusJson() const;
@@ -576,6 +579,7 @@ private:
 	std::unordered_map<std::string, std::shared_ptr<const SmpPhysics::ParseResult>> parsedRigs;
 	std::unordered_map<std::string, std::string> declinedFiles;
 	SmpPhysics::ClaimTally claimTally;
+	SmpPhysics::RepairLog repairLog;                                        ///< What was wrong in each physics file and what was done about it.
 	bool claimsHandedBack{};                                                ///< Set once the claims were handed back to hdtSMP64 after Enabled went off, so a disable from any path releases them. Frame-sync thread only.
 	std::map<std::pair<RE::FormID, std::string>, ClaimRow> disabledClaims;  ///< Actor and lower-case physics file pairs the user switched off, with the row the table keeps showing, guarded by stateMutex.
 	/** @brief A triangle shape from a rig that is not a hair rig, such as the body collision mesh, which hair rigs on the same actor collide with. */
