@@ -1,6 +1,9 @@
 #include "Utils/D3D.h"
 
+#include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -9,8 +12,11 @@
 #include <format>
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <mutex>
 #include <string_view>
+#include <thread>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -24,6 +30,27 @@ namespace Util
 		std::filesystem::path shaderCacheDir;
 		std::mutex failureMutex;
 		std::unordered_set<std::string> compileFailures;
+		std::mutex inflightMutex;
+		std::unordered_map<std::string, std::shared_ptr<std::mutex>> inflight;
+
+		struct Prewarm
+		{
+			std::mutex mutex;
+			std::condition_variable finished;
+			std::size_t done = 0;
+			std::size_t total = 0;
+		};
+		std::shared_ptr<Prewarm> prewarm;
+
+		/** @brief Serialises compiles of one shader so a prewarm and a first use never both pay for it. */
+		std::shared_ptr<std::mutex> InflightLock(const std::string& a_key)
+		{
+			std::lock_guard lock(inflightMutex);
+			auto& entry = inflight[a_key];
+			if (!entry)
+				entry = std::make_shared<std::mutex>();
+			return entry;
+		}
 
 		/** @brief Resolves #include "X" against the including file's folder, then the shader root. */
 		class RootInclude : public ID3DInclude
@@ -207,6 +234,8 @@ namespace Util
 				return nullptr;
 		}
 
+		const auto keyLock = InflightLock(failureKey);
+		std::lock_guard compileLock(*keyLock);
 		std::error_code relativeError;
 		const auto relativeSource = std::filesystem::relative(source, std::filesystem::path(shaderRoot), relativeError);
 		std::string cacheKey = failureKey;
@@ -238,6 +267,52 @@ namespace Util
 			return nullptr;
 		}
 		return blob;
+	}
+
+	void StartShaderPrewarm(std::vector<ShaderJob> a_jobs)
+	{
+		if (shaderCacheDir.empty() || a_jobs.empty())
+			return;
+		auto state = std::make_shared<Prewarm>();
+		state->total = a_jobs.size();
+		prewarm = state;
+		const auto jobs = std::make_shared<std::vector<ShaderJob>>(std::move(a_jobs));
+		const auto next = std::make_shared<std::atomic<std::size_t>>(0);
+		const std::size_t workers = std::clamp<std::size_t>(std::thread::hardware_concurrency() / 2, 1, std::min<std::size_t>(4, jobs->size()));
+		logger::info("Compiling {} shaders on {} background threads.", jobs->size(), workers);
+		for (std::size_t worker = 0; worker < workers; ++worker) {
+			std::thread([state, jobs, next] {
+				for (std::size_t index; (index = next->fetch_add(1)) < jobs->size();) {
+					const ShaderJob& job = (*jobs)[index];
+					const std::vector<std::pair<const char*, const char*>> defines;
+					const std::string name = std::format("{} {}", WStringToString(job.path), job.entry);
+					const auto start = std::chrono::steady_clock::now();
+					const bool ok = static_cast<bool>(CompileShaderBlob(job.path, defines, job.target, job.entry));
+					logger::info("Shader {} {} in {} ms.", name, ok ? "ready" : "failed", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count());
+					std::lock_guard lock(state->mutex);
+					if (++state->done == state->total)
+						state->finished.notify_all();
+				}
+			}).detach();
+		}
+	}
+
+	ShaderPrewarmStatus GetShaderPrewarmStatus()
+	{
+		const auto state = prewarm;
+		if (!state)
+			return {};
+		std::lock_guard lock(state->mutex);
+		return { state->done, state->total, state->done < state->total };
+	}
+
+	void WaitForShaderPrewarm()
+	{
+		const auto state = prewarm;
+		if (!state)
+			return;
+		std::unique_lock lock(state->mutex);
+		state->finished.wait(lock, [&] { return state->done >= state->total; });
 	}
 
 	ID3D11DeviceChild* CompileShader(const wchar_t* FilePath, const std::vector<std::pair<const char*, const char*>>& Defines, const char* ProgramType, const char* Program)

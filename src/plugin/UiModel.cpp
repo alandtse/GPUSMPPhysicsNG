@@ -3,6 +3,7 @@
 #include "plugin/UiModel.h"
 
 #include "Globals.h"
+#include "Utils/D3D.h"
 #include "Utils/DevBenchUx.h"
 #include "Utils/TestBench/IdleCache.h"
 #include "Utils/TestBench/TestCrowd.h"
@@ -185,9 +186,11 @@ void PluginUi::Register()
 	};
 	model.status = [&feature] {
 		const auto status = feature.GetUiStatus();
-		return std::format("{}\nActive claims: {}   Simulation time per frame: {:.3f} ms",
+		const auto shaders = Util::GetShaderPrewarmStatus();
+		return std::format("{}\nActive claims: {}   Simulation time per frame: {:.3f} ms{}",
 			status.linked ? status.linkStatus : std::string("Not linked to hdtSMP64. Install it and load it before this plugin."),
-			status.claimCount, status.stepMilliseconds);
+			status.claimCount, status.stepMilliseconds,
+			shaders.running ? std::format("\nCompiling shaders: {} of {} done. Claimed hair keeps the engine pose until then.", shaders.done, shaders.total) : std::string());
 	};
 	model.onSave = [&feature] { PluginSettings::Save(feature); };
 	model.onReevaluate = [&feature] { feature.ReevaluateAllActors(); };

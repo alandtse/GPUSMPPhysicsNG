@@ -31,6 +31,8 @@ namespace SmpPhysics
 	class GpuSkinning
 	{
 	public:
+		[[nodiscard]] static std::vector<Util::ShaderJob> ShaderJobs();
+
 		static constexpr std::uint32_t kMaximumBones = 80;                     ///< The engine's per draw limit; a skin instance with more bones is left to the engine.
 		static constexpr std::uint32_t kStaticBone = SmpPhysics::kStaticBone;  ///< Marks a bone the solver does not simulate.
 		static constexpr std::uint32_t kBytesPerBone = 3 * 16;

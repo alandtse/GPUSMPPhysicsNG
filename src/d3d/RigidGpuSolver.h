@@ -26,6 +26,9 @@ namespace SmpPhysics
 	class RigidGpuSolver
 	{
 	public:
+		/** @brief Every compute shader this solver compiles, for the startup prewarm. */
+		[[nodiscard]] static std::vector<Util::ShaderJob> ShaderJobs();
+
 		/** @brief What a claim needs to be stepped: the world SMP would build and where its bodies sit in the GPU solver's slots. */
 		struct ClaimSetup
 		{

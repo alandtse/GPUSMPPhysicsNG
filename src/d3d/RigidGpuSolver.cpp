@@ -83,6 +83,19 @@ namespace SmpPhysics
 		}
 	}
 
+	std::vector<Util::ShaderJob> RigidGpuSolver::ShaderJobs()
+	{
+		return {
+			{ kRuntimeShaderPath, kShaderTarget, "RigidFrameBegin" },
+			{ kRuntimeShaderPath, kShaderTarget, "RigidExport" },
+			{ kRuntimeShaderPath, kShaderTarget, "RigidWorldExport" },
+			{ kStepShaderPath, kShaderTarget, "RigidPredict" },
+			{ kStepShaderPath, kShaderTarget, "RigidSetup" },
+			{ kStepShaderPath, kShaderTarget, "RigidSolveIslandColored" },
+			{ kStepShaderPath, kShaderTarget, "RigidIntegrate" },
+		};
+	}
+
 	bool RigidGpuSolver::EnsureShaders()
 	{
 		if (!available)

@@ -188,6 +188,16 @@ namespace SmpPhysics
 		surfacePrepDirty = true;
 	}
 
+	std::vector<Util::ShaderJob> GpuSolver::ShaderJobs()
+	{
+		auto jobs = RigidGpuSolver::ShaderJobs();
+		for (const char* entry : { "ContactCull", "ContactSpheres", "ContactReduce" })
+			jobs.push_back({ kShaderPath, kShaderTarget, entry });
+		for (const char* entry : { "SurfaceBones", "SurfacePose", "SurfaceTriangles", "SurfaceLeaves", "SurfaceRefit" })
+			jobs.push_back({ kSurfacePrepPath, kShaderTarget, entry });
+		return jobs;
+	}
+
 	bool GpuSolver::EnsureShaders()
 	{
 		ZoneScopedN("SmpPhysics::EnsureShaders");
@@ -408,7 +418,7 @@ namespace SmpPhysics
 		}
 		if (claimIndex.contains(a_token))
 			return true;
-		if (!EnsureShaders()) {
+		if (!Util::GetShaderPrewarmStatus().running && !EnsureShaders()) {
 			a_reason = unavailableReason;
 			return false;
 		}
@@ -1136,8 +1146,9 @@ namespace SmpPhysics
 
 	bool GpuSolver::SubmitFrameUnchecked(const std::vector<FrameClaim>& a_claims)
 	{
+		// While the startup compile runs, claims keep the engine pose (PoseReady stays false) instead of the game waiting for it.
 		// The shaders are rebuilt here after a shader cache clear, so claims already running do not dispatch nothing.
-		if (!available || !trees || claims.empty() || !EnsureShaders())
+		if (!available || !trees || claims.empty() || Util::GetShaderPrewarmStatus().running || !EnsureShaders())
 			return false;
 		auto* context = globals::d3d::context;
 		if (!context)

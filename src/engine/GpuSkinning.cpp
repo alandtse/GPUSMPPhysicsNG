@@ -530,6 +530,11 @@ namespace SmpPhysics
 		batchFailed = false;
 	}
 
+	std::vector<Util::ShaderJob> GpuSkinning::ShaderJobs()
+	{
+		return { { kShaderPath, kShaderTarget, "main" }, { kBatchShaderPath, kShaderTarget, "main" } };
+	}
+
 	bool GpuSkinning::EnsureShader()
 	{
 		if (shaderFailed)

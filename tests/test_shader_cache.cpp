@@ -78,3 +78,28 @@ TEST_CASE("A compiled shader is read back from the cache until its source or an 
 	Util::SetShaderCacheDir(L"");
 	std::filesystem::remove_all(root);
 }
+
+TEST_CASE("A prewarm fills the cache on background threads and finishes even when a shader is missing", "[d3d][shader_cache]")
+{
+	const auto root = std::filesystem::temp_directory_path() / "GPUSMPPhysicsNG-shader-prewarm-test";
+	std::filesystem::remove_all(root);
+	std::filesystem::create_directories(root / "shaders");
+	Util::SetShaderRoot((root / "shaders").wstring());
+	Util::SetShaderCacheDir((root / "cache").wstring());
+	Write(root / "shaders" / "Pair.hlsl",
+		"RWStructuredBuffer<uint> Out : register(u0);\n"
+		"[numthreads(1, 1, 1)] void First() { Out[0] = 1; }\n"
+		"[numthreads(1, 1, 1)] void Second() { Out[0] = 2; }\n");
+
+	Util::StartShaderPrewarm({ { L"Pair.hlsl", "cs_5_0", "First" }, { L"Pair.hlsl", "cs_5_0", "Second" }, { L"Absent.hlsl", "cs_5_0", "Main" } });
+	Util::WaitForShaderPrewarm();
+
+	const auto status = Util::GetShaderPrewarmStatus();
+	CHECK(status.total == 3);
+	CHECK(status.done == 3);
+	CHECK_FALSE(status.running);
+	CHECK(CacheFiles(root / "cache", ".bin") == 2);
+
+	Util::SetShaderCacheDir(L"");
+	std::filesystem::remove_all(root);
+}

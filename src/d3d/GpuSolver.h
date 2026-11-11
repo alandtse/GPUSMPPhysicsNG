@@ -34,6 +34,9 @@ namespace SmpPhysics
 	class GpuSolver
 	{
 	public:
+		/** @brief Every compute shader the solver host compiles, rigid solver included, for the startup prewarm. */
+		[[nodiscard]] static std::vector<Util::ShaderJob> ShaderJobs();
+
 		static constexpr std::uint32_t kBlockSlots = 256;          ///< Slots per pool block; a claim's bones, colliders and drivers live in its own block range.
 		static constexpr std::uint32_t kMaximumClaimSlots = 2048;  ///< Widest claim the shared pool serves; a bigger rig is not simulated.
 		static constexpr std::size_t kStagingSlots = 3;

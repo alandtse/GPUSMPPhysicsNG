@@ -6,6 +6,8 @@
 #include "Globals.h"
 #include "Utils/D3D.h"
 #include "Utils/TestBench/IdleCache.h"
+#include "d3d/GpuSolver.h"
+#include "engine/GpuSkinning.h"
 #include "plugin/BoneUploadHook.h"
 #include "plugin/DevBench.h"
 #include "plugin/Instance.h"
@@ -54,6 +56,12 @@ namespace
 		case SKSE::MessagingInterface::kPostPostLoad:
 			Util::SetShaderRoot(PluginSettings::ShaderRoot().wstring());
 			Util::SetShaderCacheDir(PluginSettings::ShaderCacheRoot().wstring());
+			{
+				auto jobs = SmpPhysics::GpuSolver::ShaderJobs();
+				const auto skinning = SmpPhysics::GpuSkinning::ShaderJobs();
+				jobs.insert(jobs.end(), skinning.begin(), skinning.end());
+				Util::StartShaderPrewarm(std::move(jobs));
+			}
 			BoneUploadHook::Install();
 			OverlayHook::Install();
 			break;

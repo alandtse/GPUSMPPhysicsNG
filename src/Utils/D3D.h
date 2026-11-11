@@ -41,6 +41,27 @@ namespace Util
 	/** @brief Compiles FilePath (relative to the shader root) and returns the blob, or null after logging the error. */
 	winrt::com_ptr<ID3DBlob> CompileShaderBlob(const wchar_t* FilePath, const std::vector<std::pair<const char*, const char*>>& Defines, const char* ProgramType, const char* Program);
 
+	/** @brief One compute shader the plugin will need, named as its call site names it so the cache key matches. */
+	struct ShaderJob
+	{
+		const wchar_t* path;
+		const char* target;
+		const char* entry;
+	};
+
+	struct ShaderPrewarmStatus
+	{
+		std::size_t done = 0;
+		std::size_t total = 0;
+		bool running = false;
+	};
+
+	/** @brief Compiles a_jobs on background threads into the shader cache so the first claim finds them ready; does nothing without a cache folder. */
+	void StartShaderPrewarm(std::vector<ShaderJob> a_jobs);
+	[[nodiscard]] ShaderPrewarmStatus GetShaderPrewarmStatus();
+	/** @brief Blocks until the prewarm ends; returns at once when none is running. */
+	void WaitForShaderPrewarm();
+
 	/** @brief Compiles FilePath into a D3D11 shader object of the kind the profile names (cs_5_0, vs_5_0, ps_5_0), or null. */
 	ID3D11DeviceChild* CompileShader(const wchar_t* FilePath, const std::vector<std::pair<const char*, const char*>>& Defines, const char* ProgramType, const char* Program);
 
