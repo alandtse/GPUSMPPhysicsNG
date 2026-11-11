@@ -155,6 +155,24 @@ namespace SmpPhysics::RigidGpu
 		}
 	}
 
+	IslandSizes SummariseIslands(const std::vector<IslandRecord>& a_islands)
+	{
+		IslandSizes sizes;
+		for (const IslandRecord& island : a_islands) {
+			const std::uint32_t count = island.range.y;
+			if (count == 0)
+				continue;
+			constexpr std::array<std::uint32_t, IslandSizes::kBuckets - 1> kLimits{ 1, 4, 8, 16, 32, 64 };
+			const auto bucket = static_cast<std::size_t>(std::ranges::find_if(kLimits, [count](std::uint32_t a_limit) { return count <= a_limit; }) - kLimits.begin());
+			++sizes.islands[bucket];
+			sizes.constraints[bucket] += count;
+			++sizes.total;
+			sizes.largest = std::max(sizes.largest, count);
+			sizes.mostColors = std::max(sizes.mostColors, island.range.z);
+		}
+		return sizes;
+	}
+
 	StepData PackStep(const RigidReference::World& a_packed, float a_timeStep)
 	{
 		StepData data;

@@ -290,6 +290,7 @@ namespace SmpPhysics
 		bodyCount = bodyTotal;
 		constraintCount = constraintTotal;
 		islandCount = islandTotal;
+		islandSizes = RigidGpu::SummariseIslands(allIslands);
 		frameScratch.assign(bodyTotal, FrameInput{});
 		dirty = false;
 		return true;

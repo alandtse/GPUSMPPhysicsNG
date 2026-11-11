@@ -226,6 +226,20 @@ namespace SmpPhysics::RigidGpu
 	 */
 	[[nodiscard]] StepData PackStep(const RigidReference::World& a_world, float a_timeStep);
 
+	/** @brief How the islands split by constraint count, to judge which solver kernel each size suits. */
+	struct IslandSizes
+	{
+		static constexpr std::size_t kBuckets = 7;  ///< 1, 2-4, 5-8, 9-16, 17-32, 33-64, 65 and more constraints
+		std::array<std::uint32_t, kBuckets> islands{};
+		std::array<std::uint32_t, kBuckets> constraints{};
+		std::uint32_t total{};
+		std::uint32_t largest{};
+		std::uint32_t mostColors{};
+	};
+
+	/** @brief Counts each island and its constraints into the size bucket its constraint count falls in. */
+	[[nodiscard]] IslandSizes SummariseIslands(const std::vector<IslandRecord>& a_islands);
+
 	/**
 	 * @brief Writes the shader's integrated bodies back into a_world: world transform and both velocities.
 	 * @param a_bodies One record per body, read back from the shader's body buffer.

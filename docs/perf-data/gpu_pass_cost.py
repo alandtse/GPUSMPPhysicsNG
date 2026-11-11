@@ -41,8 +41,14 @@ for size in SIZES:
     time.sleep(WINDOW)
     stats = port.query('gpuPassStats')
     status = port.status()
+    passes = stats.get('passes', [])
+    solve = next((p for p in passes if p['name'].endswith('RigidSolve')), None)
+    islands = port.query('islandSizes')
     row = {'label': LABEL, 'game': GAME, 'crowd': size, 'armor': ARMOR, 'cloak': CLOAK, 'claims': status.get('claimCount', len(status.get('claims', []))),
-           'frames': stats.get('frames'), 'passes': {p['name']: round(p['msPerFrame'], 4) for p in stats.get('passes', [])}}
+           'frames': stats.get('frames'), 'substepsPerFrame': round(solve['callsPerFrame'], 3) if solve else None,
+           'passes': {p['name']: round(p['msPerFrame'], 4) for p in passes},
+           'msPerCall': {p['name']: round(p['msPerFrame'] / p['callsPerFrame'], 4) for p in passes if p['callsPerFrame']},
+           'islands': {k: islands.get(k) for k in ('buckets', 'islands', 'constraints', 'total', 'largest', 'mostColors')}}
     port.command('gpuPassTiming', enabled=False)
     print(row, flush=True)
     rows.append(row)

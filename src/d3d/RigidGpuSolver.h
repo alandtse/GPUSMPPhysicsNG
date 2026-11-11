@@ -76,6 +76,8 @@ namespace SmpPhysics
 		RigidGpuSolver& operator=(const RigidGpuSolver&) = delete;
 
 		[[nodiscard]] bool Available() const noexcept { return available; }
+		/** @brief How the islands of the last buffer build split by constraint count. */
+		[[nodiscard]] const RigidGpu::IslandSizes& IslandSizeSummary() const noexcept { return islandSizes; }
 		[[nodiscard]] const std::string& UnavailableReason() const noexcept { return unavailableReason; }
 		[[nodiscard]] std::size_t ClaimCount() const noexcept { return claims.size(); }
 		[[nodiscard]] bool HasClaim(std::uint64_t a_token) const { return claimIndex.contains(a_token); }
@@ -152,6 +154,7 @@ namespace SmpPhysics
 		std::uint32_t bodyCount{};
 		std::uint32_t constraintCount{};
 		std::uint32_t islandCount{};
+		RigidGpu::IslandSizes islandSizes;
 		std::unique_ptr<Buffer> bodies;
 		std::unique_ptr<Buffer> solverBodies;
 		std::unique_ptr<Buffer> rows;

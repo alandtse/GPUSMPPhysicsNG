@@ -464,6 +464,8 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](const Feature*, const json&) -> json { return NifProbe::Result(); });
 	FEATURE_QUERY("xmlAudit", "After nifPhysicsProbe has finished: the loose physics xml files that no model or defaultBBPs.xml entry names (orphans) and the names with no loose file (dangling; a file packed in an archive shows here too).",
 		[](const Feature*, const json&) -> json { return NifProbe::XmlAuditResult(); });
+	FEATURE_QUERY("islandSizes", "How the rigid solver's islands split by constraint count in the last buffer build: islands and constraints per size bucket (1, 2-4, 5-8, 9-16, 17-32, 33-64, 65 or more), the island total, the largest island's constraints and the most colour classes one takes. Shows which solve kernel suits the islands.",
+		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->IslandSizesJson(); });
 	FEATURE_QUERY("physicsHealth", "After nifPhysicsProbe has finished: each armor and cloak the scan found physics files for, with the worst health among them (working, repaired or broken) and the files; what colours the Test crowd lists.",
 		[](const Feature* a_self, const json&) -> json { return const_cast<SmpPhysicsFeature*>(static_cast<const SmpPhysicsFeature*>(a_self))->PhysicsHealthJson(); });
 	FEATURE_COMMAND("claimTallyReset", "Clear the claim tally, then run reevaluate to count every actor's meshes again.",
@@ -891,6 +893,13 @@ std::string SmpPhysicsFeature::ItemReportText(RE::FormID a_armor)
 		}
 	}
 	return text;
+}
+
+json SmpPhysicsFeature::IslandSizesJson() const
+{
+	const SmpPhysics::RigidGpu::IslandSizes& sizes = gpuSolver.Rigid().IslandSizeSummary();
+	return { { "buckets", json::array({ "1", "2-4", "5-8", "9-16", "17-32", "33-64", "65+" }) }, { "islands", sizes.islands }, { "constraints", sizes.constraints },
+		{ "total", sizes.total }, { "largest", sizes.largest }, { "mostColors", sizes.mostColors } };
 }
 
 json SmpPhysicsFeature::PhysicsHealthJson()
