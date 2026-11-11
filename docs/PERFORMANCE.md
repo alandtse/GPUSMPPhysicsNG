@@ -320,5 +320,5 @@ second dancing run had 409 frames in its 20 s against 266, so its step count per
 cost per frame follows the frame time through its fixed-step catch-up.
 
 Against the plugin's dress runs (standing 10.75 ms, dancing 9.4 to 10.2 ms, cpu + gpu + residual) the ratio is about 0.29 standing
-and 0.25 to 0.36 dancing. The dress costs hdtSMP64 about 2.4 times its wig-only cost at 30 characters and the plugin about 2.1
+and 0.25 to 0.36 dancing. The dress costs hdtSMP64 about 1.8 to 2.4 times its wig-only cost at 30 characters (36.6 ms against 15.3 to 20.5) and the plugin about 2.1
 times, so cloth does not erode the plugin's lead.
