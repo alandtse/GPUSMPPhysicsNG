@@ -462,6 +462,8 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](Feature*, const json&) { NifProbe::Start(); });
 	FEATURE_QUERY("nifPhysicsProbeResult", "The nifPhysicsProbe outcome: running, armors done of total, models read and missing, bytes read, elapsed milliseconds and milliseconds per model, and the models whose header names the physics extra data with the xml paths it holds.",
 		[](const Feature*, const json&) -> json { return NifProbe::Result(); });
+	FEATURE_QUERY("physicsHealth", "After nifPhysicsProbe has finished: each armor and cloak the scan found physics files for, with the worst health among them (working, repaired or broken) and the files; what colours the Test crowd lists.",
+		[](const Feature* a_self, const json&) -> json { return const_cast<SmpPhysicsFeature*>(static_cast<const SmpPhysicsFeature*>(a_self))->PhysicsHealthJson(); });
 	FEATURE_COMMAND("claimTallyReset", "Clear the claim tally, then run reevaluate to count every actor's meshes again.",
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->ResetClaimTally(); });
 	FEATURE_COMMAND("reevaluate", "Ask hdtSMP64 to re-run claiming for every loaded actor, so the current settings take effect.",
@@ -856,6 +858,23 @@ std::vector<SmpPhysics::Health> SmpPhysicsFeature::ItemHealths(const std::vector
 		result.push_back(worst);
 	}
 	return result;
+}
+
+json SmpPhysicsFeature::PhysicsHealthJson()
+{
+	static constexpr std::array<const char*, 4> kNames = { "none", "working", "repaired", "broken" };
+	json rows = json::array();
+	for (const auto& list : { TestBench::TestCrowd::ArmorForms(), TestBench::TestCrowd::CloakForms() }) {
+		std::vector<std::vector<std::string>> files;
+		for (const RE::TESObjectARMO* armor : list)
+			files.push_back(NifProbe::XmlPaths(armor->GetFormID()));
+		const std::vector<SmpPhysics::Health> health = ItemHealths(files);
+		for (std::size_t index = 0; index < list.size(); ++index) {
+			if (health[index] != SmpPhysics::Health::None)
+				rows.push_back({ { "name", list[index]->GetName() }, { "formId", list[index]->GetFormID() }, { "health", kNames[static_cast<std::size_t>(health[index])] }, { "files", files[index] } });
+		}
+	}
+	return { { "items", std::move(rows) } };
 }
 
 json SmpPhysicsFeature::SurfaceCheckJson() const
