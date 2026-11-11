@@ -255,13 +255,13 @@ Per frame, ms: hdtSMP64's `PhysicsStep` with the plugin disabled, against the pl
 `RigidSolve` + hdtSMP64's residual step on what the plugin does not claim (GPU time is asynchronous, so the sum is a
 conservative total).
 
-| Crowd (throttles lifted) | hdtSMP64         | Plugin cpu + gpu + residual | Ratio            |
-| ------------------------ | ---------------- | --------------------------- | ---------------- |
-| 5                        | 3.36             | 0.76 + 1.42 + 0.14 = 2.3    | 0.68             |
-| 10                       | 4.75             | 1.16 + 1.79 + 0.25 = 3.2    | 0.67             |
-| 20, Yue Qingshu Dress    | 12.04            | 2.42 + 2.78 + 0.42 = 5.6    | 0.47             |
-| 30 (three runs)          | 15.3, 20.5, 15.5 | 4.9, 5.2, 5.0               | 0.32, 0.25, 0.32 |
-| 60                       | 32.03            | 3.34 + 5.73 + 2.58 = 11.65  | 0.36             |
+| Crowd (throttles lifted)                                            | hdtSMP64         | Plugin cpu + gpu + residual | Ratio            |
+| ------------------------------------------------------------------- | ---------------- | --------------------------- | ---------------- |
+| 5                                                                   | 3.36             | 0.76 + 1.42 + 0.14 = 2.3    | 0.68             |
+| 10                                                                  | 4.75             | 1.16 + 1.79 + 0.25 = 3.2    | 0.67             |
+| 20, Yue Qingshu Dress (not like for like, see the correction below) | 12.04            | 2.42 + 2.78 + 0.42 = 5.6    | 0.47             |
+| 30 (three runs)                                                     | 15.3, 20.5, 15.5 | 4.9, 5.2, 5.0               | 0.32, 0.25, 0.32 |
+| 60                                                                  | 32.03            | 3.34 + 5.73 + 2.58 = 11.65  | 0.36             |
 
 The plugin is cheaper at every size, including 5 characters. The gap widens with crowd size up to 30 and holds at 60. One
 hdtSMP64 run in three at 30 read 20.5 ms against 15.3 and 15.5, so its cost has more run-to-run spread than ours.
@@ -272,7 +272,7 @@ With each plugin at its **default throttles** (30 characters, hdtSMP64 `maximumA
 At defaults hdtSMP64 is cheaper in absolute terms because it simulates about 5 skeletons while the plugin simulates all 72
 claims. The per-character cost is the plugin's advantage; the default-throttle total is not. Not measured: capes, VR.
 
-### Dancing crowd (30 characters in the Yue Qingshu Dress, `IdleCiceroDance1` looped on every one)
+### Dancing crowd (not like for like, see the correction below: 30 characters in the Yue Qingshu Dress, `IdleCiceroDance1` looped on every one)
 
 Same method and units as above, throttles lifted. A standing run and three dancing runs, hdtSMP64 against the plugin's CPU + GPU +
 hdtSMP64 residual:
@@ -288,3 +288,13 @@ Dancing did not raise either side's cost by more than the run-to-run spread: hdt
 (the standing run came first, so warm-up may sit in it). The plugin keeps about half of hdtSMP64's per-frame cost with the dress
 crowd, standing or dancing. `RigidContact` is the largest GPU pass (2.7 to 3.1 ms per frame), `RigidSolve` 1.7 to 1.8 ms. One
 slow idle may not stress the cloth hard; a faster animation was not tried.
+
+### Correction: hdtSMP64 does not simulate the Yue Qingshu Dress
+
+hdtSMP64's own plots show the same 71 systems and 7,570 rigid bodies with 30 wig-only characters and with 30 characters in the
+dress, so it simulated none of the dress (the mod does not work under hdtSMP64). This plugin did claim it, so in the 20-character
+dress run and the standing and dancing 30-character dress runs the plugin did more work than the arm it is compared with, and
+those ratios (0.45 to 0.53) are not like for like. hdtSMP64's rise from 15.3 to about 20 ms in those runs is run-to-run spread,
+not dress cost. The wig-only rows (5, 10, 30, 60 characters) are unaffected: hdtSMP64 and the plugin simulate the same wigs.
+Cloth and dancing need an outfit or cape that hdtSMP64 does run, checked by its `Systems` and `RigidBodies` plots rising when it
+is equipped.
