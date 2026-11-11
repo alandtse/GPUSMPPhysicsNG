@@ -179,6 +179,53 @@ namespace
 		};
 	}
 
+	/** @brief The report for the item a list has selected, refreshed at most once a second; empty before a scan or when it has no physics. a_skip leading entries have no item. */
+	std::function<std::string()> SelectedItemReport(std::function<std::vector<RE::TESObjectARMO*>()> a_forms, const int* a_index, int a_skip)
+	{
+		struct Cache
+		{
+			int index = -2;
+			std::uint32_t generation{};
+			std::chrono::steady_clock::time_point at{};
+			std::string text;
+		};
+		return [forms = std::move(a_forms), a_index, a_skip, cache = std::make_shared<Cache>()] {
+			const std::uint32_t generation = NifProbe::Generation();
+			const int index = *a_index - a_skip;
+			if (!generation || index < 0)
+				return std::string();
+			const auto now = std::chrono::steady_clock::now();
+			if (cache->index == index && cache->generation == generation && now - cache->at < std::chrono::seconds(1))
+				return cache->text;
+			const std::vector<RE::TESObjectARMO*> items = forms();
+			cache->text = static_cast<std::size_t>(index) < items.size() ? Instance().ItemReportText(items[static_cast<std::size_t>(index)]->GetFormID()) : std::string();
+			cache->index = index;
+			cache->generation = generation;
+			cache->at = now;
+			return cache->text;
+		};
+	}
+
+	/** @brief A line about the selected item's physics. */
+	Row ItemNote(std::function<std::vector<RE::TESObjectARMO*>()> a_forms, const int* a_index, int a_skip)
+	{
+		return Text([report = SelectedItemReport(std::move(a_forms), a_index, a_skip)] {
+			const std::string text = report();
+			if (text.empty())
+				return std::string("Select an item that has physics to see its report.");
+			const std::size_t first = text.find('\n');
+			return text.substr(0, text.find('\n', first == std::string::npos ? 0 : first + 1));
+		});
+	}
+
+	/** @brief A button that copies the selected item's full report for its mod author. */
+	Row ItemCopy(std::function<std::vector<RE::TESObjectARMO*>()> a_forms, const int* a_index, int a_skip)
+	{
+		Row copy = Button("Copy report for the selected item", "Copies the item's name, plugin, physics files and what is wrong with each, to send to its mod author. Scan first.", [] {});
+		copy.clipboardFn = SelectedItemReport(std::move(a_forms), a_index, a_skip);
+		return copy;
+	}
+
 	Row WithHealth(Row a_row, std::function<std::vector<RE::TESObjectARMO*>()> a_forms, std::size_t a_skip)
 	{
 		a_row.itemStatusFn = HealthColours(std::move(a_forms), a_skip);
@@ -299,6 +346,16 @@ void PluginUi::Register()
 		std::vector<SettingsUi::ReportBlock> blocks;
 		for (auto& [file, text] : feature.GetRepairReports())
 			blocks.push_back({ file, std::move(text) });
+		const json audit = NifProbe::XmlAuditResult();
+		for (const auto& [key, title] : { std::pair{ "orphans", "Physics files no model uses" }, std::pair{ "dangling", "Physics files a model names that are missing" } }) {
+			const json& list = audit[key];
+			if (list.empty())
+				continue;
+			std::string text = std::string(title) + " (loose files only):\n";
+			for (const auto& path : list)
+				text += path.get<std::string>() + '\n';
+			blocks.push_back({ std::format("{} ({})", title, list.size()), std::move(text) });
+		}
 		return blocks;
 	};
 
@@ -332,7 +389,11 @@ void PluginUi::Register()
 				return std::format("Scanning: {} of {}", done, total);
 			return NifProbe::Generation() ? std::string("Green: physics file works. Amber: repaired and used. Red: file fault. Plain: no physics found.") : std::string("Not scanned yet."); }),
 		WithHealth(Browse("Armor list", "Every playable body armor; click one to dress the test characters in it.", &choices.armor, [] { return TestBench::TestCrowd::ArmorNames(); }, [] { return TestBench::GetCrowd().WornArmorIndex(); }, [&choices] { TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(choices.armor)); }), [] { return TestBench::TestCrowd::ArmorForms(); }, 0),
+		ItemNote([] { return TestBench::TestCrowd::ArmorForms(); }, &choices.armor, 0),
+		ItemCopy([] { return TestBench::TestCrowd::ArmorForms(); }, &choices.armor, 0),
 		WithHealth(Browse("Cloak", "A cloak or cape every test character wears, on top of armor or bare body.", &choices.cloak, [] { return WithFirst("None", TestBench::TestCrowd::CloakNames()); }, [] { return TestBench::GetCrowd().WornCloakIndex() + 1; }, [&choices] { RunCrowdCommand("setTestCrowdCloak", { { "index", choices.cloak - 1 } }); }), [] { return TestBench::TestCrowd::CloakForms(); }, 1),
+		ItemNote([] { return TestBench::TestCrowd::CloakForms(); }, &choices.cloak, 1),
+		ItemCopy([] { return TestBench::TestCrowd::CloakForms(); }, &choices.cloak, 1),
 		Header("Animation"),
 		Check("Animate on spawn (characters' AI runs)", "Off, test characters spawn frozen.", &choices.animateOnSpawn, [&choices] { TestBench::GetCrowd().SetAnimateOnSpawn(choices.animateOnSpawn); }),
 		Check("Loop the animation", "Plays the animation again each time it ends.", &choices.loopAnimation, [&choices] { RunCrowdCommand("setTestCrowdLoop", { { "enabled", choices.loopAnimation } }); }),

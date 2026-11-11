@@ -18,6 +18,9 @@ namespace NifProbe
 	/** @brief The physics xml paths the last scan found in an armor's models, empty when none. */
 	[[nodiscard]] std::vector<std::string> XmlPaths(RE::FormID a_armor);
 
+	/** @brief The physics xml files on disk (loose) that no model or default-map entry names, and the names with no file. */
+	[[nodiscard]] json XmlAuditResult();
+
 	/** @brief Progress, timings and the models found carrying physics extra data. */
 	[[nodiscard]] json Result();
 }

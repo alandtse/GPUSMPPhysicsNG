@@ -175,6 +175,8 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] std::vector<std::string> GetDeclinedLines() const;
 	/** @brief Each physics file with a problem, as text to paste to its author. */
 	[[nodiscard]] std::vector<std::pair<std::string, std::string>> GetRepairReports() const;
+	/** @brief Text to send an item's mod author: its name, plugin, physics files and what is wrong with each; empty when the scan found no files. Game thread only. */
+	[[nodiscard]] std::string ItemReportText(RE::FormID a_armor);
 	/** @brief The scan's armors and cloaks with their worst health, for the devbench physicsHealth query. Game thread only. */
 	[[nodiscard]] json PhysicsHealthJson();
 	/** @brief The worst health among each item's physics files, parsing any not yet read; None for an item with no files. Game thread only. */

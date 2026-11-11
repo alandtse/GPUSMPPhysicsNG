@@ -7,10 +7,13 @@
 #include "RE/T/TESObjectARMO.h"
 #include "Utils/TestBench/TestCrowd.h"
 #include "smp/NifPhysicsScan.h"
+#include "smp/XmlAudit.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <map>
 #include <mutex>
 #include <string>
@@ -49,6 +52,8 @@ namespace NifProbe
 		std::size_t bytesRead = 0;
 		double milliseconds = 0.0;
 		std::vector<Hit> hits;
+		SmpPhysics::XmlAudit audit;
+		std::size_t xmlOnDisk = 0;
 		std::atomic<std::uint32_t> generation{ 0 };
 
 		std::string ReadHeader(const std::string& a_model, bool& a_found)
@@ -68,6 +73,36 @@ namespace NifProbe
 					break;
 			}
 			return bytes;
+		}
+
+		constexpr const char* kDefaultMap = "Data/SKSE/Plugins/hdtSkinnedMeshConfigs/defaultBBPs.xml";
+
+		std::string ReadWhole(const std::filesystem::path& a_path, std::size_t a_limit = 1u << 20)
+		{
+			std::ifstream file(a_path, std::ios::binary);
+			std::string text(a_limit, '\0');
+			text.resize(static_cast<std::size_t>(file.read(text.data(), static_cast<std::streamsize>(a_limit)).gcount()));
+			return text;
+		}
+
+		/** @brief Loose physics xml files under the config folder and meshes, as Data-relative paths; files packed in archives are not listed. */
+		std::vector<std::string> ListPhysicsXml()
+		{
+			namespace fs = std::filesystem;
+			std::vector<std::string> found;
+			std::error_code error;
+			for (const char* root : { "Data/SKSE/Plugins/hdtSkinnedMeshConfigs", "Data/Meshes" }) {
+				for (fs::recursive_directory_iterator entry(root, fs::directory_options::skip_permission_denied, error), end; !error && entry != end; entry.increment(error)) {
+					const fs::path& path = entry->path();
+					if (path.extension() != ".xml" && path.extension() != ".XML")
+						continue;
+					if (ReadWhole(path, 2048).find("<system") == std::string::npos)
+						continue;
+					found.push_back(path.generic_string().substr(5));
+				}
+				error.clear();
+			}
+			return found;
 		}
 
 		void Run(std::vector<Target> a_targets)
@@ -99,6 +134,11 @@ namespace NifProbe
 				}
 				done.fetch_add(1, std::memory_order_relaxed);
 			}
+			const std::vector<std::string> onDisk = ListPhysicsXml();
+			std::vector<std::string> named = SmpPhysics::ParseDefaultBbpFiles(ReadWhole(kDefaultMap));
+			for (const Hit& hit : found)
+				named.insert(named.end(), hit.xml.begin(), hit.xml.end());
+			SmpPhysics::XmlAudit newAudit = SmpPhysics::AuditXmlFiles(onDisk, named);
 			const double elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
 			const std::scoped_lock lock(mutex);
 			total = checked;
@@ -106,6 +146,8 @@ namespace NifProbe
 			bytesRead = read;
 			milliseconds = elapsed;
 			hits = std::move(found);
+			audit = std::move(newAudit);
+			xmlOnDisk = onDisk.size();
 			generation.fetch_add(1, std::memory_order_release);
 			running.store(false, std::memory_order_release);
 		}
@@ -138,6 +180,8 @@ namespace NifProbe
 			total = missing = bytesRead = 0;
 			milliseconds = 0.0;
 			hits.clear();
+			audit = {};
+			xmlOnDisk = 0;
 		}
 		done.store(0, std::memory_order_relaxed);
 		running.store(true, std::memory_order_release);
@@ -173,6 +217,12 @@ namespace NifProbe
 			}
 		}
 		return paths;
+	}
+
+	json XmlAuditResult()
+	{
+		const std::scoped_lock lock(mutex);
+		return { { "xmlOnDisk", xmlOnDisk }, { "orphans", audit.orphans }, { "dangling", audit.dangling } };
 	}
 
 	json Result()

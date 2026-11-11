@@ -135,7 +135,17 @@ namespace SettingsUi
 				case Row::Kind::Button:
 					if (row.sameLine)
 						ImGuiMCP::SameLine(0.0f, -1.0f);
-					changed = ImGuiMCP::Button(id.c_str(), { 0, 0 });
+					{
+						const std::string copy = row.clipboardFn ? row.clipboardFn() : std::string();
+						const bool noText = row.clipboardFn && copy.empty();
+						if (noText)
+							ImGuiMCP::BeginDisabled(true);
+						changed = ImGuiMCP::Button(id.c_str(), { 0, 0 });
+						if (noText)
+							ImGuiMCP::EndDisabled();
+						if (changed && !copy.empty())
+							ImGuiMCP::SetClipboardText(copy.c_str());
+					}
 					Tip(row.tooltip);
 					break;
 				case Row::Kind::Combo:
