@@ -452,6 +452,10 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->SetStrandProbe(a_args); });
 	FEATURE_QUERY("claimTally", "How many meshes hdtSMP64 offered this feature since the last claimTallyReset, by mesh kind (attempts, accepts, declines), how many distinct (actor, file) pairs ended taken or declined, and the decline reasons ranked by the pairs they hold back, each with its first full text, its split by kind and a few example files, plus every physics file's own counts. Quoted names and numbers in a reason are folded together so one cause is one row; pairs are counted by their latest outcome, so a retry does not inflate them.",
 		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->ClaimTallyJson(); });
+	FEATURE_COMMAND("setCollisionOverride", "Debugging switch: stop one piece of a rig colliding with a surface or with the body proxies, then run reevaluatePlayer (or reevaluate) to rebuild the claims with it. Args: piece (string, a triangle shape's name such as Skirtpart1, whose bones' spheres are affected), target (string, a surface's name, or \"colliders\" for every body proxy), off (bool, default true; false restores the pair). The active switches are listed under collisionOverrides in status.",
+		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->SetCollisionOverride(a_args.value("piece", std::string{}), a_args.value("target", std::string{}), a_args.value("off", true)); });
+	FEATURE_COMMAND("clearCollisionOverrides", "Remove every setCollisionOverride switch; run reevaluatePlayer afterwards.",
+		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->SetCollisionOverride({}, {}, false); });
 	FEATURE_COMMAND("claimTallyReset", "Clear the claim tally, then run reevaluate to count every actor's meshes again.",
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->ResetClaimTally(); });
 	FEATURE_COMMAND("reevaluate", "Ask hdtSMP64 to re-run claiming for every loaded actor, so the current settings take effect.",
@@ -688,6 +692,10 @@ json SmpPhysicsFeature::BuildStatusJson() const
 		result["interfaceVersion"] = { interfaceVersion.major, interfaceVersion.minor, interfaceVersion.patch };
 		result["enabled"] = settings.Enabled;
 		result["claimCount"] = claims.size();
+		json overrides = json::array();
+		for (const SmpPhysics::CollisionOverride& override : collisionOverrides)
+			overrides.push_back({ { "piece", override.piece }, { "target", override.target } });
+		result["collisionOverrides"] = std::move(overrides);
 		result["simulationBudget"] = settings.MaxSimulatedClaims;
 		result["culledByBudget"] = std::count_if(claims.begin(), claims.end(), [](const auto& a_entry) { return a_entry.second.culledByBudget; });
 		result["culledOffscreen"] = std::count_if(claims.begin(), claims.end(), [](const auto& a_entry) { return a_entry.second.culledOffscreen; });
@@ -1366,6 +1374,18 @@ json SmpPhysicsFeature::ClaimTallyJson() const
 	for (const auto& row : snapshot.files)
 		result["files"].push_back({ { "file", row.file }, { "attempts", row.attempts }, { "accepts", row.accepts }, { "declines", row.declines } });
 	return result;
+}
+
+void SmpPhysicsFeature::SetCollisionOverride(const std::string& a_piece, const std::string& a_target, bool a_off)
+{
+	const std::scoped_lock lock(stateMutex);
+	if (a_piece.empty() && a_target.empty()) {
+		collisionOverrides.clear();
+		return;
+	}
+	std::erase_if(collisionOverrides, [&](const SmpPhysics::CollisionOverride& a_override) { return a_override.piece == a_piece && a_override.target == a_target; });
+	if (a_off)
+		collisionOverrides.push_back({ a_piece, a_target });
 }
 
 void SmpPhysicsFeature::ResetClaimTally()

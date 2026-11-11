@@ -1792,6 +1792,22 @@ bool SmpPhysicsFeature::BuildClaimCollision(const hdt::IMeshClaimContext& a_cont
 	}
 	RetargetRest(state, a_restPose);
 	FinishCollision(state);
+	std::vector<SmpPhysics::CollisionOverride> overrides;
+	{
+		const std::scoped_lock lock(stateMutex);
+		overrides = collisionOverrides;
+	}
+	if (!overrides.empty()) {
+		std::vector<std::string> boneShapeName(a_rig.bones.size(), state.hairShape->name);
+		for (std::size_t bone = 0; bone < state.boneShape.size() && bone < boneShapeName.size(); ++bone) {
+			if (state.boneShape[bone])
+				boneShapeName[bone] = state.boneShape[bone]->name;
+		}
+		std::vector<std::string> surfaceNames;
+		for (const SmpPhysics::SkinnedSurface& surface : a_collision.surfaces)
+			surfaceNames.push_back(surface.name);
+		SmpPhysics::ApplyCollisionOverrides(overrides, boneShapeName, surfaceNames, a_collision.spheres, a_collision.boneSurfaceMask);
+	}
 	return true;
 }
 
