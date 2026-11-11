@@ -207,3 +207,8 @@ crowd 20 (1.00 before). Baking the reach into the leaf boxes can only remove the
 bounded by about 0.13 ms per call (about 0.35 ms per frame at crowd 20, about 5% of the solver), and it needs a new per-leaf
 record in the shader and host packing plus GPU/CPU parity re-checks. Not worth that cost; not implemented
 (`gpu_pass_cost_se_nodeep_dress.json`). Prepacked body slots for the coloured solve were not measured.
+
+Cost of building the coloured solve's body table (item 3): repeating its insert pass and its slot load pass inside
+`CacheIslandBodies` (each with its barrier) left `RigidSolve` at 0.56 ms per call at crowd 10 and 0.55 ms at crowd 20, where
+the run without the repeat read 0.60 and 0.63 (`gpu_pass_cost_se_dblcache_dress.json`). Extra build work adds no measurable
+time, so prepacking those mappings on the CPU has nothing to remove. Rejected.
