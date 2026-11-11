@@ -271,3 +271,20 @@ With each plugin at its **default throttles** (30 characters, hdtSMP64 `maximumA
 `SimulationDistance` 2000 and no other cull), hdtSMP64's step costs 2.9 ms per frame and the plugin 1.7 + 2.2 + 0.1 = 4.1 ms.
 At defaults hdtSMP64 is cheaper in absolute terms because it simulates about 5 skeletons while the plugin simulates all 72
 claims. The per-character cost is the plugin's advantage; the default-throttle total is not. Not measured: capes, VR.
+
+### Dancing crowd (30 characters in the Yue Qingshu Dress, `IdleCiceroDance1` looped on every one)
+
+Same method and units as above, throttles lifted. A standing run and three dancing runs, hdtSMP64 against the plugin's CPU + GPU +
+hdtSMP64 residual:
+
+| Run            | hdtSMP64 | Plugin cpu + gpu + residual | Ratio |
+| -------------- | -------- | --------------------------- | ----- |
+| standing       | 20.30    | 5.13 + 4.85 + 0.77 = 10.75  | 0.53  |
+| dancing, run 1 | 20.89    | 4.19 + 4.38 + 0.82 = 9.39   | 0.45  |
+| dancing, run 2 | 21.36    | 4.44 + 4.48 + 0.84 = 9.77   | 0.46  |
+| dancing, run 3 | 21.61    | 4.73 + 4.55 + 0.87 = 10.15  | 0.47  |
+
+Dancing did not raise either side's cost by more than the run-to-run spread: hdtSMP64 rose 3 to 6% and the plugin fell 6 to 13%
+(the standing run came first, so warm-up may sit in it). The plugin keeps about half of hdtSMP64's per-frame cost with the dress
+crowd, standing or dancing. `RigidContact` is the largest GPU pass (2.7 to 3.1 ms per frame), `RigidSolve` 1.7 to 1.8 ms. One
+slow idle may not stress the cloth hard; a faster animation was not tried.
