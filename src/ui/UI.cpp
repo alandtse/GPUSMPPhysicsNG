@@ -8,7 +8,9 @@
 #include <REX/REX.h>
 #include <SKSE/SKSE.h>
 
+#include <cctype>
 #include <string>
+#include <vector>
 
 namespace logger = SKSE::log;
 
@@ -27,6 +29,56 @@ namespace SettingsUi
 		{
 			if (!a_text.empty() && ImGuiMCP::IsItemHovered(ImGuiMCP::ImGuiHoveredFlags_AllowWhenDisabled))
 				ImGuiMCP::SetTooltip("%s", a_text.c_str());
+		}
+
+		std::string Lower(std::string a_text)
+		{
+			for (char& character : a_text)
+				character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+			return a_text;
+		}
+
+		/** @brief Draws a filter box above a list of row.items and returns true when an item was clicked; the page scrolls to the selected item when it changes elsewhere. */
+		bool RenderList(Row& row, const std::string& a_id)
+		{
+			if (row.items.empty() && row.itemsFn)
+				row.items = row.itemsFn();
+			constexpr std::size_t kMaxRows = 300;
+			constexpr float kWidth = 420.0f;
+			ImGuiMCP::TextUnformatted(row.label.c_str());
+			Tip(row.tooltip);
+			ImGuiMCP::SetNextItemWidth(kWidth);
+			ImGuiMCP::InputTextWithHint(("##gsp_filter_" + row.label).c_str(), "Filter", row.filterText.data(), row.filterText.size());
+			const std::string filter = Lower(row.filterText.data());
+			const int selected = row.selectedFn ? row.selectedFn() : *row.intValue;
+			const bool scroll = selected != row.lastSelected;
+			bool clicked = false;
+			if (ImGuiMCP::BeginListBox(a_id.c_str(), { kWidth, 8.0f * ImGuiMCP::GetTextLineHeightWithSpacing() })) {
+				std::size_t shown = 0;
+				std::size_t hidden = 0;
+				for (std::size_t index = 0; index < row.items.size(); ++index) {
+					const std::string& name = row.items[index];
+					if (!filter.empty() && Lower(name).find(filter) == std::string::npos)
+						continue;
+					if (shown >= kMaxRows) {
+						++hidden;
+						continue;
+					}
+					++shown;
+					const bool isSelected = static_cast<int>(index) == selected;
+					if (ImGuiMCP::Selectable((name + "##gsp_item_" + std::to_string(index)).c_str(), isSelected, 0, { 0, 0 })) {
+						*row.intValue = static_cast<int>(index);
+						clicked = true;
+					}
+					if (isSelected && scroll)
+						ImGuiMCP::SetScrollHereY(0.5f);
+				}
+				if (hidden)
+					ImGuiMCP::TextDisabled("%zu more match; type to narrow the list.", hidden);
+				ImGuiMCP::EndListBox();
+			}
+			row.lastSelected = selected;
+			return clicked;
 		}
 
 		void RenderPage(Model* model)
@@ -82,6 +134,9 @@ namespace SettingsUi
 						changed = ImGuiMCP::Combo(id.c_str(), row.intValue, row.joinedItems.c_str(), -1);
 						Tip(row.tooltip);
 					}
+					break;
+				case Row::Kind::List:
+					changed = RenderList(row, id);
 					break;
 				}
 				if (changed && row.onChanged)

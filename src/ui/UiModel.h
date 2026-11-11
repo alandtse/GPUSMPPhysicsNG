@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -20,7 +21,8 @@ namespace SettingsUi
 			Header,
 			Note,
 			Button,  ///< Runs onChanged when pressed; sameLine puts it beside the previous control.
-			Combo    ///< Picks one of items into intValue.
+			Combo,   ///< Picks one of items into intValue.
+			List     ///< A filter box over a list box of items; a click sets intValue and runs onChanged.
 		};
 
 		Kind kind{ Kind::Note };
@@ -33,6 +35,9 @@ namespace SettingsUi
 		std::function<std::vector<std::string>()> itemsFn;  ///< Fills items the first time the page draws the Combo, for lists the game builds late.
 		std::string joinedItems;                            ///< items as the framework wants them; built once by the page code.
 		std::function<std::string()> textFn;                ///< A Note shows this instead of its label when set, refreshed every frame.
+		std::function<int()> selectedFn;                    ///< A List's highlighted item, read every frame so changes made elsewhere show; intValue when empty.
+		std::array<char, 64> filterText{};                  ///< What a List's filter box holds.
+		int lastSelected{ -2 };                             ///< The item a List last scrolled to.
 		bool sameLine{};
 		float minimum{};
 		float maximum{};

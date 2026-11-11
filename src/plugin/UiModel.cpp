@@ -95,6 +95,19 @@ namespace
 		return row;
 	}
 
+	Row Browse(const char* a_label, const char* a_tooltip, int* a_value, std::function<std::vector<std::string>()> a_items, std::function<int()> a_selected, std::function<void()> a_picked)
+	{
+		Row row;
+		row.kind = Row::Kind::List;
+		row.label = a_label;
+		row.tooltip = a_tooltip;
+		row.intValue = a_value;
+		row.itemsFn = std::move(a_items);
+		row.selectedFn = std::move(a_selected);
+		row.onChanged = std::move(a_picked);
+		return row;
+	}
+
 	Row Text(std::function<std::string()> a_text)
 	{
 		Row row;
@@ -136,6 +149,7 @@ namespace
 		bool stripped = false;
 		bool animateOnSpawn = false;
 		bool loopAnimation = false;
+		int armor = -1;
 		int cloak = 0;
 		int idle = 0;
 		int hairColor = 0;
@@ -242,15 +256,19 @@ void PluginUi::Register()
 			const int worn = TestBench::GetCrowd().WornArmorIndex();
 			const auto& names = TestBench::TestCrowd::ArmorNames();
 			return "Wearing: " + (worn >= 0 && worn < static_cast<int>(names.size()) ? names[static_cast<std::size_t>(worn)] : std::string("none")); }),
-		Pick("Cloak", "A cloak or cape every test character wears, on top of armor or bare body.", &choices.cloak, [] { return WithFirst("None", TestBench::TestCrowd::CloakNames()); }, [&choices] { RunCrowdCommand("setTestCrowdCloak", { { "index", choices.cloak - 1 } }); }),
+		Browse("Armor list", "Every playable body armor; click one to dress the test characters in it.", &choices.armor, [] { return TestBench::TestCrowd::ArmorNames(); }, [] { return TestBench::GetCrowd().WornArmorIndex(); }, [&choices] { TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(choices.armor)); }),
+		Browse("Cloak", "A cloak or cape every test character wears, on top of armor or bare body.", &choices.cloak, [] { return WithFirst("None", TestBench::TestCrowd::CloakNames()); }, [] { return TestBench::GetCrowd().WornCloakIndex() + 1; }, [&choices] { RunCrowdCommand("setTestCrowdCloak", { { "index", choices.cloak - 1 } }); }),
 		Header("Animation"),
 		Check("Animate on spawn (characters' AI runs)", "Off, test characters spawn frozen.", &choices.animateOnSpawn, [&choices] { TestBench::GetCrowd().SetAnimateOnSpawn(choices.animateOnSpawn); }),
 		Check("Loop the animation", "Plays the animation again each time it ends.", &choices.loopAnimation, [&choices] { RunCrowdCommand("setTestCrowdLoop", { { "enabled", choices.loopAnimation } }); }),
-		Pick("Idle", "The idle animation to play on every test character.", &choices.idle, [] {
+		Browse("Idle", "The idle animation to play on every test character.", &choices.idle, [] {
+			const auto idles = TestBench::IdleCache::Snapshot();
+			if (idles.empty())
+				return std::vector<std::string>{};
 			std::vector<std::string> names{ "Default (Cicero)" };
-			for (const TestBench::IdleChoice& idle : TestBench::IdleCache::Snapshot())
+			for (const TestBench::IdleChoice& idle : idles)
 				names.push_back(idle.editorId);
-			return names; }),
+			return names; }, {}, {}),
 		Button("Play on test characters", "Plays the chosen idle on everyone standing, and on each one spawned later.", [&choices] {
 			const auto idles = TestBench::IdleCache::Snapshot();
 			const bool picked = choices.idle > 0 && choices.idle <= static_cast<int>(idles.size());
