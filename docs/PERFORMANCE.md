@@ -298,3 +298,8 @@ those ratios (0.45 to 0.53) are not like for like. hdtSMP64's rise from 15.3 to 
 not dress cost. The wig-only rows (5, 10, 30, 60 characters) are unaffected: hdtSMP64 and the plugin simulate the same wigs.
 Cloth and dancing need an outfit or cape that hdtSMP64 does run, checked by its `Systems` and `RigidBodies` plots rising when it
 is equipped.
+
+With `YQS.xml`'s empty axes fixed (`<linearUpperLimit x="" y="0" z="" />` on four constraint defaults changed to `x="0" y="0" z="0"`,
+the same reading as the parser fix in 68eac47), hdtSMP64 does simulate the dress: with 30 dressed characters it reports 101 systems
+and 11,290 rigid bodies, against 71 and 7,570 without it, and its `PhysicsStep` costs 36.5 ms per frame (15.3 to 20.5 ms with
+wigs alone). The plugin arm and a like-for-like dress and dancing comparison have not been rerun on the fixed file yet.
