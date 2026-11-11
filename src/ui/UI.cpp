@@ -114,8 +114,6 @@ namespace SettingsUi
 			if (model->onSave && ImGuiMCP::Button("Save settings##gsp_save", { 0, 0 }))
 				model->onSave();
 		}
-
-		HMODULE menuFramework = nullptr;
 	}
 
 	namespace

@@ -145,6 +145,7 @@ namespace
 	constexpr int kRequiredInterfaceMinor = 1;
 	constexpr std::size_t kMaxDeclinedFiles = 64;
 	constexpr std::size_t kMaxDeclinedRows = 20;
+	thread_local std::string pendingDeclineReason;  ///< What RecordDecline last noted during the claim on this thread.
 	constexpr const char* kStartupSender = "hdtsmp64";
 	constexpr std::uint32_t kStartupMessageType = static_cast<std::uint32_t>(hdt::PluginInterface::MSG_STARTUP);
 	constexpr const char* kLogPrefix = "[GPU SMP Physics]";
@@ -439,6 +440,10 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](const Feature*, const json& a_args) -> json { return SmpPhysicsFeature::SkinProbeJson(a_args); });
 	FEATURE_COMMAND("holdStrand", "Hold one strand of a claimed actor's hair toward a fixed world point, as a closed hand would, so the pin can be checked on the CPU and GPU solvers without a headset. Args: actorFormID (number), count (number of chains to hold, default 1), bone (rig bone index to hold first; otherwise the dynamic bones farthest from the bone their chain hangs from, one per chain), offset (array of three numbers, world units from that bone's current position, default 15 along +X), enabled (bool, false releases). Read heldStrands in the status query.",
 		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->SetStrandProbe(a_args); });
+	FEATURE_QUERY("claimTally", "How many meshes hdtSMP64 offered this feature since the last claimTallyReset, by mesh kind (attempts, accepts, declines), how many distinct (actor, file) pairs ended taken or declined, and the decline reasons ranked by the pairs they hold back, each with its first full text, its split by kind and a few example files, plus every physics file's own counts. Quoted names and numbers in a reason are folded together so one cause is one row; pairs are counted by their latest outcome, so a retry does not inflate them.",
+		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->ClaimTallyJson(); });
+	FEATURE_COMMAND("claimTallyReset", "Clear the claim tally, then run reevaluate to count every actor's meshes again.",
+		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->ResetClaimTally(); });
 	FEATURE_COMMAND("reevaluate", "Ask hdtSMP64 to re-run claiming for every loaded actor, so the current settings take effect.",
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->ReevaluateAllActors(); });
 	FEATURE_COMMAND("setClaimEnabled", "Switch one actor's physics file off or on for testing: off, this feature declines the file for that actor and hdtSMP64 is asked to simulate it, so the same hair can be compared in both solvers; the settings menu lists the same switches. Args: actorFormID (number), file (string, the physics file as status lists it, compared without regard to case), enabled (bool, default true).",
@@ -889,18 +894,23 @@ void SmpPhysicsFeature::SetClaimEnabled(RE::FormID a_actorFormID, const std::str
 
 bool SmpPhysicsFeature::MeshOwner::claim(const hdt::IMeshClaimContext& a_context, std::uint64_t a_token)
 {
+	pendingDeclineReason.clear();
+	bool accepted = false;
 	try {
-		return feature.ClaimMesh(a_context, a_token);
+		accepted = feature.ClaimMesh(a_context, a_token);
 	} catch (const std::exception& e) {
 		try {
 			if (const char* path = a_context.getPhysicsFile(); path && *path)
 				feature.RecordDecline(path, std::string("claiming threw: ") + e.what());
 		} catch (...) {
 		}
-		return false;
 	} catch (...) {
-		return false;
 	}
+	try {
+		feature.TallyClaim(a_context, accepted);
+	} catch (...) {
+	}
+	return accepted;
 }
 
 void SmpPhysicsFeature::MeshOwner::release(std::uint64_t a_token)
@@ -1286,8 +1296,38 @@ void SmpPhysicsFeature::RegisterBodyShapes(const hdt::IMeshClaimContext& a_conte
 		bodyShapeActors.push_back(formID);
 }
 
+void SmpPhysicsFeature::TallyClaim(const hdt::IMeshClaimContext& a_context, bool a_accepted)
+{
+	const char* path = a_context.getPhysicsFile();
+	const RE::Actor* actor = a_context.getActor();
+	const auto kind = a_context.getKind() == hdt::MeshKind::HeadPart ? SmpPhysics::ClaimTally::Kind::HeadPart : SmpPhysics::ClaimTally::Kind::Armor;
+	const std::string_view reason = pendingDeclineReason.empty() ? std::string_view("declined without a reason (switched off for this actor, or refused by the claim gate)") : std::string_view(pendingDeclineReason);
+	claimTally.Record(kind, actor ? actor->GetFormID() : 0, path && *path ? path : "<no physics file>", a_accepted, a_accepted ? std::string_view{} : reason);
+}
+
+json SmpPhysicsFeature::ClaimTallyJson() const
+{
+	const SmpPhysics::ClaimTally::Snapshot snapshot = claimTally.Take();
+	json result = { { "armor", { { "attempts", snapshot.kinds[0].attempts }, { "accepts", snapshot.kinds[0].accepts }, { "declines", snapshot.kinds[0].declines } } },
+		{ "headPart", { { "attempts", snapshot.kinds[1].attempts }, { "accepts", snapshot.kinds[1].accepts }, { "declines", snapshot.kinds[1].declines } } },
+		{ "pairsAccepted", snapshot.pairsAccepted }, { "pairsDeclined", snapshot.pairsDeclined }, { "pairsTruncated", snapshot.pairsTruncated } };
+	result["reasons"] = json::array();
+	for (const auto& row : snapshot.reasons)
+		result["reasons"].push_back({ { "reason", row.reason }, { "example", row.example }, { "declines", row.declines }, { "pairs", row.pairs }, { "armor", row.byKind[0] }, { "headPart", row.byKind[1] }, { "sampleFiles", row.sampleFiles } });
+	result["files"] = json::array();
+	for (const auto& row : snapshot.files)
+		result["files"].push_back({ { "file", row.file }, { "attempts", row.attempts }, { "accepts", row.accepts }, { "declines", row.declines } });
+	return result;
+}
+
+void SmpPhysicsFeature::ResetClaimTally()
+{
+	claimTally.Reset();
+}
+
 void SmpPhysicsFeature::RecordDecline(const std::string& a_file, const std::string& a_reason)
 {
+	pendingDeclineReason = a_reason;
 	bool shouldLog = false;
 	{
 		const std::scoped_lock lock(stateMutex);

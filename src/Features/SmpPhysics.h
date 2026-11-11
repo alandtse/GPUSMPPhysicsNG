@@ -6,6 +6,7 @@
 #include "d3d/GpuSolver.h"
 #include "engine/DebugLines.h"
 #include "engine/GpuSkinning.h"
+#include "smp/ClaimTally.h"
 #include "smp/Collision.h"
 #include "smp/SelfWindShelter.h"
 #include "smp/SkinnedSurface.h"
@@ -158,6 +159,9 @@ struct SmpPhysicsFeature final : Feature
 	void ApplyCrowdHairColor(std::string a_color);
 	/** @brief The live claims and the files switched off for testing, one row each, for the Claims page. */
 	[[nodiscard]] std::vector<ClaimRow> GetClaimRows() const;
+	/** @brief Offers, takes and declines by mesh kind, and the decline reasons ranked by the (actor, file) pairs they hold back. */
+	[[nodiscard]] json ClaimTallyJson() const;
+	void ResetClaimTally();
 	/** @brief Up to the first few declined physics files, each as "file: reason". */
 	[[nodiscard]] std::vector<std::string> GetDeclinedLines() const;
 
@@ -528,6 +532,8 @@ private:
 	void RecordJointFrame(json& a_frame);
 	/** @brief Reuses a cached parse for a_path, or reads and parses the file once. */
 	[[nodiscard]] std::shared_ptr<const SmpPhysics::ParseResult> GetParsedRig(const std::string& a_path);
+	/** @brief Counts the offer ClaimMesh just answered, with the reason RecordDecline noted if it was declined. */
+	void TallyClaim(const hdt::IMeshClaimContext& a_context, bool a_accepted);
 	/** @brief Records a declined physics file and logs it the first time that path and reason are seen. */
 	void RecordDecline(const std::string& a_file, const std::string& a_reason);
 	/** @brief Remembers a declined rig's triangle shapes for the actor, so its hair rigs collide with them; asks for the actor's hair to be offered again when one is new. */
@@ -563,6 +569,7 @@ private:
 	std::unordered_map<std::uint64_t, Claim> claims;
 	std::unordered_map<std::string, std::shared_ptr<const SmpPhysics::ParseResult>> parsedRigs;
 	std::unordered_map<std::string, std::string> declinedFiles;
+	SmpPhysics::ClaimTally claimTally;
 	bool claimsHandedBack{};                                                ///< Set once the claims were handed back to hdtSMP64 after Enabled went off, so a disable from any path releases them. Frame-sync thread only.
 	std::map<std::pair<RE::FormID, std::string>, ClaimRow> disabledClaims;  ///< Actor and lower-case physics file pairs the user switched off, with the row the table keeps showing, guarded by stateMutex.
 	/** @brief A triangle shape from a rig that is not a hair rig, such as the body collision mesh, which hair rigs on the same actor collide with. */
