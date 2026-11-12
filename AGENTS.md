@@ -3,9 +3,7 @@
 Guidance for coding agents working in this repository. Claude Code loads it through `.claude/CLAUDE.md`.
 
 GPUSMPPhysicsNG is a standalone SKSE plugin (one DLL for SE, AE and VR) that runs hdtSMP64's skinned-mesh physics on
-the GPU. It started as a feature inside Open Shaders; that branch (`claude/hair-body-capsules`, `1a993b31f5`) is
-reference only and nothing is done there any more. Open Shaders is no longer a dependency; it is an optional source of
-wind only.
+the GPU. Open Shaders is not a dependency; it is an optional source of wind only.
 
 ## Build and test
 
@@ -17,8 +15,7 @@ xmake run GPUSMPPhysicsNG-Tests
 
 Run xmake from PowerShell, not Bash. All Catch2 cases must pass before a commit.
 
-`tools/game/build_shader_cache.ps1` fills a `ShaderCache` folder from the unit tests (the `RigidSetup` compile, 3 s, is the longest; it was 53 s
-before the joint rows were streamed); ship it as `Data/SKSE/Plugins/GPUSMPPhysicsNG/ShaderCache`. Entries are keyed by shader path under the shader
+`tools/game/build_shader_cache.ps1` fills a `ShaderCache` folder from the unit tests (the `RigidSetup` compile, 3 s, is the longest); ship it as `Data/SKSE/Plugins/GPUSMPPhysicsNG/ShaderCache`. Entries are keyed by shader path under the shader
 root and checked by a content hash of the source and its includes, so a cache built elsewhere stays valid. The skinning and
 debug-line shaders are not in it; they compile quickly.
 
@@ -89,32 +86,10 @@ simulates fewer actors: hdtSMP64 `configs.json` (`autoAdjustMaxSkeletons` false,
 frame near 31 ms and hides frame time, so use SE for frame time and VR for per-pass GPU cost (`gpuPassTiming` command,
 `gpuPassStats` query). State the result against the frame budget (VR 11.1 ms, flat 16.7 ms).
 
-## Planned work
+## Open work
 
-- The chain solver stepping path and its leftover names are gone. Wind (drag, cap and gust law from hdtSMP64) and grab
-  pins now act on the rigid bodies: wind adds to each body's frame force in `RigidFrameBegin`, a pin is a capped spring
-  in `RigidPredict`; a hold frees the angular limits of the joints up to the root. Measured on VR with
-  `tools/hair-tune/limit_probe.py` and `wind_probe.py`: a hold takes real joints about 2 rad past their limits and they
-  settle back within 0.5 s of the release with or without a return-rate clamp (about 10 rad/s either way), so there is
-  no clamp. Freeing the limits moved held strands from 0.02-0.13 to 0.08-0.32 units off the hand (grab_e2e limit 1.0).
-  Wind at strength 60 shifts a claim's hair 0.6 units on average (max 4.6) in the head frame; at the default 2 the
-  shift (0.04) is the same as the 0.04 noise between two no-wind runs, with that claim 77% sheltered. As a bounds check
-  against hdtSMP64 (its wind is known to be over-strong, so no parity is expected), `wind_probe.py --hdt` across two
-  launches with hdtSMP64's wind on and off: hdtSMP64 at its default strength 2 moves the same hair 0.40 units on
-  average (max 2.0), where this plugin's no-wind runs differ by 0.12 between launches. So the default here is far below
-  hdtSMP64's. The wind field is the sky's normalised speed (0 to 1, gusts to 2) and the hair vector is field x 300 x
-  strength, so strength 2 at full sky wind is 600 units/s. In a forced SkyrimStormRain the field only averaged 0.22
-  (peak 0.39), about 130 units/s at strength 2, which moves hair by 0.03. A 600 units/s vector (strength 9 in that
-  storm) shifts it 0.34 on average (max 2.2), about hdtSMP64's 0.40 at its default. Trees bend 3% of height and grass
-  13 degrees per unit of field at full wind, for comparison. A worn linen cape (`wind_probe.py --cloak 3 --solver
---prefix "CB "`, 12 bones, 61 units long, same storm) moves with vector: about 145 units/s (strength 2) shifts it
-  0.15 units (0.2% of its length), 650 to 740 units/s shifts it 2.3 units (3.9%, max 11%), and 600+ at strength 20
-  gives the same because the 900 cap and the field vary. So the cape shows the wind at a vector of 400 to 700 units/s,
-  the range where hair matches hdtSMP64 too. The default `WindStrength` is now 6 (a field of 0.2 gives 360 units/s; full
-  sky wind 1800, limited by the 900 cap). One strength serves every item: each bone's drag comes from its own area, mass
-  and `<wind-factor>`, capped at 400 units/s^2 (0.58 g), so a heavy cape and light hair follow the same law. Measured
-  at about 600 units/s the cape moves 3.9% of its length and hair about 0.34 units; not tuned per item. Still to do: the chain-only packing
-  (`PackChainTies`, the tie fields, `windChainLoad`, `subtreeLoading`) is kept for now. Re-baseline
-  `smp_parity_baseline.json` and rerun the SE frame-time comparison once SE is free.
+- Re-baseline `smp_parity_baseline.json` (`smp_parity_e2e.py --update-baseline`) and rerun the SE frame-time comparison.
 - Not covered by any suite: Menu Framework page rendering, the Ready Weapon gate, haptic feel, real controller mappings.
-- The 31 ms convergence at 30 characters on SE is unexplained.
+- `WindStrength` defaults to 6 (hair moves about as far as under hdtSMP64's default in a storm); one strength serves hair
+  and cloth, each bone's drag capped at 400 units/s^2.
+- The chain-only packing (`PackChainTies`, the tie fields, `windChainLoad`, `subtreeLoading`) is unused and can go.

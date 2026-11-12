@@ -2,30 +2,49 @@
 
 GPU hair and cloth physics for Skyrim SE, AE and VR, built as a companion to
 [hdtSMP64](https://github.com/alandtse/hdtSMP64). It reads the same SMP XML rigs, steps them with a
-rigid-body solver on the GPU that reproduces hdtSMP64's constraints, and draws the skinned meshes from
-the solver's result. One DLL covers all three runtimes.
+rigid-body solver on the GPU that reproduces hdtSMP64's constraints, and skins the meshes from the
+solver's result. One DLL covers all three runtimes.
 
 It claims only the meshes whose physics file describes a bone chain; hdtSMP64 keeps simulating
 everything else, so the two run side by side.
 
 ## Requirements
 
-- hdtSMP64 with plugin interface 2.1 or newer, loaded before this plugin
+- hdtSMP64 with plugin interface 2.2 or newer (mesh owner API and frame events), loaded before this plugin. Until the
+  upstream pull requests [#479](https://github.com/DaymareOn/hdtSMP64/pull/479) and
+  [#480](https://github.com/DaymareOn/hdtSMP64/pull/480) are released, use the
+  [alandtse/hdtSMP64](https://github.com/alandtse/hdtSMP64) fork.
 - [SKSE Menu Framework](https://github.com/alandtse/SKSE-Menu-Framework-3) for the in-game settings page (optional)
 - [Community Shaders / Open Shaders](https://github.com/alandtse/open-shaders) for wind (optional); without it the weather's wind is used
 
 ## Install
 
 Copy `SKSE/Plugins` into `Data`. The plugin compiles its HLSL on your machine from
-`Data/SKSE/Plugins/GPUSMPPhysicsNG/Shaders` the first time a mesh is claimed.
+`Data/SKSE/Plugins/GPUSMPPhysicsNG/Shaders` the first time a mesh is claimed, unless the shipped
+`ShaderCache` already holds it.
 
 Settings live in `Data/SKSE/Plugins/GPUSMPPhysicsNG/Settings.json`, written with defaults on first run, and on the
-"GPU SMP Physics NG" page of SKSE Menu Framework. The log is `GPUSMPPhysicsNG.log` next to the other SKSE logs.
+"GPU SMP Physics NG" page of SKSE Menu Framework. Set `Enabled` to false to hand every mesh back to hdtSMP64.
+The log is `GPUSMPPhysicsNG.log` next to the other SKSE logs; it names the hdtSMP64 interface version it linked to
+and how many meshes it claimed.
 
-## Open Shaders' built-in GPU SMP Physics
+## Sharing meshes with other plugins
 
-Open Shaders ships the same feature. Run only one claimer: turn off Open Shaders' "GPU SMP Physics"
-(its `SmpPhysics.ini`, or its Enabled switch) when you use this plugin.
+Plugins that register with hdtSMP64's owner API are asked for each mesh in priority order, and the first to claim it
+simulates it. This plugin registers at priority 0. Open Shaders ships the same feature; run only one of the two
+(turn off its "GPU SMP Physics" in `SmpPhysics.ini`) when you use this plugin.
+
+## Performance
+
+On a crowd of 30 wigged characters on SE, this plugin plus hdtSMP64's remaining work costs about a third of what
+hdtSMP64 alone spends on the same characters (about 5 ms against 15 ms per frame). At its default throttles hdtSMP64
+simulates fewer characters, so it can cost less in absolute terms. Method, caveats and per-pass figures are in
+[docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+
+## Status
+
+Checked in game on SE and VR. AE is built but not tested. Known differences from hdtSMP64 are in
+[docs/PARITY.md](docs/PARITY.md).
 
 ## Build and test
 

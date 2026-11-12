@@ -22,7 +22,7 @@ open-shaders and devbench, and uploads through `alandtse/nexus-workflows`.
 
 ## The shader cache
 
-`RigidSetup` takes about 3 s to compile (53 s before the joint rows were streamed), and the archive ships the compiled blobs so a first launch skips even that. Entries are keyed by shader path
+`RigidSetup` takes about 3 s to compile, and the archive ships the compiled blobs so a first launch skips even that. Entries are keyed by shader path
 under the shader root and checked by a content hash of the source and its includes, so they only serve the exact
 shader bytes they were built from. That is why the Shaders folder in the archive comes from the build job, never a
 fresh checkout. If the cache is missing or stale the plugin compiles as before. Locally,

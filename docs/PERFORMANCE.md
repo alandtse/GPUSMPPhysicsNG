@@ -1,324 +1,48 @@
-# Performance: pre-port vs standalone vs hdtSMP64
+# Performance against hdtSMP64
 
-Measured 2026-11-08, one session per game, one save, one scene: SkyrimVR 1.4.15 (null driver, no headset)
-and Skyrim SE 1.7.104. Raw rows: [VR](perf-data/smp_ab_results.json), [SE](perf-data/smp_ab_se_results.json);
-the harness is [perf-data/smp_ab.py](perf-data/smp_ab.py).
+Measured on Skyrim SE 1.7.104 with the test crowd (wigged characters, 10 bases repeated) in one scene. Both plugins were
+built with Tracy; zone totals come from `tracy-capture` and `tracy-csvexport`, 20 s per arm. Harnesses are in
+[perf-data](perf-data).
 
-## What was compared
+## Method
 
-| Arm    | What simulates the hair                                                                                                                                          |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `hdt`  | hdtSMP64 alone, with both GPU solvers off                                                                                                                        |
-| `pre`  | Open Shaders' in-tree SMP feature (branch `claude/hair-body-capsules` at `1a993b31f5`, `ALL-TRACY` AIO, DLL `7CE718E25DC3C3E3`)                                  |
-| `port` | this plugin (VR run: DLL `352ABEAC24A13D7B...`; SE run: DLL `9C30216D3C56A10C...`, which differs only by the timer thread fix described below, no solver change) |
+- Every throttle is lifted so both arms simulate the same characters: hdtSMP64 `configs.json` (`autoAdjustMaxSkeletons`
+  false, `maximumActiveSkeletons` 1000, `budgetMs` 1000, `minCullingDistance` 100000, `minScreenSizePercent` 0) and here
+  `MaxClaims` and `MaxSimulatedClaims` 256, `SimulationDistance` 20000, `MinScreenSizePercent` 0.
+- hdtSMP64's `PhysicsStep` with the plugin disabled is compared with the plugin's CPU `Step`, its GPU `RigidContact` and
+  `RigidSolve`, and hdtSMP64's `PhysicsStep` on what the plugin does not claim. GPU time is asynchronous, so the sum is a
+  conservative total.
 
-All three were loaded together and switched at runtime, so the scene, camera and settings are identical.
-Each crowd size ran `hdt`, `pre`, `port`, `hdt` in that order, 6 s settle then a 15 s window.
-The crowd is the test-crowd spawner's wigged characters (10 bases repeated up to 30). A warm-up pass
-with 5 characters switched each arm on once first, so shader compiles are not in the windows.
+## Result, wigs, per frame
 
-## Throttling
+| Crowd | hdtSMP64 | Plugin cpu + gpu + residual | Ratio |
+| ----- | -------- | --------------------------- | ----- |
+| 5     | 3.4 ms   | 0.76 + 1.42 + 0.14 = 2.3 ms | 0.68  |
+| 10    | 4.8 ms   | 1.16 + 1.79 + 0.25 = 3.2 ms | 0.67  |
+| 30    | 15.3 ms  | 4.9 ms                      | 0.32  |
+| 60    | 32.0 ms  | 3.34 + 5.73 + 2.58 = 11.7   | 0.36  |
 
-Every throttle was lifted for all arms, so no arm simulates fewer actors than another:
+At 30 characters hdtSMP64 ranged 15.3 to 20.5 ms over three runs, so its cost is noisier than the plugin's. The Yue
+Qingshu Dress crowd of 30 costs hdtSMP64 36.6 ms against the plugin's 10.8 ms (about 0.29), from separate launches.
 
-- hdtSMP64 `configs.json`: `autoAdjustMaxSkeletons` false, `maximumActiveSkeletons` 1000, `budgetMs` 1000,
-  `minCullingDistance` 100000, `minScreenSizePercent` 0 (the original file was restored afterwards).
-- This plugin and the in-tree feature: `MaxClaims` and `MaxSimulatedClaims` 256, `SimulationDistance` 20000,
-  `MinScreenSizePercent` 0.
+At default throttles (30 characters, hdtSMP64 simulating about 5 skeletons) hdtSMP64 costs 2.9 ms and the plugin 4.1 ms,
+because the plugin simulates all 72 claims. The advantage is per character, not at defaults.
 
-## Results
+## Where the plugin's time goes
 
-Frame time (ms, `hdt` is the mean of its two windows). The null driver caps the frame at about 31 ms
-(32.3 fps), so the arms are indistinguishable here and the table cannot show a frame-time win or loss.
+Per call on SE, 10/20/30 characters: `ContactSpheres` 0.64/1.18/1.13 ms and `RigidSolve` 0.74/0.77/0.82 ms. On VR
+(null driver) the same passes cost 0.33 to 0.75 ms and about 0.58 ms, so about 2.5 ms of an 11.1 ms frame at 20
+characters. Contact is the largest pass.
 
-| Crowd | Claims | hdt   | pre   | port  |
-| ----- | ------ | ----- | ----- | ----- |
-| 0     | 9      | 31.00 | 31.01 | 31.00 |
-| 5     | 16     | 31.02 | 31.00 | 31.00 |
-| 10    | 21     | 31.12 | 31.38 | 31.01 |
-| 20    | 33     | 31.03 | 31.15 | 31.07 |
-| 30    | 38     | 31.00 | 30.98 | 31.00 |
+## Things that did not help
 
-GPU milliseconds per frame, port (timestamp queries, 484 frames per window at crowd 30). "Solver total"
-adds the non-nested passes (`RigidContact` already contains `ContactPasses` (once `ChainContact`) and its three sub-passes).
+- Routing small islands to the sequential `RigidSolveIsland` kernel made `RigidSolve` slower (0.62 ms coloured-only
+  against 1.5 to 2.8 ms).
+- Tighter deep-push leaf bounds could save at most about 0.35 ms per frame at 20 characters and cost a new record format.
+- Prepacking the coloured solve's body table: its build already costs nothing measurable.
+- `FlushAfterSubmit` removes a misattributed 8 to 9 ms wait from the per-pass timers on SE (the commands sit in the
+  driver until the game flushes) but gave no frame-time gain, so it ships off. Turn it on only when reading GPU pass times.
 
-| Crowd | RigidContact | RigidSolve | RigidSetup | SurfacePrep | Solver total | Share of VR 11.1 ms |
-| ----- | ------------ | ---------- | ---------- | ----------- | ------------ | ------------------- |
-| 0     | 0.25         | 1.32       | 0.88       | 0.10        | 2.75         | 25%                 |
-| 5     | 1.97         | 1.44       | 0.73       | 0.21        | 4.51         | 41%                 |
-| 10    | 3.38         | 1.65       | 0.80       | 0.19        | 6.19         | 56%                 |
-| 20    | 7.29         | 1.74       | 0.71       | 0.10        | 10.09        | 91%                 |
-| 30    | 8.03         | 1.84       | 0.66       | 0.10        | 10.91        | 98%                 |
+## Not measured
 
-Cross-check at crowd 30 against Tracy on the `pre` arm (793 frames, 38 claims), ms per frame:
-`RigidContact` 7.88 (port 8.03), `ContactSpheres` 7.69 (7.72), `RigidSolve` 1.92 (1.84),
-`RigidSetup` 0.66 (0.66), `SurfacePrep` 0.21 (0.10), `ChainSolve` 0.04 (0.04). The port matches
-the pre-port build pass for pass, which also validates the new timer.
-
-## SE (frame time is not capped)
-
-SE ran at 74 fps with no crowd, so frame time separates the arms. Same arms, order, throttles and windows as
-VR. Frame ms; `hdt` is the mean of its two windows and the spread is the gap between them (the noise floor).
-
-| Crowd | Claims | hdt (spread) | pre   | port  | port vs hdt | Port GPU solver ms (share of 16.67) |
-| ----- | ------ | ------------ | ----- | ----- | ----------- | ----------------------------------- |
-| 0     | 14     | 13.49 (0.08) | 13.07 | 13.32 | -0.16 (-1%) | 1.63 (10%)                          |
-| 5     | 26     | 16.20 (0.79) | 15.22 | 15.20 | -1.01 (-6%) | 2.18 (13%)                          |
-| 10    | 36     | 18.55 (0.43) | 17.09 | 17.12 | -1.43 (-8%) | 2.83 (17%)                          |
-| 20    | 58     | 26.72 (0.08) | 25.95 | 25.81 | -0.91 (-3%) | 8.84 (53%)                          |
-| 30    | 79     | 30.82 (0.42) | 30.91 | 30.95 | +0.13 (0%)  | 10.07 (60%)                         |
-
-- **Port equals pre-port** at every size (within 0.25 ms), as on VR.
-- **Against hdtSMP64 both GPU solvers are 3-8% faster at 10 and 20 characters**, a gap larger than the
-  hdt-to-hdt spread at those sizes; at 5 it is about the size of the noise, at 0 and 30 there is no difference.
-- At 30 characters all three arms land on 30.6-31.0 ms (32.3 fps), the same figure the VR null driver capped
-  at. The cause was not identified, so this size says nothing about the arms.
-- Frame generation and NR state were not read back on SE either.
-
-## Rerun on 2026-11-09 (SE, today's code against hdtSMP64)
-
-The tables above predate the removal of the chain solver and the in-tree arm. This run is SE 1.7.104, DLL
-`05CFBFF3B98C79DE`, hdtSMP64 against this plugin only (`hdt`, `port`, `hdt`), same crowd, throttles lifted as above,
-6 s settle then a 15 s window, sizes run in separate sessions of under 5 minutes. Raw rows:
-`perf-data/smp_ab_se_results_2026-11-09_*.json`. Frame ms; `hdt` is the mean of its two windows.
-
-| Crowd | Claims | hdt (spread) | port  | port vs hdt   |
-| ----- | ------ | ------------ | ----- | ------------- |
-| 0     | 14     | 24.63 (0.14) | 22.33 | -2.30 (-9%)   |
-| 5     | 26     | 27.84 (0.08) | 26.63 | -1.21 (-4%)   |
-| 10    | 36     | 31.10 (0.16) | 26.69 | -4.41 (-14%)  |
-| 20    | 58     | 41.73 (0.07) | 30.45 | -11.28 (-27%) |
-| 30    | 80     | 48.12 (1.20) | 34.37 | -13.75 (-29%) |
-
-- **The machine ran slower than on 2026-11-08** (hdtSMP64 alone 24.6 ms with no crowd against 13.5 ms then), so compare
-  within this table only, not against the table above. The cause was not identified.
-- **Port GPU ms per frame at crowd 30:** `ContactSpheres` 1.17 (two calls), `RigidSolve` 1.10, `RigidSetup` 0.65,
-  `SurfacePrep` 8.88. The `SurfacePrep` figure is a wait, not solver work: on SE it sat at 8 to 9 ms for every crowd
-  above 0 (0.04 at crowd 0), all of it in the 10 BVH refit dispatches. Ten empty dispatches of the same shader cost
-  0.014 ms, GPU skinning and the batched palette made no difference, and replacing the 10 dispatches with one thread
-  group (correct on `surfaceCheck`, 0 mismatches) cut `SurfacePrep` to 0.04 ms but moved the same 8 to 11 ms into
-  `ContactPasses` and left the frame at 30.9 ms against 30.5 ms. So the SE per-pass timestamps charge the first pass that
-  has to wait for the GPU to catch up with the game's rendering, and the solver's own cost is the 3 ms the other passes
-  add up to. The single-group change was reverted. The cause of the wait itself was not identified.
-- **Tracy on SE, 2026-11-10 (crowd 20, `xmake f --tracy=y`, client v0.15.0 to match the profiler server):** the
-  `SurfacePrep` 8 to 9 ms is one dispatch. With a GPU zone per dispatch, refit level 3 takes 8.6 ms and the other nine
-  levels, the bone, pose, triangle and leaf passes each take 0.005 ms. A zero-work sentinel pass placed just before
-  `SurfacePrep` costs 0.000 ms with no gap after it, so the wait is not earlier game work draining. Level 3 starts
-  about 3.9 ms after the frame mark and always ends 12.6 ms after it (stdev 0.7 ms), so the GPU resumes at a fixed
-  point in the frame. The shader is a 64-thread min/max of two child boxes. The cause is still unknown; an ETW GPU
-  trace needs an elevated shell. Tracy GPU zones are D3D11 timestamp queries, so they show duration, not queue waits.
-  Captures: `F:	mp	racy_se_20261110_baseline.tracy`, `..._per_dispatch.tracy`.
-  A follow-up with VR confirmed not running (`..._level3_experiment.tracy`): a zero-work pass right before level 3
-  costs 0.000 ms, level 3 takes 9.0 ms, and the same dispatch issued again straight after takes 0.004 ms. The refit
-  levels hold only 64, 32, 16, 8, 4, 2 and 1 entries, so the work is not the cause. It is a once-per-frame wait that
-  starts at level 3 and ends at a fixed point in the frame. The earlier single-group refit moved it to `ContactPasses`,
-  so it follows the first compute dispatch after that point, not the dispatch or its constants. Unexplained; the next
-  step is an ETW trace taken in the same run, which needs the trace tools to run without an elevated shell.
-  **Cause found (2026-11-10):** an ETW DxgKrnl trace and the Tracy capture of one run, aligned on the 32 ms frame period
-  (`tracy_se_20261110_correlated.tracy`, `gpu_dxg.etl`, VR confirmed not running), show the GPU executing almost nothing
-  inside the 8.8 ms stall: SE 0.2 ms, every other process together 1.7 ms (VS Code, the Claude app, DWM, bHaptics,
-  RustDesk), about 7 ms idle. So it is not GPU contention. It is the solver's commands sitting unsubmitted in the
-  driver's command buffer until the game flushes at the end of its CPU frame. One `context->Flush()` at the end of
-  `SubmitFrame` removes it (`tracy_se_20261110_flush.tracy`): `SurfacePrep` 9.1 -> 0.09 ms, `RigidSolve` 0.13 ms,
-  `RigidSetup` 0.33 ms, `RigidContact` 0.49 ms, a solver total near 1.1 ms against the 3 ms quoted above, while the
-  frame stays at 32.6 ms (33.3 ms without the flush). The earlier per-pass figures on SE therefore overstate the
-  solver by about 8 ms of misattributed wait, and the frame time was never bound by the solver's GPU work. The flush
-  costs about 0.3 ms of CPU in `SubmitFrame`. An interleaved on/off A/B in one SE session (20 characters, 58 claims, four
-  12 s windows each, windows over 60 ms or with a compiler running discarded) gave 32.9 ms with the flush and 32.5 ms
-  without: no gain, so `FlushAfterSubmit` ships off and is only a switch for GPU timing. The 3 ms and VR figures were
-  not remeasured with a flush.
-- **VR, 2026-11-09 (null driver, crowd 20 and 30):** `ContactSpheres` 1.1 ms, solver total about 3.1 to 3.3 ms
-  (28% of 11.1 ms), against 10 to 11 ms in the VR table above. The cause of the gap was not identified.
-- **`clearTestCrowd` crashed SE at the end of both sessions**, in the engine: `BipedAnim::dtor` -> `RemoveAllParts` ->
-  `NiAVObject::LookupBoneNodeByName` (`SkyrimSE.exe+0FDDB2D`) on a test character, with no plugin frame in the stack
-  (`crash-2026-11-09-17-13-30.log`, `-17-20-03.log`). The results were already written.
-
-## What this does and does not show
-
-- **Port equals pre-port.** Same passes, same cost, no regression from moving out of the tree.
-- **No frame-time result on VR.** The frame is pinned at the null-driver cap, so the GPU headroom hides the solver.
-  The 98% share is the cost against the 11.1 ms budget a real headset needs, not a measured slowdown.
-- **hdtSMP64 comparison is from SE only**, where the frame is not capped (table above): a modest gain at
-  10-20 characters, none at 0 and 30.
-- A first SE run crashed in the driver when the timer was switched off from the devbench thread. The timer now
-  only raises a flag there and the render path does the work; the rows above are from the rerun with the fix.
-- **Contact spheres dominate** the GPU cost from about 10 characters, which is where optimisation should go.
-- `totalStepMicroseconds` is a single last-frame sample (pre 57-409 us, port 176-628 us) and varies both
-  ways between sizes, so it is not a CPU comparison.
-- Frame generation and NR state were not read back (`frameGenActive` was null), and the render resolution
-  was not recorded.
-
-## Shader compile time versus runtime cost (2026-11-10)
-
-- **`RigidSetup` took 52 s to compile in FXC (67 to 86 s in a parallel run), at any optimisation level.** Nearly all of
-  it was the joint's rows living in a `JointRows` struct of six `AxisRows`: each runtime-slot read or write was a six-way
-  chain of whole-struct copies that FXC expanded at every call site, and the setup kernel built every axis into it, then
-  walked the slots again to finalise and store them.
-- **Streaming the rows out fixed both costs.** `BuildAxisRows` builds one axis, and one `[loop]` bounded by the cbuffer
-  `HairRigidAxisSlots` (a constant bound lets FXC unroll the builder, which crashes it) finalises each present row and
-  stores it straight to `HairRigidRows`, carrying only the row 0 cfm between axes. `JointRows` and its accessors are gone.
-  `fxc /T cs_5_0 /O3`: 51.5 s to 2.8 s, 4616 to 3179 instruction slots, 285 to 120 temp registers, and still only the
-  one 3-element indexable temp. The GPU-versus-CPU tests pass unchanged.
-- **Runtime fell too.** SE, 20 characters, flush on, one session switching shaders with `reloadSolverShaders`, three
-  interleaved pairs of 25 s `gpuPassStats` windows: `RigidSetup` 0.37, 0.46 and 0.50 ms with the struct rows against 0.034,
-  0.030 and 0.030 ms with the streamed rows. `RigidSolve` (0.63 to 0.86 ms against 0.81 to 0.90) and the contact passes
-  moved with run-to-run noise in both arms, so the rows the solver reads are the same.
-- **An earlier attempt kept the rows in plain local arrays.** It cut the compile to 16 s and was reverted (`fc6fb7a`): it
-  made the kernel slower, 0.76 ms with the struct rows and 1.27 ms with the arrays, because the arrays compiled to four
-  runtime-indexed temp arrays of 420 four-component registers each. The streamed version adds no array.
-
-## FXC audit of every kernel (2026-11-11)
-
-`docs/perf-data/fxc_audit.py` compiles each kernel (`cs_5_0`, `/O3`) and reports slots, temp registers, loops and runtime-indexed
-temp arrays, to look for another flaw like the `RigidSetup` one. None of the other kernels shows it:
-
-| Kernel                    | Compile s | Slots | Temps | Indexable temps |
-| ------------------------- | --------- | ----- | ----- | --------------- |
-| `RigidSetup`              | 3.5       | 3179  | 120   | 3 x 4           |
-| `RigidSolveIslandColored` | 1.1       | 707   | 42    | 6 x 4           |
-| `ContactSpheres`          | 0.1       | 396   | 19    | none            |
-| `RigidIntegrate`          | 0.1       | 394   | 15    | none            |
-| `RigidFrameBegin`         | 0.1       | 343   | 21    | none            |
-| `RigidPredict`            | 0.1       | 271   | 21    | none            |
-| `ContactCull`             | 0.1       | 265   | 14    | none            |
-| `RigidSolveIsland`        | 0.2       | 214   | 24    | none            |
-| `SurfacePose`             | 0.0       | 101   | 9     | 4 x 4           |
-| the rest                  | 0.0       | 18-77 | 5-9   | none            |
-
-- Only `RigidSetup` is large, and it is already cheap at run time (0.03 ms). The solve and contact kernels are small, so
-  their cost is memory access and divergence, not register pressure or unrolled copies.
-- The two runtime-indexed arrays are small: the six colour offsets in the coloured solve and four rows in `SurfacePose`.
-
-## Per-pass baseline and a rejected change (SE, 2026-11-11)
-
-`docs/perf-data/gpu_pass_cost.py` on SE with the throttles lifted and `FlushAfterSubmit` on. Per call, wigs crowd of 10/20/30:
-`ContactSpheres` 0.64/1.18/1.13 ms, `RigidSolve` 0.74/0.77/0.82 ms, 4.0/3.9/2.8 substeps per frame. Dress crowd (Yue Qingshu
-Dress) of 20 (72 claims): `ContactSpheres` 1.00 ms, `RigidSolve` 0.63 ms, so contact is the largest pass with dresses.
-Data: `gpu_pass_cost_se_base_wigs.json`, `gpu_pass_cost_se_base_dress.json`.
-
-Routing small islands to the sequential `RigidSolveIsland` kernel was slower: at crowd 20, `RigidSolve` per call was 0.62-0.64
-ms coloured-only, 1.48 ms for islands of at most 8 constraints, 2.23 ms for 16 and 2.83 ms for 32 (`small_island_sweep_se_20.json`).
-One thread walking an island serially costs more than a coloured group, so the change was reverted. Tighter deep-push BVH leaf
-bounds for `ContactSpheres` and prepacked body slots are not tried; the solve kernels are already small (see the FXC audit).
-
-Upper bound for tighter deep-push leaf bounds: with the deep-push reach set to 0 for every surface (which also drops the
-behaviour), `ContactSpheres` on the Yue Qingshu Dress crowd was 0.36 ms per call at crowd 10 (0.57 before) and 0.73 ms at
-crowd 20 (1.00 before). Baking the reach into the leaf boxes can only remove the front-side part of that extension, so it is
-bounded by about 0.13 ms per call (about 0.35 ms per frame at crowd 20, about 5% of the solver), and it needs a new per-leaf
-record in the shader and host packing plus GPU/CPU parity re-checks. Not worth that cost; not implemented
-(`gpu_pass_cost_se_nodeep_dress.json`). Prepacked body slots for the coloured solve were not measured.
-
-Cost of building the coloured solve's body table (item 3): repeating its insert pass and its slot load pass inside
-`CacheIslandBodies` (each with its barrier) left `RigidSolve` at 0.56 ms per call at crowd 10 and 0.55 ms at crowd 20, where
-the run without the repeat read 0.60 and 0.63 (`gpu_pass_cost_se_dblcache_dress.json`). Extra build work adds no measurable
-time, so prepacking those mappings on the CPU has nothing to remove. Rejected.
-
-## VR check (2026-11-11)
-
-`gpu_pass_cost.py` on VR (null driver, committed build, throttles lifted; 21 to 38 claims as VR culls more than SE did).
-Per call, wigs crowd of 10/20/30: `ContactSpheres` 0.33/0.69/0.75 ms, `RigidSolve` 0.56/0.60/0.58 ms, 2.0 substeps per frame.
-Dress crowd of 10/20: `ContactSpheres` 0.39/0.76 ms, `RigidSolve` 0.58/0.59 ms. The per-call costs sit at or below SE's
-(`ContactSpheres` 1.00 and `RigidSolve` 0.63 ms at the 72-claim SE dress crowd), and the largest island is 182 constraints as on SE.
-Nothing here reopens the rejected items: the solver is about 0.6 ms and `ContactSpheres` 0.4 to 0.8 ms per substep, 2 substeps per
-frame, so roughly 2.5 ms of an 11.1 ms VR frame at 20 characters. Data: `gpu_pass_cost_vr_base_{wigs,dress}.json`.
-
-## SE frame time at 20 and 30 characters (2026-11-11, perf-test lock)
-
-`smp_ab.py` on SE with hdtSMP64's throttles lifted, one crowd size per run on one launch, `devbench` frame counter (not Tracy:
-hdtSMP64's cost cannot be traced). The machine ran slower than on 2026-11-09, so compare arms within a size only.
-Frame ms, hdtSMP64 (two windows) / this plugin (one window; the run's second plugin window timed out):
-20 characters (52 claims) 45.5, 45.6 / 32.7; 30 characters (72 claims) 61.2, 53.7 / 40.2.
-The plugin frame is 28% shorter at 20 and 25 to 34% shorter at 30. The 30-character hdtSMP64 windows differ by 7 ms, so that
-size is the less certain. Data: `smp_ab_se_results_2026-11-11_{20,30}.json`. A VR run was not taken.
-
-## Tracy A/B against hdtSMP64 at 30 characters (SE, 2026-11-11, perf-test lock)
-
-Both plugins built with Tracy 0.15.0 (on demand; the hdtSMP64 fork's `vs2022-windows-avx2-tracy` preset, its overlay port
-bumped from the 0.14.1 pin to v0.15.0, configured with `-DCOPY_OUTPUT=OFF`). Both clients share port 8086 in one process:
-ours binds 127.0.0.1 and hdtSMP64 the wildcard and IPv6, so `tracy-capture -a ::1 -p 8086` reaches hdtSMP64 and
-`-a 127.0.0.1` ours. 30 test characters, throttles lifted on both, 20 s captured per arm, zone totals from `tracy-csvexport`.
-
-| Arm                                   | What ran                                                    | Mean per frame     |
-| ------------------------------------- | ----------------------------------------------------------- | ------------------ |
-| hdtSMP64 only (plugin disabled)       | `PhysicsStep` (collision 5.0 ms, solve 2.4 ms, read 2.4 ms) | 15.3 ms (max 28.4) |
-| This plugin (hdtSMP64 keeps the rest) | CPU `SmpPhysics::Step` (pack 0.64, step 0.60)               | 2.0 ms             |
-|                                       | GPU `RigidContact` + `RigidSolve`                           | 1.19 + 1.14 ms     |
-|                                       | hdtSMP64 `PhysicsStep` left on other items                  | 0.56 ms            |
-
-About 5 ms of CPU and GPU work against 15.3 ms, so the plugin spends roughly a third of what hdtSMP64 does on the same
-characters. The Tracy GPU zones `SurfacePrep` and `SP_Refit` read 9 ms per frame each, against 0.1 ms from the in-plugin pass
-timer; they open the GPU timeline's busy stretch and look like timestamp artefacts, not cost, so they are left out above.
-
-### Sizes, repeats, a dress crowd and default throttles (same day, same method)
-
-Per frame, ms: hdtSMP64's `PhysicsStep` with the plugin disabled, against the plugin's CPU `Step` + GPU `RigidContact` +
-`RigidSolve` + hdtSMP64's residual step on what the plugin does not claim (GPU time is asynchronous, so the sum is a
-conservative total).
-
-| Crowd (throttles lifted)                                            | hdtSMP64         | Plugin cpu + gpu + residual | Ratio            |
-| ------------------------------------------------------------------- | ---------------- | --------------------------- | ---------------- |
-| 5                                                                   | 3.36             | 0.76 + 1.42 + 0.14 = 2.3    | 0.68             |
-| 10                                                                  | 4.75             | 1.16 + 1.79 + 0.25 = 3.2    | 0.67             |
-| 20, Yue Qingshu Dress (not like for like, see the correction below) | 12.04            | 2.42 + 2.78 + 0.42 = 5.6    | 0.47             |
-| 30 (three runs)                                                     | 15.3, 20.5, 15.5 | 4.9, 5.2, 5.0               | 0.32, 0.25, 0.32 |
-| 60                                                                  | 32.03            | 3.34 + 5.73 + 2.58 = 11.65  | 0.36             |
-
-The plugin is cheaper at every size, including 5 characters. The gap widens with crowd size up to 30 and holds at 60. One
-hdtSMP64 run in three at 30 read 20.5 ms against 15.3 and 15.5, so its cost has more run-to-run spread than ours.
-At 60, hdtSMP64's residual on unclaimed items grows to 2.6 ms; the plugin's CPU `Step` grows to 3.3 ms.
-
-With each plugin at its **default throttles** (30 characters, hdtSMP64 `maximumActiveSkeletons` 5 and its culling on, ours
-`SimulationDistance` 2000 and no other cull), hdtSMP64's step costs 2.9 ms per frame and the plugin 1.7 + 2.2 + 0.1 = 4.1 ms.
-At defaults hdtSMP64 is cheaper in absolute terms because it simulates about 5 skeletons while the plugin simulates all 72
-claims. The per-character cost is the plugin's advantage; the default-throttle total is not. Not measured: capes, VR.
-
-### Dancing crowd (not like for like, see the correction below: 30 characters in the Yue Qingshu Dress, `IdleCiceroDance1` looped on every one)
-
-Same method and units as above, throttles lifted. A standing run and three dancing runs, hdtSMP64 against the plugin's CPU + GPU +
-hdtSMP64 residual:
-
-| Run            | hdtSMP64 | Plugin cpu + gpu + residual | Ratio |
-| -------------- | -------- | --------------------------- | ----- |
-| standing       | 20.30    | 5.13 + 4.85 + 0.77 = 10.75  | 0.53  |
-| dancing, run 1 | 20.89    | 4.19 + 4.38 + 0.82 = 9.39   | 0.45  |
-| dancing, run 2 | 21.36    | 4.44 + 4.48 + 0.84 = 9.77   | 0.46  |
-| dancing, run 3 | 21.61    | 4.73 + 4.55 + 0.87 = 10.15  | 0.47  |
-
-Dancing did not raise either side's cost by more than the run-to-run spread: hdtSMP64 rose 3 to 6% and the plugin fell 6 to 13%
-(the standing run came first, so warm-up may sit in it). The plugin keeps about half of hdtSMP64's per-frame cost with the dress
-crowd, standing or dancing. `RigidContact` is the largest GPU pass (2.7 to 3.1 ms per frame), `RigidSolve` 1.7 to 1.8 ms. One
-slow idle may not stress the cloth hard; a faster animation was not tried.
-
-### Correction: hdtSMP64 does not simulate the Yue Qingshu Dress
-
-hdtSMP64's own plots show the same 71 systems and 7,570 rigid bodies with 30 wig-only characters and with 30 characters in the
-dress, so it simulated none of the dress (the mod does not work under hdtSMP64). This plugin did claim it, so in the 20-character
-dress run and the standing and dancing 30-character dress runs the plugin did more work than the arm it is compared with, and
-those ratios (0.45 to 0.53) are not like for like. hdtSMP64's rise from 15.3 to about 20 ms in those runs is run-to-run spread,
-not dress cost. The wig-only rows (5, 10, 30, 60 characters) are unaffected: hdtSMP64 and the plugin simulate the same wigs.
-Cloth and dancing need an outfit or cape that hdtSMP64 does run, checked by its `Systems` and `RigidBodies` plots rising when it
-is equipped.
-
-With `YQS.xml`'s empty axes fixed (`<linearUpperLimit x="" y="0" z="" />` on four constraint defaults changed to `x="0" y="0" z="0"`,
-the same reading as the parser fix in 68eac47), hdtSMP64 does simulate the dress: with 30 dressed characters it reports 101 systems
-and 11,290 rigid bodies, against 71 and 7,570 without it, and its `PhysicsStep` costs 36.5 ms per frame (15.3 to 20.5 ms with
-wigs alone). The plugin arm and a like-for-like dress and dancing comparison have not been rerun on the fixed file yet.
-
-Dress comparison from separate runs: the plugin's cost does not depend on the XML fix (its parser already read an empty axis as
-zero, 68eac47), so its standing run (5.13 + 4.85 + 0.77 = 10.75 ms per frame) stands against hdtSMP64's 36.5 ms on the fixed file:
-a ratio of about 0.29, close to the wig-only 0.25 to 0.32 at 30 characters. The dancing plugin runs (9.4 to 10.2 ms) have no
-hdtSMP64 dancing partner on the fixed file, so a dancing ratio is not stated. Caveats: the two arms come from different launches,
-hdtSMP64 has one run (its wig-only repeats ranged 15.3 to 20.5 ms, about 15%), and the plugin's 0.77 ms hdtSMP64 residual was
-measured before the fix and assumed unchanged.
-
-### hdtSMP64 with the fixed dress, standing and dancing (perf lock, VR idle)
-
-hdtSMP64 alone (plugin disabled), 30 characters in the fixed Yue Qingshu Dress, 101 systems and 11,290 rigid bodies, throttles
-lifted. `PhysicsStep` per frame: standing 36.6 ms (the earlier 36.5 ms reading, taken with another agent's VR game open, was not
-inflated), dancing 37.9 ms and 28.0 ms (collision 4.9 to 5.3 ms and constraint solve 2.5 ms per internal step in all three). The
-second dancing run had 409 frames in its 20 s against 266, so its step count per frame was lower (3.2 against 4.0); hdtSMP64's
-cost per frame follows the frame time through its fixed-step catch-up.
-
-Against the plugin's dress runs (standing 10.75 ms, dancing 9.4 to 10.2 ms, cpu + gpu + residual) the ratio is about 0.29 standing
-and 0.25 to 0.36 dancing. The dress costs hdtSMP64 about 1.8 to 2.4 times its wig-only cost at 30 characters (36.6 ms against 15.3 to 20.5) and the plugin about 2.1
-times, so cloth does not erode the plugin's lead.
+VR frame time (the null driver caps the frame near 31 ms), capes, AE, frame generation state.
