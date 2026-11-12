@@ -1,6 +1,7 @@
 // Smoke test for the D3D11 layer (src/d3d): a hair rig is added to the GPU solver on a WARP device and stepped
 // through the rigid path, which proves the shader root, runtime compile, buffer helpers and dispatch wiring.
 
+#include "Utils/D3D.h"
 #include "d3d/GpuSolver.h"
 #include "shader_cache_dir.h"
 #include "smp/SmpRig.h"
@@ -196,4 +197,25 @@ TEST_CASE("A grab pin pulls a rigid hair claim's bone toward the hand", "[smpphy
 	for (const Transform& bone : held)
 		REQUIRE(std::isfinite(bone.translation.y));
 	CHECK(held[tip].translation.y - free[tip].translation.y > 1.0f);
+}
+
+TEST_CASE("Resource names are stored under the narrow debug-name GUID so RenderDoc reads them as text", "[smpphysics][d3d]")
+{
+	ComPtr<ID3D11Device> device;
+	const D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_0 };
+	REQUIRE(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, levels, 1, D3D11_SDK_VERSION,
+				device.GetAddressOf(), nullptr, nullptr) == S_OK);
+	D3D11_BUFFER_DESC desc{};
+	desc.ByteWidth = 16;
+	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+	ComPtr<ID3D11Buffer> buffer;
+	REQUIRE(device->CreateBuffer(&desc, nullptr, buffer.GetAddressOf()) == S_OK);
+
+	Util::SetResourceName(buffer.Get(), "SmpPhysics::%s", "Probe");
+
+	constexpr GUID kNarrowNameGuid = { 0x429b8c22, 0x9188, 0x4b0c, { 0x87, 0x42, 0xac, 0xb0, 0xbf, 0x85, 0xc2, 0x00 } };
+	char name[64]{};
+	UINT size = sizeof(name);
+	REQUIRE(buffer->GetPrivateData(kNarrowNameGuid, &size, name) == S_OK);
+	CHECK(std::string_view(name, size) == "SmpPhysics::Probe");
 }
