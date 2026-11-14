@@ -41,6 +41,8 @@ hdtSMP64 alone spends on the same characters (about 5 ms against 15 ms per frame
 simulates fewer characters, so it can cost less in absolute terms. Method, caveats and per-pass figures are in
 [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
+![Frame cost, hdtSMP64 alone against hdtSMP64 with this plugin](docs/img/perf-frame-cost.png)
+
 ## Status
 
 Checked in game on SE and VR. AE is built but not tested. Known differences from hdtSMP64 are in

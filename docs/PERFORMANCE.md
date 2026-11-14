@@ -15,6 +15,8 @@ built with Tracy; zone totals come from `tracy-capture` and `tracy-csvexport`, 2
 
 ## Result, wigs, per frame
 
+![Frame cost, hdtSMP64 alone against hdtSMP64 with this plugin](img/perf-frame-cost.png)
+
 | Crowd | hdtSMP64 | Plugin cpu + gpu + residual | Ratio |
 | ----- | -------- | --------------------------- | ----- |
 | 5     | 3.4 ms   | 0.76 + 1.42 + 0.14 = 2.3 ms | 0.68  |
