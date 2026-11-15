@@ -1257,6 +1257,7 @@ void SmpPhysicsFeature::InstallClaimCollision(Claim& a_claim, ClaimCollision& a_
 bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::uint64_t a_token)
 {
 	ZoneScopedN("SmpPhysics::ClaimMesh");
+	const auto claimStart = std::chrono::steady_clock::now();
 	const char* rawPath = a_context.getPhysicsFile();
 	const std::string path = rawPath && *rawPath ? std::string(rawPath) : std::string();
 	if (path.empty()) {
@@ -1401,9 +1402,10 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 			RegisterClothMeshes(claim.actorFormID, claim.cardGeometries);
 		claims.insert_or_assign(a_token, std::move(claim));
 	}
-	logger::info("{} Claimed '{}' for token {} ({} bones, {} dynamic, {} joints dropped, {} collision spheres, {} of {} start inside a collider and are exempt, {} colliders, {} fitted, {} defaulted)",
+	logger::info("{} Claimed '{}' for token {} ({} bones, {} dynamic, {} joints dropped, {} collision spheres, {} of {} start inside a collider and are exempt, {} colliders, {} fitted, {} defaulted) in {} ms",
 		kLogPrefix, path, a_token, boneCount, dynamicCount, additionalJoints, sphereCount,
-		exemptSpheres, sphereCount, colliderCount, collision.fitted, collision.defaulted);
+		exemptSpheres, sphereCount, colliderCount, collision.fitted, collision.defaulted,
+		std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - claimStart).count());
 	if (collision.retargetBehind > 0) {
 		logger::info("{} '{}': {} spheres settle inside a worn surface (gravity sags the rest up to {:.1f} units); {} joints turned up to {:.2f} rad, moving a bone at most {:.1f} units, {} spheres left inside{}",
 			kLogPrefix, path, collision.retargetBehind, collision.retargetSagMaxMove, collision.retargetedJoints, collision.retargetMaxAngle, collision.retargetMaxBoneMove, collision.retargetResidual,
@@ -3002,6 +3004,7 @@ void SmpPhysicsFeature::MeasureWindAreas(Claim& a_claim)
 void SmpPhysicsFeature::BindClaimSkins(Claim& a_claim)
 {
 	ZoneScopedN("SmpPhysics::BindClaimSkins");
+	const auto bindStart = std::chrono::steady_clock::now();
 	a_claim.skinsBound = true;
 	const auto offset = gpuSolver.BoneOffset(a_claim.token);
 	if (!offset || !a_claim.parsed)
@@ -3032,7 +3035,8 @@ void SmpPhysicsFeature::BindClaimSkins(Claim& a_claim)
 		if (anyDynamic && gpuSkinning.Register(skin, a_claim.token, std::move(slots), std::move(skinToBone)))
 			++bound;
 	}
-	logger::info("{} '{}': {} of {} skinned meshes will be drawn from the GPU solver", kLogPrefix, a_claim.physicsFile, bound, a_claim.skins.size());
+	logger::info("{} '{}': {} of {} skinned meshes will be drawn from the GPU solver ({} ms)", kLogPrefix, a_claim.physicsFile, bound, a_claim.skins.size(),
+		std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - bindStart).count());
 }
 
 void SmpPhysicsFeature::RestartClaim(Claim& a_claim)
