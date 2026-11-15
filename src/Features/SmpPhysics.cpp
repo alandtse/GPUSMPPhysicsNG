@@ -135,10 +135,12 @@ namespace
 	constexpr float kDebugInfluenceMargin = 2.0f;              ///< How far outside a hand capsule a hair segment still counts as pushed by it in the grab overlay, in game units.
 	constexpr float kTipSegmentExtension = 0.5f;               ///< How far past a tip bone's origin its strand reaches, as a share of the segment that arrives at it.
 	constexpr float kHairBoundMargin = 6.0f;                   ///< Added to the farthest bone from the hair's centre, so the strands around the bones are inside the gather sphere.
-	constexpr float kMaxHairBoundRadius = 300.0f;              ///< Largest gather sphere a claim may ask for, so a runaway rig cannot gather the whole cell.
-	constexpr float kScreenSizeResumeFactor = 1.25f;           ///< A claim culled for being small resumes once it is this much larger than the limit.
-	constexpr std::uint32_t kOffscreenCullFrames = 30;         ///< Consecutive frames out of view before a claim stops being simulated.
-	constexpr std::uint32_t kRegistrationsPerFrame = 1;        ///< Claims registered with the GPU solver per frame; each registration rebuilds solver buffers.
+	constexpr int kCellKeyBits = 21;                           ///< Bits one axis of a surface-grid cell takes in its packed 64-bit key.
+	constexpr std::int64_t kCellKeyMask = (std::int64_t{ 1 } << kCellKeyBits) - 1;
+	constexpr float kMaxHairBoundRadius = 300.0f;        ///< Largest gather sphere a claim may ask for, so a runaway rig cannot gather the whole cell.
+	constexpr float kScreenSizeResumeFactor = 1.25f;     ///< A claim culled for being small resumes once it is this much larger than the limit.
+	constexpr std::uint32_t kOffscreenCullFrames = 30;   ///< Consecutive frames out of view before a claim stops being simulated.
+	constexpr std::uint32_t kRegistrationsPerFrame = 1;  ///< Claims registered with the GPU solver per frame; each registration rebuilds solver buffers.
 
 	/** @brief The wearer's head position, or a point above the feet where the skeleton has no head node. */
 	RE::NiPoint3 HeadOrigin(RE::Actor& a_actor)
@@ -2000,7 +2002,6 @@ void SmpPhysicsFeature::UpdateStrandGrabs(float a_frameDelta)
 			grabOverreachSeconds[side] = 0.0f;
 		}
 
-		// The strands within reach of this hand each frame, so the grip that is about to close on one can be kept from drawing the weapon.
 		const PalmCastFrame cast = PalmCastOf(*handNode, left);
 		const SmpPhysics::Vec3 castEnd = cast.origin + cast.normal * SmpPhysics::kHiggsSelectDistance;
 		const SmpPhysics::Vec3 castMiddle = (cast.origin + castEnd) * 0.5f;
@@ -2097,7 +2098,6 @@ void SmpPhysicsFeature::UpdateStrandGrabs(float a_frameDelta)
 		}
 		diag.pins = pins.size();
 		if (settings.ShowGrabDebug || settings.ShowJointDebug) {
-			// The cast takes the colour of what the grip would do: white for nothing, green for hair it will take, yellow for hair it holds, orange for a body part HIGGS keeps.
 			const SmpPhysics::DebugColor castColor = !pins.empty()                                ? SmpPhysics::DebugColor::Held :
 			                                         diag.target == SmpPhysics::PalmTarget::Hair  ? SmpPhysics::DebugColor::InReach :
 			                                         diag.target == SmpPhysics::PalmTarget::Other ? SmpPhysics::DebugColor::Stretched :
@@ -2166,7 +2166,6 @@ void SmpPhysicsFeature::AppendJointLines(const Claim& a_claim, std::vector<SmpPh
 
 void SmpPhysicsFeature::AppendDeclinedLines(std::vector<SmpPhysics::DebugSegment>& a_out)
 {
-	// Only as accurate as the decline record: a pair is drawn while its latest outcome is a decline, from the engine's own pose.
 	const auto* camera = RE::PlayerCamera::GetSingleton();
 	const RE::NiPoint3 eye = camera && camera->cameraRoot ? camera->cameraRoot->world.translate : RE::NiPoint3{};
 	std::size_t actorsDrawn = 0;
@@ -2250,10 +2249,9 @@ void SmpPhysicsFeature::AppendSurfaceEdgesNearHair(const Claim& a_claim, std::ve
 	if (triangles.empty())
 		return;
 
-	// The triangles go in a grid so each sphere looks only at the ones around it.
 	const auto cellOf = [](float a_value) { return static_cast<std::int64_t>(std::floor(a_value / kSurfaceGridCell)); };
 	const auto cellKey = [](std::int64_t a_x, std::int64_t a_y, std::int64_t a_z) {
-		return static_cast<std::uint64_t>((a_x & 0x1FFFFF) | ((a_y & 0x1FFFFF) << 21) | ((a_z & 0x1FFFFF) << 42));
+		return static_cast<std::uint64_t>((a_x & kCellKeyMask) | ((a_y & kCellKeyMask) << kCellKeyBits) | ((a_z & kCellKeyMask) << (2 * kCellKeyBits)));
 	};
 	std::unordered_map<std::uint64_t, std::vector<std::uint32_t>> grid;
 	for (std::size_t index = 0; index < triangles.size(); ++index) {
@@ -2270,7 +2268,6 @@ void SmpPhysicsFeature::AppendSurfaceEdgesNearHair(const Claim& a_claim, std::ve
 	std::vector<std::uint32_t> visitedAt(triangles.size(), 0);
 	std::uint32_t visitStamp = 0;
 
-	// Each hair collision sphere as a ring facing the camera: teal while it rests on a surface, pink with a line to the surface while there is clear space.
 	const auto* camera = globals::game::playerCamera;
 	const RE::NiPoint3 eye = camera ? camera->GetRuntimeData2().pos : RE::NiPoint3{};
 	const auto& spheres = a_claim.spheres;
@@ -2312,7 +2309,6 @@ void SmpPhysicsFeature::AppendSurfaceEdgesNearHair(const Claim& a_claim, std::ve
 			const float gap = nearest - sphere.radius - nearestMargin;
 			if (gap > kSphereReportGap)
 				continue;
-			// A sphere on a surface gets a ring; one with clear space only the line across it, which is a twelfth of the lines.
 			if (gap < kSphereTouchTolerance) {
 				if (rings++ < kSphereRingMax)
 					SmpPhysics::AppendRing(a_out, centre, centre - SmpPhysics::Vec3{ eye.x, eye.y, eye.z }, sphere.radius, SmpPhysics::DebugColor::SphereTouch);
@@ -2337,7 +2333,6 @@ void SmpPhysicsFeature::AppendColliderOutlines(const Claim& a_claim, std::vector
 	}
 	if (a_detailed)
 		AppendSurfaceEdgesNearHair(a_claim, a_out);
-	// Other bodies' capsules are already in world space, and the same one reaches every claim near it.
 	for (std::size_t index = 0; index < a_claim.externalColliders.size() && index < a_claim.externalOwners.size(); ++index) {
 		const SmpPhysics::Collider& other = a_claim.externalColliders[index];
 		const RE::FormID owner = a_claim.externalOwners[index];
@@ -2364,7 +2359,7 @@ void SmpPhysicsFeature::UpdateGrabDebug()
 			segments.push_back({ a_start, a_end, a_color });
 		};
 		std::vector<std::pair<SmpPhysics::Vec3, SmpPhysics::Vec3>> drawnExternal;
-		// Nearest claims first, so the line budget runs out on the far ones. A culled claim still draws: it is only not simulated.
+		// Nearest claims first, so the line budget runs out on the far ones.
 		std::vector<const Claim*> nearClaims;
 		for (const auto& entry : claims) {
 			if (!entry.second.inactive && entry.second.parsed && entry.second.lastCameraDistance < kDebugMaxDistance)
@@ -2393,7 +2388,6 @@ void SmpPhysicsFeature::UpdateGrabDebug()
 					parentOf[static_cast<std::size_t>(joint.child)] = joint.parent;
 			}
 
-			// Whole cards a hand holds, and the line from each held point to where the hand wants it.
 			std::vector<std::uint32_t> heldGroups;
 			for (const SmpPhysics::Grab& grab : claim.grabs) {
 				if (grab.bone < 0 || static_cast<std::size_t>(grab.bone) >= claim.nodes.size() || !claim.nodes[static_cast<std::size_t>(grab.bone)])
@@ -2414,7 +2408,6 @@ void SmpPhysicsFeature::UpdateGrabDebug()
 					push(start, end, SmpPhysics::DebugColor::Held);
 					continue;
 				}
-				// Hair a hand's capsule is pushing: a bone inside, or just outside, one of the hand capsules the solver was given.
 				for (std::size_t index = 0; index < claim.externalColliders.size() && index < claim.externalOwners.size(); ++index) {
 					if (claim.externalOwners[index] != kPlayerFormID)
 						continue;

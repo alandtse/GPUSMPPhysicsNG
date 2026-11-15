@@ -3,12 +3,24 @@
 #include <d3d11.h>
 
 #include <cstdint>
+#include <cstring>
 
 namespace SmpPhysics
 {
 	inline constexpr const char* kLogPrefix = "[GPU SMP Physics]";
 	inline constexpr const char* kShaderTarget = "cs_5_0";
 	inline constexpr std::uint32_t kThreadsPerGroup = 64;
+
+	/** @brief Replaces the contents of a dynamic buffer with a_bytes bytes of a_data; false when the map fails. */
+	inline bool UploadDiscard(ID3D11DeviceContext* a_context, ID3D11Resource* a_resource, const void* a_data, std::size_t a_bytes) noexcept
+	{
+		D3D11_MAPPED_SUBRESOURCE mapped{};
+		if (FAILED(a_context->Map(a_resource, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+			return false;
+		std::memcpy(mapped.pData, a_data, a_bytes);
+		a_context->Unmap(a_resource, 0);
+		return true;
+	}
 
 	/** @brief A CPU-readable staging buffer of a_bytes, which a GPU buffer is copied into before a Map. */
 	inline D3D11_BUFFER_DESC StagingBufferDesc(std::uint32_t a_bytes) noexcept

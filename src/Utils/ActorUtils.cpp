@@ -237,7 +237,6 @@ namespace Util
 		if (!shape)
 			return false;
 
-		// Helpers to avoid repeating projection math and ensure offset-invariant half-extents
 		auto project = [shape](float x, float y, float z) {
 			return shape->GetMaximumProjection(RE::hkVector4{ x, y, z, 0.0f }) * RE::bhkWorld::GetWorldScaleInverse();
 		};

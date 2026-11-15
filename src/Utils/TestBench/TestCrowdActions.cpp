@@ -44,8 +44,13 @@ void TestBench::RegisterUxActions()
 				for (const json& base : a_args["bases"]) {
 					if (base.is_number_unsigned())
 						choice.candidates.push_back(base.get<std::uint32_t>());
-					else if (base.is_string())
-						choice.candidates.push_back(static_cast<std::uint32_t>(std::stoul(base.get<std::string>(), nullptr, 0)));
+					else if (base.is_string()) {
+						try {
+							choice.candidates.push_back(static_cast<std::uint32_t>(std::stoul(base.get<std::string>(), nullptr, 0)));
+						} catch (const std::exception&) {
+							continue;
+						}
+					}
 				}
 			}
 			if (!choice.anyAdultWoman && choice.candidates.empty())

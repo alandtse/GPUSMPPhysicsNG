@@ -169,7 +169,7 @@ namespace SmpPhysics
 	{
 		Vec3 sum{};
 		float total = 0.0f;
-		for (int slot = 0; slot < 4; ++slot) {
+		for (std::size_t slot = 0; slot < Util::kSkinInfluences; ++slot) {
 			const int bone = a_vertex.bone[slot];
 			if (bone < 0 || static_cast<std::size_t>(bone) >= a_boneToWorld.size() ||
 				static_cast<std::size_t>(bone) >= a_skinToBone.size())
@@ -205,7 +205,7 @@ namespace SmpPhysics
 		for (const SkinnedVertex& vertex : a_vertices) {
 			if (!IsFiniteVector(vertex.position))
 				continue;
-			for (int slot = 0; slot < 4; ++slot) {
+			for (std::size_t slot = 0; slot < Util::kSkinInfluences; ++slot) {
 				const int bone = vertex.bone[slot];
 				if (bone < 0 || static_cast<std::size_t>(bone) >= a_meshToBone.size() || !(vertex.weight[slot] > FLT_EPSILON))
 					continue;

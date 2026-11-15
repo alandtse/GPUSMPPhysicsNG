@@ -16,6 +16,7 @@ namespace SmpPhysics
 	{
 		constexpr const wchar_t* kStepShaderPath = L"SmpPhysics\\RigidSolverCS.hlsl";
 		constexpr const wchar_t* kRuntimeShaderPath = L"SmpPhysics\\RigidRuntimeCS.hlsl";
+		constexpr float kDefaultFixedStep = 1.0f / 60.0f;
 		constexpr std::uint32_t kStepViewCount = 6;
 		constexpr std::uint32_t kStepTargetCount = 4;
 		constexpr std::uint32_t kRuntimeViewCount = 3;
@@ -159,7 +160,7 @@ namespace SmpPhysics
 			}
 		}
 		Claim claim;
-		claim.data = RigidGpu::PackStep(a_setup.world, 1.0f / 60.0f);
+		claim.data = RigidGpu::PackStep(a_setup.world, kDefaultFixedStep);
 		if (!claim.data.rowsFit || !claim.data.colorsFit) {
 			a_reason = "the rigid claim needs more constraint rows or colours than the solver holds";
 			return false;
@@ -348,11 +349,8 @@ namespace SmpPhysics
 		if (plan.count <= 0)
 			return false;
 		frameTime = plan.total;
-		D3D11_MAPPED_SUBRESOURCE mapped{};
-		if (FAILED(context->Map(frameInputs->resource.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+		if (!UploadDiscard(context, frameInputs->resource.get(), frameScratch.data(), frameScratch.size() * sizeof(FrameInput)))
 			return false;
-		std::memcpy(mapped.pData, frameScratch.data(), frameScratch.size() * sizeof(FrameInput));
-		context->Unmap(frameInputs->resource.get(), 0);
 
 		RuntimeConstants runtime;
 		runtime.bodyCount = bodyCount;

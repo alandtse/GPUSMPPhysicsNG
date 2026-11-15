@@ -20,6 +20,7 @@ namespace SmpPhysics
 		constexpr const wchar_t* kShaderPath = L"SmpPhysics\\ContactCS.hlsl";
 		constexpr const wchar_t* kSurfacePrepPath = L"SmpPhysics\\SurfacePrepCS.hlsl";
 		constexpr std::uint32_t kInitialBlocks = 4;
+		constexpr int kAllocationPasses = 2;  ///< Search the free blocks, then once more after growing the pool.
 
 		/** @brief A byte range of a buffer, which is how a D3D11 box addresses one. */
 		D3D11_BOX ByteRange(std::uint32_t a_offset, std::uint32_t a_bytes) noexcept
@@ -96,12 +97,7 @@ namespace SmpPhysics
 			}
 			if (a_data.empty())
 				return true;
-			D3D11_MAPPED_SUBRESOURCE mapped{};
-			if (FAILED(globals::d3d::context->Map(a_buffer->resource.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
-				return false;
-			std::memcpy(mapped.pData, a_data.data(), a_data.size() * sizeof(T));
-			globals::d3d::context->Unmap(a_buffer->resource.get(), 0);
-			return true;
+			return UploadDiscard(globals::d3d::context, a_buffer->resource.get(), a_data.data(), a_data.size() * sizeof(T));
 		}
 
 		/** @brief The tree's kinematic parent, in the caller's own bone indexing. */
@@ -360,7 +356,7 @@ namespace SmpPhysics
 	std::optional<std::uint32_t> GpuSolver::AllocateSlots(std::uint32_t a_needed)
 	{
 		const std::uint32_t neededBlocks = (a_needed + kBlockSlots - 1u) / kBlockSlots;
-		for (int attempt = 0; attempt < 2; ++attempt) {
+		for (int attempt = 0; attempt < kAllocationPasses; ++attempt) {
 			std::uint32_t run = 0;
 			for (std::uint32_t block = 0; block < freeBlocks.size(); ++block) {
 				run = freeBlocks[block] ? run + 1u : 0u;
@@ -371,7 +367,7 @@ namespace SmpPhysics
 					return first * kBlockSlots;
 				}
 			}
-			if (attempt > 0)
+			if (attempt + 1 == kAllocationPasses)
 				break;
 			const std::uint32_t grown = std::max({ static_cast<std::uint32_t>(freeBlocks.size()) * 2u,
 				static_cast<std::uint32_t>(freeBlocks.size()) + neededBlocks, kInitialBlocks });
@@ -1009,21 +1005,11 @@ namespace SmpPhysics
 				}
 			}
 
-			D3D11_MAPPED_SUBRESOURCE mapped{};
-			if (FAILED(context->Map(inputs->resource.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+			if (!UploadDiscard(context, inputs->resource.get(), a_pack.treeInputs.data(), a_pack.treeInputs.size() * sizeof(GpuRig::TreeInput)))
 				return false;
-			}
-			std::memcpy(mapped.pData, a_pack.treeInputs.data(), a_pack.treeInputs.size() * sizeof(GpuRig::TreeInput));
-			context->Unmap(inputs->resource.get(), 0);
 
-			if (!a_pack.driverWorlds.empty()) {
-				D3D11_MAPPED_SUBRESOURCE driverMapped{};
-				if (FAILED(context->Map(drivers->resource.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &driverMapped))) {
-					return false;
-				}
-				std::memcpy(driverMapped.pData, a_pack.driverWorlds.data(), a_pack.driverWorlds.size() * sizeof(GpuRig::DriverWorld));
-				context->Unmap(drivers->resource.get(), 0);
-			}
+			if (!a_pack.driverWorlds.empty() && !UploadDiscard(context, drivers->resource.get(), a_pack.driverWorlds.data(), a_pack.driverWorlds.size() * sizeof(GpuRig::DriverWorld)))
+				return false;
 		}
 		return true;
 	}

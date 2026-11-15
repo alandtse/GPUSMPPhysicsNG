@@ -490,8 +490,6 @@ namespace SmpPhysics
 			}
 		}
 
-		// Joints above the plate carried the hair out as a whole, so each joint, parents first, turns back toward its earlier
-		// settled direction as far as the hair below it stays out of the plate.
 		const std::vector<float> noAllowance(allowances.size(), 0.0f);
 		for (const int bone : order) {
 			const std::size_t index = static_cast<std::size_t>(bone);
@@ -523,8 +521,6 @@ namespace SmpPhysics
 				TurnSubtree(settled, subtree[index], pivot, FromAxisAngle(axis, full * fraction));
 		}
 
-		// The sweeps turned the sagged pose; the rest is moved so that, once gravity sags it again, the turned axes
-		// land where the sweeps left them, while an axis the sweeps never turned keeps its authored rest.
 		std::vector<Vec3> target(boneCount);
 		std::vector<std::array<bool, 3>> turnedAxis(boneCount, std::array<bool, 3>{});
 		for (const int bone : order) {

@@ -55,6 +55,8 @@ namespace Util
 		return false;
 	}
 
+	constexpr float kPercent = 100.0f;
+
 	float SphereScreenHeightPercent(const RE::NiPoint3& a_centre, float a_radius)
 	{
 		const int eyes = globals::game::isVR ? 2 : 1;
@@ -67,7 +69,7 @@ namespace Util
 			if (depth <= 0.0f)
 				continue;
 			const float scale = std::sqrt(m.m[0][1] * m.m[0][1] + m.m[1][1] * m.m[1][1] + m.m[2][1] * m.m[2][1]);
-			largest = std::max(largest, 100.0f * a_radius * scale / depth);
+			largest = std::max(largest, kPercent * a_radius * scale / depth);
 		}
 		return largest;
 	}

@@ -214,11 +214,8 @@ namespace SmpPhysics
 			capacity = 0;
 			return;
 		}
-		D3D11_MAPPED_SUBRESOURCE mapped{};
-		if (FAILED(context->Map(vertices->resource.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+		if (!UploadDiscard(context, vertices->resource.get(), lineVertices.data(), lineVertices.size() * sizeof(DebugLineVertex)))
 			return;
-		std::memcpy(mapped.pData, lineVertices.data(), lineVertices.size() * sizeof(DebugLineVertex));
-		context->Unmap(vertices->resource.get(), 0);
 
 		CS_GPU_PASS("SmpPhysics::DebugLines");
 		Util::FullscreenPassScope scope(context, 1, kSavedPixelConstantStart, kSavedPixelConstantCount);

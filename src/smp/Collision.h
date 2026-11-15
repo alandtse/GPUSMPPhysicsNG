@@ -131,8 +131,8 @@ namespace SmpPhysics
 	struct SkinnedVertex
 	{
 		Vec3 position;
-		int bone[4]{ -1, -1, -1, -1 };
-		float weight[4]{};
+		int bone[Util::kSkinInfluences]{ -1, -1, -1, -1 };
+		float weight[Util::kSkinInfluences]{};
 	};
 
 	/**

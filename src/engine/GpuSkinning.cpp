@@ -453,17 +453,10 @@ namespace SmpPhysics
 		if (batch->activeCpu.empty())
 			return;
 
-		D3D11_MAPPED_SUBRESOURCE mapped{};
-		if (FAILED(context->Map(batch->active.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+		if (!UploadDiscard(context, batch->active.get(), batch->activeCpu.data(), batch->activeCpu.size() * sizeof(ActiveRecord)))
 			return;
-		std::memcpy(mapped.pData, batch->activeCpu.data(), batch->activeCpu.size() * sizeof(ActiveRecord));
-		context->Unmap(batch->active.get(), 0);
-		if (batch->staticNext > 0) {
-			if (FAILED(context->Map(batch->staticWorlds.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
-				return;
-			std::memcpy(mapped.pData, batch->staticCpu.data(), static_cast<std::size_t>(batch->staticNext) * sizeof(StaticWorld));
-			context->Unmap(batch->staticWorlds.get(), 0);
-		}
+		if (batch->staticNext > 0 && !UploadDiscard(context, batch->staticWorlds.get(), batch->staticCpu.data(), static_cast<std::size_t>(batch->staticNext) * sizeof(StaticWorld)))
+			return;
 
 		SkinPaletteBatchConstants values;
 		values.activeCount = static_cast<std::uint32_t>(batch->activeCpu.size());

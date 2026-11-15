@@ -39,6 +39,7 @@ namespace
 	using SmpPhysics::Vec3;
 
 	/** @brief A dynamic tri shape stores its morphing vertices as 16 bytes each: a float3 and a pad. */
+	constexpr std::array<float, 5> kBehindDepthEdges{ 1.0f, 2.0f, 4.0f, 8.0f, 16.0f };  ///< Upper bounds, in game units, of the depth buckets a behind-face report counts into.
 	constexpr std::uint32_t kDynamicVertexStride = 16;
 	/** @brief Vertices a single shape may contribute; a runaway count would otherwise exhaust memory at claim time. */
 	constexpr std::uint32_t kMaximumShapeVertices = 200000;
@@ -152,9 +153,9 @@ namespace
 			read.position = { position[0], position[1], position[2] };
 			if (a_wantSkinning && source.skinned) {
 				const Util::SkinVertexBlock block = Util::ReadSkinVertexBlock(vertex + source.skinOffset);
-				for (int slot = 0; slot < 4; ++slot) {
-					read.bone[slot] = block.paletteSlot[static_cast<std::size_t>(slot)];
-					read.weight[slot] = block.weight[static_cast<std::size_t>(slot)];
+				for (std::size_t slot = 0; slot < Util::kSkinInfluences; ++slot) {
+					read.bone[slot] = block.paletteSlot[slot];
+					read.weight[slot] = block.weight[slot];
 				}
 			}
 			a_vertices.push_back(read);
@@ -251,8 +252,8 @@ namespace
 	struct SkinnedShape
 	{
 		std::vector<Vec3> positions;
-		std::vector<std::array<int, 4>> bones;
-		std::vector<std::array<float, 4>> weights;
+		std::vector<std::array<int, Util::kSkinInfluences>> bones;
+		std::vector<std::array<float, Util::kSkinInfluences>> weights;
 		std::vector<RE::NiAVObject*> skinBones;  ///< not owned: a reference taken on a bone mid-destruction is released into a second delete
 		std::vector<Transform> skinToBone;
 		std::vector<std::uint16_t> triangles;  ///< three skin bone local indices each
@@ -289,9 +290,9 @@ namespace
 		a_shape.weights.reserve(vertices.size());
 		for (const SkinnedVertex& vertex : vertices) {
 			a_shape.positions.push_back(vertex.position);
-			std::array<int, 4> bones{ -1, -1, -1, -1 };
-			std::array<float, 4> weights{};
-			for (int slot = 0; slot < 4; ++slot) {
+			std::array<int, Util::kSkinInfluences> bones{ -1, -1, -1, -1 };
+			std::array<float, Util::kSkinInfluences> weights{};
+			for (std::size_t slot = 0; slot < Util::kSkinInfluences; ++slot) {
 				const int bone = vertex.bone[slot];
 				// A slot naming a bone the instance no longer has cannot pose the vertex, so it is dropped
 				// rather than being blended against the identity a missing world transform defaults to.
@@ -320,7 +321,7 @@ namespace
 	{
 		SkinnedVertex vertex;
 		vertex.position = a_shape.positions[a_vertex];
-		for (int slot = 0; slot < 4; ++slot) {
+		for (std::size_t slot = 0; slot < Util::kSkinInfluences; ++slot) {
 			vertex.bone[slot] = a_shape.bones[a_vertex][static_cast<std::size_t>(slot)];
 			vertex.weight[slot] = a_shape.weights[a_vertex][static_cast<std::size_t>(slot)];
 		}
@@ -501,7 +502,7 @@ namespace
 				// A vertex no valid bone weights is left in mesh space by the blend, so it would be measured
 				// wherever the mesh happens to sit rather than where the renderer draws it.
 				float poseWeight = 0.0f;
-				for (int slot = 0; slot < 4; ++slot) {
+				for (std::size_t slot = 0; slot < Util::kSkinInfluences; ++slot) {
 					if (vertex.bone[slot] >= 0)
 						poseWeight += vertex.weight[slot];
 				}
@@ -677,11 +678,9 @@ json SmpPhysicsFeature::DescribeAuditClaims(RE::FormID a_formID) const
 		const Claim& claim = entry.second;
 		if (claim.actorFormID != a_formID)
 			continue;
-		// The bones are placed where they are drawn, whichever backend steps the claim.
 		std::vector<SmpPhysics::Transform> boneWorld(claim.nodes.size());
 		for (std::size_t bone = 0; bone < boneWorld.size(); ++bone)
 			boneWorld[bone] = claim.BoneWorld(bone);
-		// The proxies the solver was given: the claim's own, then the slots other bodies fill each frame.
 		std::vector<SmpPhysics::Collider> probeColliders = claim.colliders;
 		probeColliders.resize(probeColliders.size() + SmpPhysics::kExternalColliderSlots);
 		for (std::size_t slot = 0; slot < claim.externalColliders.size() && slot < SmpPhysics::kExternalColliderSlots; ++slot)
@@ -707,7 +706,7 @@ json SmpPhysicsFeature::DescribeAuditClaims(RE::FormID a_formID) const
 		int behindFace = 0;
 		int behindOutward = 0;
 		float deepestBehind = 0.0f;
-		std::array<int, 6> behindBuckets{};
+		std::array<int, kBehindDepthEdges.size() + 1> behindBuckets{};
 		int insideShell = 0;
 		std::map<std::string, int> behindBones;
 		std::map<std::string, int> insideShellBones;
@@ -721,11 +720,7 @@ json SmpPhysicsFeature::DescribeAuditClaims(RE::FormID a_formID) const
 				++behindFace;
 				behindOutward += probe.behindOutward ? 1 : 0;
 				deepestBehind = std::max(deepestBehind, probe.behind);
-				const std::size_t bucket = probe.behind <= 1.0f ? 0 : probe.behind <= 2.0f ? 1 :
-				                                                  probe.behind <= 4.0f     ? 2 :
-				                                                  probe.behind <= 8.0f     ? 3 :
-				                                                  probe.behind <= 16.0f    ? 4 :
-				                                                                             5;
+				const std::size_t bucket = static_cast<std::size_t>(std::ranges::count_if(kBehindDepthEdges, [&](float a_edge) { return probe.behind > a_edge; }));
 				++behindBuckets[bucket];
 				++behindBones[claim.parsed->rig.bones[static_cast<std::size_t>(probe.bone)].name];
 				const std::string surfaceName = probe.behindSurface >= 0 && static_cast<std::size_t>(probe.behindSurface) < claim.surfaces.size() ? claim.surfaces[static_cast<std::size_t>(probe.behindSurface)].name : "?";
@@ -946,7 +941,6 @@ json SmpPhysicsFeature::CollisionAuditJson(const json& a_args) const
 	if (!root)
 		return { { "error", "the actor is not loaded" } };
 
-	// The GPU solver moves its bones without writing the engine's nodes, so pose them from its result unless asked for the engine's.
 	std::map<const RE::NiAVObject*, Transform> solverWorld;
 	std::vector<std::pair<std::string, std::string>> overlapPairs;
 	const bool engineOnly = a_args.value("pose", std::string("solver")) == "engine";
@@ -978,7 +972,6 @@ json SmpPhysicsFeature::CollisionAuditJson(const json& a_args) const
 	if (hairName.empty()) {
 		if (!a_args.value("overlaps", false))
 			return result;
-		// Every pair of the rig's own shapes whose tags let them collide, measured as drawn: what the eye sees as one piece through another.
 		json rows = json::array();
 		for (const auto& [first, second] : overlapPairs) {
 			json measured = MeasureMeshPenetration(root, first, second, json::object(), solverWorld, kOverlapNearReach);
@@ -1212,8 +1205,6 @@ bool SmpPhysicsFeature::BuildHairSpheres(CollisionBuildState& s, std::string& a_
 		sphereShapes.push_back(&shape);
 	if (std::ranges::find(sphereShapes, hairShape) == sphereShapes.end())
 		sphereShapes.push_back(hairShape);
-	// A cloth rig declares only triangle shapes. Each piece of the outfit that skins to its bones gets spheres of its own, so
-	// the pieces collide with one another as their tags say, not only the one the hair shape picked.
 	const bool perShape = shapes.vertexShapes.empty();
 	if (perShape) {
 		for (const RigShape& shape : shapes.triangleShapes) {
@@ -1277,7 +1268,7 @@ bool SmpPhysicsFeature::BuildHairSpheres(CollisionBuildState& s, std::string& a_
 		}
 		totalSkinBones += skinBones;
 		for (const SkinnedVertex& vertex : vertices) {
-			for (int slot = 0; slot < 4; ++slot) {
+			for (std::size_t slot = 0; slot < Util::kSkinInfluences; ++slot) {
 				const int skinBone = vertex.bone[slot];
 				if (skinBone < 0 || static_cast<std::size_t>(skinBone) >= rigBoneOfSkinBone.size())
 					continue;
@@ -1590,7 +1581,6 @@ void SmpPhysicsFeature::BuildArmorSurfaces(CollisionBuildState& s) const
 				continue;
 			const RE::BIPOBJECT& worn = biped->objects[slot];
 			const RE::TESObjectARMO* wornArmor = worn.item != nullptr ? worn.item->As<RE::TESObjectARMO>() : nullptr;
-			// The bare body is the surface hair rests on when nothing covers the body slot; elsewhere the skin hides under what is worn.
 			const bool bareBody = wornArmor != nullptr && wornArmor == actorSkin && slot == static_cast<std::uint32_t>(RE::BIPED_OBJECTS::kBody);
 			if (wornArmor == nullptr || (wornArmor == actorSkin && !bareBody) || !worn.partClone)
 				continue;

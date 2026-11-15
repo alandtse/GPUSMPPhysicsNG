@@ -601,7 +601,7 @@ namespace SmpPhysics::GpuRig
 			const float weights[4] = { vertex.weights.x, vertex.weights.y, vertex.weights.z, vertex.weights.w };
 			Vec3 sum{};
 			float total = 0.0f;
-			for (int slot = 0; slot < 4; ++slot) {
+			for (std::size_t slot = 0; slot < Util::kSkinInfluences; ++slot) {
 				const std::uint32_t bone = bones[slot];
 				if (bone == kInvalidDriverSlot || static_cast<std::size_t>(bone) >= a_data.bones.size() || driven[bone] == 0)
 					continue;

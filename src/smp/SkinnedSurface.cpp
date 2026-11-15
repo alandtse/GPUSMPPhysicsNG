@@ -19,7 +19,7 @@ namespace SmpPhysics
 			std::array<float, 12> sums{};
 			int count = 0;
 			for (const SkinnedVertex* vertex : { &a_first, &a_second, &a_third }) {
-				for (int slot = 0; slot < 4; ++slot) {
+				for (std::size_t slot = 0; slot < Util::kSkinInfluences; ++slot) {
 					const int bone = vertex->bone[slot];
 					if (bone < 0 || !(vertex->weight[slot] >= FLT_EPSILON))
 						continue;
@@ -84,7 +84,7 @@ namespace SmpPhysics
 		for (const SkinnedVertex& vertex : a_surface.vertices) {
 			Vec3 sum{};
 			float total = 0.0f;
-			for (int slot = 0; slot < 4; ++slot) {
+			for (std::size_t slot = 0; slot < Util::kSkinInfluences; ++slot) {
 				const int bone = vertex.bone[slot];
 				if (bone < 0 || static_cast<std::size_t>(bone) >= boneCount || driven[static_cast<std::size_t>(bone)] == 0)
 					continue;

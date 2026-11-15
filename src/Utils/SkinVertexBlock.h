@@ -9,6 +9,9 @@
 
 namespace Util
 {
+	/** @brief Bone influences a skinned vertex carries. */
+	inline constexpr std::size_t kSkinInfluences = 4;
+
 	/** @brief Bytes a skinned vertex reserves for its four half-float weights and four palette indices. */
 	inline constexpr std::uint32_t kSkinVertexBlockBytes = 12;
 
@@ -44,7 +47,7 @@ namespace Util
 	{
 		std::optional<std::uint32_t> owner;
 		float ownerWeight = 0.0f;
-		for (std::size_t slot = 0; slot < 4; ++slot) {
+		for (std::size_t slot = 0; slot < kSkinInfluences; ++slot) {
 			const auto bone = static_cast<std::int64_t>(a_bone[slot]);
 			const float weight = a_weight[slot];
 			if (bone < 0 || bone >= static_cast<std::int64_t>(a_boneCount) || !(weight >= kMinDominantBoneWeight))
@@ -61,8 +64,8 @@ namespace Util
 	/** @brief A skinned vertex's weights and the palette slots they name, before the slots are mapped to skeleton bones. */
 	struct SkinVertexBlock
 	{
-		std::array<std::uint8_t, 4> paletteSlot{};
-		std::array<float, 4> weight{};
+		std::array<std::uint8_t, kSkinInfluences> paletteSlot{};
+		std::array<float, kSkinInfluences> weight{};
 	};
 
 	/**
@@ -72,7 +75,7 @@ namespace Util
 	[[nodiscard]] inline SkinVertexBlock ReadSkinVertexBlock(const std::uint8_t* a_block) noexcept
 	{
 		SkinVertexBlock result;
-		for (std::size_t slot = 0; slot < 4; ++slot) {
+		for (std::size_t slot = 0; slot < kSkinInfluences; ++slot) {
 			std::uint16_t half;
 			std::memcpy(&half, a_block + slot * sizeof(half), sizeof(half));
 			result.weight[slot] = HalfToFloat(half);
