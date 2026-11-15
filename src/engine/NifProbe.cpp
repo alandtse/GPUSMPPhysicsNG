@@ -78,8 +78,11 @@ namespace NifProbe
 		}
 
 		constexpr const char* kDefaultMap = "Data/SKSE/Plugins/hdtSkinnedMeshConfigs/defaultBBPs.xml";
+		constexpr std::size_t kMaxReadBytes = 1u << 20;
+		constexpr std::size_t kSystemSniffBytes = 2048;  ///< The "<system" tag of a physics file sits at its start.
+		constexpr std::size_t kDataPrefixLength = 5;     ///< Length of "Data/", which the returned paths drop.
 
-		std::string ReadWhole(const std::filesystem::path& a_path, std::size_t a_limit = 1u << 20)
+		std::string ReadWhole(const std::filesystem::path& a_path, std::size_t a_limit = kMaxReadBytes)
 		{
 			std::ifstream file(a_path, std::ios::binary);
 			std::string text(a_limit, '\0');
@@ -98,9 +101,9 @@ namespace NifProbe
 					const fs::path& path = entry->path();
 					if (path.extension() != ".xml" && path.extension() != ".XML")
 						continue;
-					if (ReadWhole(path, 2048).find("<system") == std::string::npos)
+					if (ReadWhole(path, kSystemSniffBytes).find("<system") == std::string::npos)
 						continue;
-					found.push_back(path.generic_string().substr(5));
+					found.push_back(path.generic_string().substr(kDataPrefixLength));
 				}
 				error.clear();
 			}

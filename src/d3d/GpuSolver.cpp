@@ -19,20 +19,7 @@ namespace SmpPhysics
 	{
 		constexpr const wchar_t* kShaderPath = L"SmpPhysics\\ContactCS.hlsl";
 		constexpr const wchar_t* kSurfacePrepPath = L"SmpPhysics\\SurfacePrepCS.hlsl";
-		constexpr const char* kShaderTarget = "cs_5_0";
-		constexpr const char* kLogPrefix = "[GPU SMP Physics]";
 		constexpr std::uint32_t kInitialBlocks = 4;
-		constexpr std::uint32_t kThreadsPerGroup = 64;
-
-		D3D11_BUFFER_DESC StagingDesc(std::uint32_t a_bytes) noexcept
-		{
-			D3D11_BUFFER_DESC desc{};
-			desc.Usage = D3D11_USAGE_STAGING;
-			desc.BindFlags = 0;
-			desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-			desc.ByteWidth = a_bytes;
-			return desc;
-		}
 
 		/** @brief A byte range of a buffer, which is how a D3D11 box addresses one. */
 		D3D11_BOX ByteRange(std::uint32_t a_offset, std::uint32_t a_bytes) noexcept
@@ -346,7 +333,7 @@ namespace SmpPhysics
 		const std::uint32_t outputBytes = a_slots * static_cast<std::uint32_t>(sizeof(GpuRig::BoneOutput));
 		for (std::size_t index = 0; index < readbacks.size(); ++index) {
 			readbacks[index] = {};
-			const Buffer staging(StagingDesc(outputBytes), nullptr, nullptr);
+			const Buffer staging(StagingBufferDesc(outputBytes), nullptr, nullptr);
 			readbacks[index].buffer = staging.resource;
 			Util::SetResourceName(readbacks[index].buffer.get(), "SmpPhysics::PoolReadback%u", static_cast<unsigned>(index));
 		}
@@ -671,7 +658,7 @@ namespace SmpPhysics
 			if (a_bytes == 0u)
 				return true;
 			winrt::com_ptr<ID3D11Buffer> staging;
-			const D3D11_BUFFER_DESC stagingDesc = StagingDesc(a_bytes);
+			const D3D11_BUFFER_DESC stagingDesc = StagingBufferDesc(a_bytes);
 			if (FAILED(device->CreateBuffer(&stagingDesc, nullptr, staging.put())))
 				return false;
 			Util::SetResourceName(staging.get(), "%s", a_name);
@@ -1190,7 +1177,7 @@ namespace SmpPhysics
 
 		if (!contactStagingPending && contactStatsRequested.exchange(false)) {
 			if (!contactStaging || contactStagingSlots != slotCapacity) {
-				const Buffer staging(StagingDesc(slotCapacity * static_cast<std::uint32_t>(sizeof(GpuRig::BoneContact))), nullptr, "SmpPhysics::PoolContactReadback");
+				const Buffer staging(StagingBufferDesc(slotCapacity * static_cast<std::uint32_t>(sizeof(GpuRig::BoneContact))), nullptr, "SmpPhysics::PoolContactReadback");
 				contactStaging = staging.resource;
 				contactStagingSlots = slotCapacity;
 			}

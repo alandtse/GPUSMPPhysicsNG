@@ -18,6 +18,7 @@
 #include "d3d/TracyGpu.h"
 #include "engine/ReadyWeaponGate.h"
 #include "smp/CardVertices.h"
+#include "smp/GpuViews.h"
 #include "smp/SceneParent.h"
 
 #include <algorithm>
@@ -77,6 +78,9 @@ namespace
 	constexpr float kWindExposureEasing = 0.05f;
 	constexpr float kWindExposureSnap = 0.01f;  ///< The exposure jumps to its target once this near it, so the easing ends.
 	constexpr float kDegreesPerRadian = 180.0f / std::numbers::pi_v<float>;
+	constexpr float kDefaultHandPinOffset = 15.0f;  ///< Game units along the hand's x axis a test pin sits from the hand.
+	constexpr float kMaxHandPinOffset = 100.0f;
+	constexpr double kMicrosecondsPerMillisecond = 1000.0;
 	constexpr float kHeadHeightFallback = 100.0f;  ///< Height above the feet used for wind tests when a skeleton has no head node.
 	constexpr int kDefaultRecordFrames = 300;
 	constexpr int kMaxRecordFrames = 3000;
@@ -151,7 +155,7 @@ namespace
 	thread_local std::string pendingDeclineReason;  ///< What RecordDecline last noted during the claim on this thread.
 	constexpr const char* kStartupSender = "hdtsmp64";
 	constexpr std::uint32_t kStartupMessageType = static_cast<std::uint32_t>(hdt::PluginInterface::MSG_STARTUP);
-	constexpr const char* kLogPrefix = "[GPU SMP Physics]";
+	using SmpPhysics::kLogPrefix;
 
 	/** @brief Appends every skin instance below a_model that is skinned to at least one of a_bones. */
 	void CollectClaimedSkins(RE::NiAVObject* a_model, const std::vector<RE::NiPointer<RE::NiAVObject>>& a_bones,
@@ -782,7 +786,7 @@ json SmpPhysicsFeature::BuildStatusJson() const
 SmpPhysicsFeature::UiStatus SmpPhysicsFeature::GetUiStatus() const
 {
 	const std::scoped_lock lock(stateMutex);
-	return { linked.load(std::memory_order_relaxed), linkStatus, claims.size(), totalStepMicroseconds / 1000.0 };
+	return { linked.load(std::memory_order_relaxed), linkStatus, claims.size(), totalStepMicroseconds / kMicrosecondsPerMillisecond };
 }
 
 void SmpPhysicsFeature::ApplyCrowdHairColor(std::string a_color)
@@ -2507,7 +2511,7 @@ void SmpPhysicsFeature::PlaceCrowdHairAtHand(const json& a_args)
 {
 	const bool left = a_args.value("hand", std::string("right")) == "left";
 	const auto index = static_cast<std::size_t>(std::max(a_args.value("index", 0), 0));
-	const float away = a_args.value("away", 0.0f);
+	const float away = Util::ClampFinite(a_args.value("away", 0.0f), -kMaxHandPinOffset, kMaxHandPinOffset, 0.0f);
 	auto* task = SKSE::GetTaskInterface();
 	if (!task)
 		return;
@@ -2571,11 +2575,11 @@ void SmpPhysicsFeature::SetStrandProbe(const json& a_args)
 		return;
 	const RE::FormID actorFormID = a_args.value("actorFormID", 0u);
 	const std::size_t wanted = static_cast<std::size_t>(std::clamp(a_args.value("count", 1), 1, static_cast<int>(SmpPhysics::kMaxGrabPinsPerHand)));
-	SmpPhysics::Vec3 offset{ 15.0f, 0.0f, 0.0f };
+	SmpPhysics::Vec3 offset{ kDefaultHandPinOffset, 0.0f, 0.0f };
 	if (a_args.contains("offset") && a_args["offset"].is_array() && a_args["offset"].size() == 3) {
 		float values[3]{};
 		for (std::size_t axis = 0; axis < 3; ++axis)
-			values[axis] = a_args["offset"][axis].is_number() ? Util::ClampFinite(a_args["offset"][axis].get<float>(), -100.0f, 100.0f, 0.0f) : 0.0f;
+			values[axis] = a_args["offset"][axis].is_number() ? Util::ClampFinite(a_args["offset"][axis].get<float>(), -kMaxHandPinOffset, kMaxHandPinOffset, 0.0f) : 0.0f;
 		offset = { values[0], values[1], values[2] };
 	}
 	for (const auto& entry : claims) {

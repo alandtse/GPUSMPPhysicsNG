@@ -21,7 +21,8 @@ namespace TracyGpu
 		{
 			if (!context && globals::d3d::device && globals::d3d::context) {
 				context = TracyD3D11Context(globals::d3d::device, globals::d3d::context);
-				TracyD3D11ContextName(context, "Game immediate context", 22);
+				constexpr char kContextName[] = "Game immediate context";
+				TracyD3D11ContextName(context, kContextName, sizeof(kContextName) - 1);
 			}
 			return context;
 		}

@@ -4,6 +4,7 @@
 #include "Globals.h"
 #include "GpuPass.h"
 #include "Utils/D3D.h"
+#include "smp/GpuViews.h"
 
 #include <algorithm>
 #include <array>
@@ -16,7 +17,6 @@ namespace SmpPhysics
 	namespace
 	{
 		constexpr const wchar_t* kDrawPath = L"SmpPhysics\\DebugLines.hlsl";
-		constexpr const char* kLogPrefix = "[GPU SMP Physics]";
 		constexpr std::uint32_t kDrawConstantsRegister = 1;
 		constexpr std::uint32_t kPerFrameRegister = 12;
 		constexpr std::uint32_t kStereoRegister = 13;
@@ -206,11 +206,7 @@ namespace SmpPhysics
 			if (!vertices || capacity < lineCount) {
 				capacity = std::max(lineCount, kMinimumCapacity);
 				vertices = std::make_unique<Buffer>(StructuredBufferDesc<DebugLineVertex>(capacity * 2, false, true), nullptr, "SmpPhysics::DebugLineVertices");
-				D3D11_SHADER_RESOURCE_VIEW_DESC srv{};
-				srv.Format = DXGI_FORMAT_UNKNOWN;
-				srv.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
-				srv.BufferEx.NumElements = capacity * 2;
-				vertices->CreateSRV(srv);
+				vertices->CreateSRV(StructuredSrvDesc(capacity * 2));
 			}
 		} catch (const std::exception& error) {
 			logger::warn("{} the debug overlay could not allocate its lines: {}", kLogPrefix, error.what());

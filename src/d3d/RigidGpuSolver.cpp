@@ -16,9 +16,6 @@ namespace SmpPhysics
 	{
 		constexpr const wchar_t* kStepShaderPath = L"SmpPhysics\\RigidSolverCS.hlsl";
 		constexpr const wchar_t* kRuntimeShaderPath = L"SmpPhysics\\RigidRuntimeCS.hlsl";
-		constexpr const char* kShaderTarget = "cs_5_0";
-		constexpr const char* kLogPrefix = "[GPU SMP Physics]";
-		constexpr std::uint32_t kThreadsPerGroup = 64;
 		constexpr std::uint32_t kStepViewCount = 6;
 		constexpr std::uint32_t kStepTargetCount = 4;
 		constexpr std::uint32_t kRuntimeViewCount = 3;
@@ -28,7 +25,7 @@ namespace SmpPhysics
 
 		std::uint32_t Groups(std::uint32_t a_threads) noexcept
 		{
-			return std::max(1u, (a_threads + kThreadsPerGroup - 1u) / kThreadsPerGroup);
+			return std::max(1u, DispatchGroups(a_threads, kThreadsPerGroup));
 		}
 
 		template <typename T>

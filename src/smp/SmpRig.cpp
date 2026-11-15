@@ -78,7 +78,7 @@ namespace SmpPhysics
 					decoded.push_back(a_text[index]);
 					continue;
 				}
-				const std::size_t semicolon = a_text.find(';', index + 1);
+				const std::size_t semicolon = a_text.substr(0, index + kMaxEntityLength + 1).find(';', index + 1);
 				if (semicolon == std::string_view::npos || semicolon - index > kMaxEntityLength) {
 					decoded.push_back('&');
 					continue;
@@ -401,7 +401,7 @@ namespace SmpPhysics
 					a_reason = "element '" + a_element.name + "' has no '" + kAxisNames[axis] + "' attribute";
 					return false;
 				}
-				// An empty axis is read as 0, as the legacy hdtSMP64 did, not as the default, which for a joint's linear limits is free.
+				// An empty axis is read as 0, as hdtSMP64 does, not as the default, which for a joint's linear limits is free.
 				if (Trimmed(attribute->value).empty()) {
 					if (g_parseWarnings != nullptr)
 						g_parseWarnings->push_back(std::string("attribute '") + kAxisNames[axis] + "' of '" + a_element.name + "' is empty and reads as 0");

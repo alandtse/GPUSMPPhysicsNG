@@ -4,6 +4,7 @@
 #include "Globals.h"
 #include "GpuPass.h"
 #include "Utils/D3D.h"
+#include "smp/GpuViews.h"
 
 #include <algorithm>
 #include <cstring>
@@ -18,9 +19,6 @@ namespace SmpPhysics
 	{
 		constexpr const wchar_t* kShaderPath = L"SmpPhysics\\SkinPaletteCS.hlsl";
 		constexpr const wchar_t* kBatchShaderPath = L"SmpPhysics\\SkinPaletteBatchCS.hlsl";
-		constexpr const char* kShaderTarget = "cs_5_0";
-		constexpr const char* kLogPrefix = "[GPU SMP Physics]";
-		constexpr std::uint32_t kThreadsPerGroup = 64;
 		constexpr std::uint32_t kEngineCurrentSlot = 10;
 		constexpr std::uint32_t kEnginePreviousSlot = 9;
 
@@ -73,10 +71,7 @@ namespace SmpPhysics
 		bool CreateStructuredBuffer(const D3D11_BUFFER_DESC& a_desc, std::uint32_t a_count, const char* a_name,
 			winrt::com_ptr<ID3D11Buffer>& a_buffer, winrt::com_ptr<ID3D11ShaderResourceView>& a_srv)
 		{
-			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-			srvDesc.Format = DXGI_FORMAT_UNKNOWN;
-			srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
-			srvDesc.BufferEx.NumElements = a_count;
+			const D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = StructuredSrvDesc(a_count);
 			return CreateBufferWithViews(a_desc, a_name, a_buffer, &srvDesc, &a_srv);
 		}
 
@@ -654,10 +649,7 @@ namespace SmpPhysics
 		Resources& resources = *a_entry.resources;
 		a_entry.captureRequested = false;
 		if (!resources.staging) {
-			D3D11_BUFFER_DESC desc{};
-			desc.ByteWidth = kPaletteBytes;
-			desc.Usage = D3D11_USAGE_STAGING;
-			desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+			const D3D11_BUFFER_DESC desc = StagingBufferDesc(kPaletteBytes);
 			if (FAILED(globals::d3d::device->CreateBuffer(&desc, nullptr, resources.staging.put())))
 				return;
 			Util::SetResourceName(resources.staging.get(), "SmpPhysics::SkinPaletteStaging");
@@ -698,10 +690,7 @@ namespace SmpPhysics
 		if (worldsBuffer) {
 			D3D11_BUFFER_DESC worldsDesc{};
 			worldsBuffer->GetDesc(&worldsDesc);
-			D3D11_BUFFER_DESC stagingDesc{};
-			stagingDesc.ByteWidth = worldsDesc.ByteWidth;
-			stagingDesc.Usage = D3D11_USAGE_STAGING;
-			stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+			const D3D11_BUFFER_DESC stagingDesc = StagingBufferDesc(worldsDesc.ByteWidth);
 			winrt::com_ptr<ID3D11Buffer> worldsStaging;
 			D3D11_MAPPED_SUBRESOURCE mapped{};
 			if (SUCCEEDED(globals::d3d::device->CreateBuffer(&stagingDesc, nullptr, worldsStaging.put()))) {

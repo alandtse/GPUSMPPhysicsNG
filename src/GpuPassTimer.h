@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Globals.h"
+#include "Utils/D3D.h"
 
 #include <array>
 #include <atomic>
@@ -81,11 +82,13 @@ namespace GpuPassTimer
 			return state;
 		}
 
-		inline winrt::com_ptr<ID3D11Query> MakeQuery(D3D11_QUERY a_type)
+		inline winrt::com_ptr<ID3D11Query> MakeQuery(D3D11_QUERY a_type, const char* a_name)
 		{
 			winrt::com_ptr<ID3D11Query> query;
 			D3D11_QUERY_DESC desc{ a_type, 0 };
 			globals::d3d::device->CreateQuery(&desc, query.put());
+			if (query)
+				Util::SetResourceName(query.get(), "%s", a_name);
 			return query;
 		}
 
@@ -164,7 +167,7 @@ namespace GpuPassTimer
 		if (next.pending)
 			return;
 		if (!next.disjoint)
-			next.disjoint = detail::MakeQuery(D3D11_QUERY_TIMESTAMP_DISJOINT);
+			next.disjoint = detail::MakeQuery(D3D11_QUERY_TIMESTAMP_DISJOINT, "GpuPassTimer::Disjoint");
 		if (!next.disjoint)
 			return;
 		globals::d3d::context->Begin(next.disjoint.get());
@@ -187,9 +190,9 @@ namespace GpuPassTimer
 			slot.samples.emplace_back();
 		detail::Sample& sample = slot.samples[slot.used];
 		if (!sample.begin)
-			sample.begin = detail::MakeQuery(D3D11_QUERY_TIMESTAMP);
+			sample.begin = detail::MakeQuery(D3D11_QUERY_TIMESTAMP, "GpuPassTimer::PassBegin");
 		if (!sample.end)
-			sample.end = detail::MakeQuery(D3D11_QUERY_TIMESTAMP);
+			sample.end = detail::MakeQuery(D3D11_QUERY_TIMESTAMP, "GpuPassTimer::PassEnd");
 		if (!sample.begin || !sample.end)
 			return detail::kNoToken;
 		sample.name.assign(a_name);

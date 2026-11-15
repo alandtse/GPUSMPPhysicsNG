@@ -18,6 +18,7 @@ namespace Util::BodyCapsules
 {
 	namespace
 	{
+		constexpr float kMinSegmentLength = 1e-4f;  ///< Divisor floor for a degenerate hand segment.
 		constexpr size_t MaxActors = 8;
 		constexpr size_t MaxCapsulesPerActor = 6;
 		constexpr float MinActorCapsuleRadius = 3.0f;
@@ -129,7 +130,7 @@ namespace Util::BodyCapsules
 				const RE::NiTransform skinToBone = skin->skinData->GetBoneDataSkinToBone(skinBone);
 				const float3 point = ToFloat3(skinToBone * vertex.position);
 				const bool distal = handSlot % HandNodeCount != 0 && (handSlot % HandNodeCount - 1) % JointsPerFinger == JointsPerFinger - 1;
-				const float along = point.Dot(*end) / std::max(end->LengthSquared(), 1e-4f);
+				const float along = point.Dot(*end) / std::max(end->LengthSquared(), kMinSegmentLength);
 				const float t = distal ? std::max(along, 0.0f) : std::clamp(along, 0.0f, 1.0f);
 				distances[handSlot].push_back((point - *end * t).Length());
 				if (distal)
@@ -285,7 +286,7 @@ namespace Util::BodyCapsules
 			const float tipRadius = radii[finger * JointsPerFinger + 2];
 			const float3 distalAxis = joints[2] - joints[1];
 			const float tipExtent = handRadii[a_left ? 0 : 1].tipExtent[finger];
-			const float3 tip = tipExtent > 0.0f ? joints[2] + distalAxis * (std::max(tipExtent - tipRadius, 0.0f) / std::max(distalAxis.Length(), 1e-4f)) : joints[2] + distalAxis * FingertipLengthScale;
+			const float3 tip = tipExtent > 0.0f ? joints[2] + distalAxis * (std::max(tipExtent - tipRadius, 0.0f) / std::max(distalAxis.Length(), kMinSegmentLength)) : joints[2] + distalAxis * FingertipLengthScale;
 			add(joints[2], tip, tipRadius);
 			knuckles[finger] = joints[0];
 			hasKnuckle[finger] = true;

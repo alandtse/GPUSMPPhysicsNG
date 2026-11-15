@@ -576,13 +576,11 @@ namespace TestBench
 
 	void TestCrowd::DisableBatchNow()
 	{
-		// A few a frame: disabling thirty at once made the engine's deferred release queue destroy their BipedAnims together,
-		// and one of them read a skeleton root that was already freed (SkyrimSE.exe+0FDDB2D, seen twice on SE 1.7.104).
+		// A few a frame: disabling many at once has the engine's deferred release queue destroy their BipedAnims together.
 		constexpr std::size_t kBatch = 4;
 		const std::size_t count = std::min(kBatch, pendingDisable.size());
 		for (std::size_t index = 0; index < count; ++index) {
-			// Disabling is enough: they are temporary references the game drops with the cell, and marking an actor deleted
-			// while the engine's job threads still update its movement controller crashes the game.
+			// Disabling is enough: marking an actor deleted while the engine's job threads still update it is unsafe.
 			if (auto reference = pendingDisable[index].get()) {
 				if (auto* actor = reference->As<RE::Actor>())
 					actor->EnableAI(true);
@@ -663,8 +661,8 @@ namespace TestBench
 		const float rightX = forwardY;
 		const float rightY = -forwardX;
 
-		// Characters from an earlier spawn stand again in their new slots with their new looks. Removing and recreating actors while the
-		// engine's job threads update them crashes the game now and then, so only the ones beyond the new count are disabled.
+		// Characters from an earlier spawn stand again in their new slots with their new looks; only the ones beyond the new
+		// count are disabled, because recreating actors while the engine's job threads update them is unsafe.
 		std::vector<RE::ObjectRefHandle> standing;
 		for (std::size_t index = 0; index < a_count; ++index) {
 			RE::NiPointer<RE::TESObjectREFR> reference;
