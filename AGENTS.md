@@ -92,4 +92,3 @@ frame near 31 ms and hides frame time, so use SE for frame time and VR for per-p
 - Not covered by any suite: Menu Framework page rendering, the Ready Weapon gate, haptic feel, real controller mappings.
 - `WindStrength` defaults to 6 (hair moves about as far as under hdtSMP64's default in a storm); one strength serves hair
   and cloth, each bone's drag capped at 400 units/s^2.
-- The chain-only packing (`PackChainTies`, the tie fields, `windChainLoad`, `subtreeLoading`) is unused and can go.
