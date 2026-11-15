@@ -4,6 +4,7 @@ Holds the game lock already, game running with both plugins loaded and a save lo
 Usage: python smp_ab.py [port] [sizes, e.g. 0,10,20]   Output: smp_ab_<vr|se>_results.json next to this file and a table.
 """
 import json
+import os
 import pathlib
 import sys
 import time
@@ -49,7 +50,7 @@ def fps(seconds):
 
 
 UNTHROTTLED = dict(GrabStrands=False, MaxClaims=256, MaxSimulatedClaims=256, SimulationDistance=20000.0, MinScreenSizePercent=0.0)
-HDT_CONFIG = f'E:/SteamLibrary/steamapps/common/{GAME_DIR}/Data/SKSE/Plugins/hdtSkinnedMeshConfigs/configs.json'
+HDT_CONFIG = f'{os.environ.get("GSP_STEAM_COMMON", "E:/SteamLibrary/steamapps/common")}/{GAME_DIR}/Data/SKSE/Plugins/hdtSkinnedMeshConfigs/configs.json'
 
 
 def check_hdt_unthrottled():

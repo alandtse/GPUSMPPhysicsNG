@@ -47,7 +47,7 @@ add_files("src/smp/*.cpp")
 add_headerfiles("src/**.h")
 target_end()
 
--- D3D11 layer: buffers, shader compile, chain/rigid solver dispatch.
+-- D3D11 layer: buffers, shader compile, rigid solver dispatch.
 target("GPUSMPPhysicsNG-D3D")
 set_kind("static")
 add_deps("GPUSMPPhysicsNG-Core")

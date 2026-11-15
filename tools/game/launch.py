@@ -19,10 +19,11 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'hair-tune'))
 import ingame
 
+STEAM_COMMON = os.environ.get('GSP_STEAM_COMMON', r'E:\SteamLibrary\steamapps\common')
 GAMES = {
-    'SE': dict(port=8920, dir=r'E:\SteamLibrary\steamapps\common\Skyrim Special Edition', loader='skse64_loader.exe', exe='SkyrimSE',
+    'SE': dict(port=8920, dir=os.path.join(STEAM_COMMON, 'Skyrim Special Edition'), loader='skse64_loader.exe', exe='SkyrimSE',
                save='Quicksave0_88D77279_0_507269736F6E6572_WhiterunDragonsreach_000007_20261102042407_1_1'),
-    'VR': dict(port=8921, dir=r'E:\SteamLibrary\steamapps\common\SkyrimVR', loader='sksevr_loader.exe', exe='SkyrimVR', save='GuardianStonesWater'),
+    'VR': dict(port=8921, dir=os.path.join(STEAM_COMMON, 'SkyrimVR'), loader='sksevr_loader.exe', exe='SkyrimVR', save='GuardianStonesWater'),
 }
 HOME = pathlib.Path.home()
 COORDINATOR = str(HOME / '.claude' / 'tools' / 'skyrim-game.ps1')
