@@ -1095,9 +1095,9 @@ namespace SmpPhysics
 	std::uint32_t AllowedSurfaceMask(const RigShape* a_boneShape, const std::vector<const RigShape*>& a_surfaceShapes)
 	{
 		if (a_boneShape == nullptr)
-			return 0xFFFFFFFFu;
+			return kAllMaskBits;
 		std::uint32_t mask = 0u;
-		for (std::size_t index = 0; index < a_surfaceShapes.size() && index < 32u; ++index) {
+		for (std::size_t index = 0; index < a_surfaceShapes.size() && index < kMaskedSurfaceLimit; ++index) {
 			const RigShape* surface = a_surfaceShapes[index];
 			if (surface == nullptr || (surface->name != a_boneShape->name && ShapesCanCollide(*a_boneShape, *surface)))
 				mask |= 1u << index;

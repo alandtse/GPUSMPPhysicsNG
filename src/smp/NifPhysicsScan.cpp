@@ -2,6 +2,8 @@
 
 #include "smp/NifPhysicsScan.h"
 
+#include "Utils/StringUtils.h"
+
 #include <algorithm>
 #include <cstdint>
 
@@ -21,9 +23,7 @@ namespace SmpPhysics
 			if (a_text.size() < 4)
 				return false;
 			const std::string_view tail = a_text.substr(a_text.size() - 4);
-			return std::ranges::equal(tail, std::string_view(".xml"), [](char a_left, char a_right) {
-				return (a_left >= 'A' && a_left <= 'Z' ? static_cast<char>(a_left + 32) : a_left) == a_right;
-			});
+			return Util::IEquals(tail, ".xml");
 		}
 	}
 

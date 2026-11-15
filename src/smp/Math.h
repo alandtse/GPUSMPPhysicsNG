@@ -2,10 +2,15 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 
 namespace SmpPhysics
 {
+	/** @brief A per-collider or per-surface mask with every bit set. */
+	inline constexpr std::uint32_t kAllMaskBits = 0xFFFFFFFFu;
+	/** @brief Surfaces a per-bone surface mask can name, one bit each. */
+	inline constexpr std::size_t kMaskedSurfaceLimit = 32;
 	/** @brief Length below which a vector is treated as having no usable direction. */
 	inline constexpr float kDirectionEpsilon = 1e-8f;
 	/** @brief Cosine above which Slerp falls back to a normalized lerp, because the sine normalizer vanishes on nearly parallel inputs. */

@@ -150,10 +150,10 @@ namespace SmpPhysics
 				continue;
 			const auto surface = static_cast<std::size_t>(probe.behindSurface);
 			const auto bone = static_cast<std::size_t>(probe.bone);
-			if (surface >= a_surfaceLimit || surface >= 32 || bone >= a_boneCount)
+			if (surface >= a_surfaceLimit || surface >= kMaskedSurfaceLimit || bone >= a_boneCount)
 				continue;
 			if (a_boneSurfaceMask.size() < a_boneCount)
-				a_boneSurfaceMask.resize(a_boneCount, 0xFFFFFFFFu);
+				a_boneSurfaceMask.resize(a_boneCount, kAllMaskBits);
 			const std::uint32_t bit = 1u << surface;
 			if ((a_boneSurfaceMask[bone] & bit) == 0u)
 				continue;

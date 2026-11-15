@@ -2,6 +2,8 @@
 
 #include "smp/XmlAudit.h"
 
+#include "Utils/StringUtils.h"
+
 #include <algorithm>
 #include <map>
 
@@ -9,13 +11,8 @@ namespace SmpPhysics
 {
 	std::string NormalizeXmlPath(std::string_view a_path)
 	{
-		std::string path(a_path);
-		for (char& character : path) {
-			if (character == '/')
-				character = '\\';
-			else if (character >= 'A' && character <= 'Z')
-				character = static_cast<char>(character + 32);
-		}
+		std::string path = Util::ToLowerAscii(a_path);
+		std::ranges::replace(path, '/', '\\');
 		constexpr std::string_view kData = "data\\";
 		if (path.starts_with(kData))
 			path.erase(0, kData.size());

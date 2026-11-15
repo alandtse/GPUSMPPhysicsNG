@@ -16,15 +16,15 @@ namespace SmpPhysics
 					continue;
 				if (override.target == kOverrideColliders) {
 					for (BoneSphere& sphere : a_spheres[bone])
-						sphere.exemptMask = 0xFFFFFFFFu;
+						sphere.exemptMask = kAllMaskBits;
 					++changed;
 					continue;
 				}
 				const auto surface = std::ranges::find(a_surfaceNames, override.target);
-				if (surface == a_surfaceNames.end() || static_cast<std::size_t>(surface - a_surfaceNames.begin()) >= 32)
+				if (surface == a_surfaceNames.end() || static_cast<std::size_t>(surface - a_surfaceNames.begin()) >= kMaskedSurfaceLimit)
 					continue;
 				if (a_boneSurfaceMask.size() < a_boneShapeName.size())
-					a_boneSurfaceMask.resize(a_boneShapeName.size(), 0xFFFFFFFFu);
+					a_boneSurfaceMask.resize(a_boneShapeName.size(), kAllMaskBits);
 				a_boneSurfaceMask[bone] &= ~(1u << (surface - a_surfaceNames.begin()));
 				++changed;
 			}

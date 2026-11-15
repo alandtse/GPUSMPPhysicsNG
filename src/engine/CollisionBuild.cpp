@@ -1774,7 +1774,7 @@ bool SmpPhysicsFeature::BuildClaimCollision(const hdt::IMeshClaimContext& a_cont
 		std::vector<const RigShape*> surfaceShapes(a_collision.surfaces.size(), nullptr);
 		for (std::size_t index = 0; index < state.rigSurfaceShapes.size() && index < surfaceShapes.size(); ++index)
 			surfaceShapes[index] = &state.rigSurfaceShapes[index];
-		a_collision.boneSurfaceMask.assign(a_rig.bones.size(), 0xFFFFFFFFu);
+		a_collision.boneSurfaceMask.assign(a_rig.bones.size(), SmpPhysics::kAllMaskBits);
 		for (std::size_t bone = 0; bone < state.boneShape.size(); ++bone)
 			a_collision.boneSurfaceMask[bone] = SmpPhysics::AllowedSurfaceMask(state.boneShape[bone], surfaceShapes);
 	}
