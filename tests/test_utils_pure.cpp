@@ -114,10 +114,6 @@ TEST_CASE("SanitizeParams repairs every non-finite or out-of-range value", "[sol
 	params.gravity = nan;
 	params.gravityScale = std::numeric_limits<float>::infinity();
 	params.bodyScale = -2.0f;
-	params.fixedStep = 0.0f;
-	params.maxFrameTime = -1.0f;
-	params.maxAngularSpeed = nan;
-	params.maxSubSteps = 1000;
 	params.windFactor = nan;
 	params.wind = { 1.0f, 2.0f, 3.0f };
 
@@ -125,15 +121,8 @@ TEST_CASE("SanitizeParams repairs every non-finite or out-of-range value", "[sol
 	CHECK(clean.gravity == 0.0f);
 	CHECK(clean.gravityScale == 0.0f);
 	CHECK(clean.bodyScale == 1.0f);
-	CHECK(clean.fixedStep == Approx(1.0f / 60.0f));
-	CHECK(clean.maxFrameTime == 0.0f);
-	CHECK(clean.maxAngularSpeed == 0.0f);
-	CHECK(clean.maxSubSteps == 64);
 	CHECK(clean.windFactor == 0.0f);
 	CHECK(clean.wind.x == 0.0f);
 
-	params = {};
-	params.maxSubSteps = 0;
-	CHECK(SmpPhysics::SanitizeParams(params).maxSubSteps == 1);
 	CHECK(SmpPhysics::SanitizeParams(SmpPhysics::SolverParams{}).gravity == SmpPhysics::SolverParams{}.gravity);
 }

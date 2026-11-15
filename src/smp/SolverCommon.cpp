@@ -12,8 +12,6 @@ namespace SmpPhysics
 {
 	namespace
 	{
-		constexpr float kDefaultFixedStep = 1.0f / 60.0f;
-		constexpr int kMaxSubStepsLimit = 64;
 		constexpr float kIntervalSmoothing = 0.125f;  ///< Share of each new frame interval folded into the running average.
 	}
 
@@ -29,21 +27,11 @@ namespace SmpPhysics
 			a_params.dampingScale = 0.0f;
 		if (!std::isfinite(a_params.bodyScale) || a_params.bodyScale <= 0.0f)
 			a_params.bodyScale = 1.0f;
-		if (!std::isfinite(a_params.fixedStep) || a_params.fixedStep <= 0.0f)
-			a_params.fixedStep = kDefaultFixedStep;
-		if (!std::isfinite(a_params.maxFrameTime) || a_params.maxFrameTime < 0.0f)
-			a_params.maxFrameTime = 0.0f;
-		if (!std::isfinite(a_params.maxAngularSpeed) || a_params.maxAngularSpeed < 0.0f)
-			a_params.maxAngularSpeed = 0.0f;
 		if (!IsFiniteVector(a_params.wind) || !std::isfinite(a_params.windTime) || !std::isfinite(a_params.windFactor)) {
 			a_params.wind = {};
 			a_params.windTime = 0.0f;
 			a_params.windFactor = 0.0f;
 		}
-		if (a_params.maxSubSteps < 1)
-			a_params.maxSubSteps = 1;
-		if (a_params.maxSubSteps > kMaxSubStepsLimit)
-			a_params.maxSubSteps = kMaxSubStepsLimit;
 		return a_params;
 	}
 
@@ -76,24 +64,6 @@ namespace SmpPhysics
 			frame.steps[static_cast<std::size_t>(frame.count++)] = remaining;
 		accumulated = 0.0f;
 		return frame;
-	}
-
-	SubStepPlan PlanSubSteps(float a_dt, const SolverParams& a_params) noexcept
-	{
-		SubStepPlan plan;
-		if (!std::isfinite(a_dt) || a_dt <= 0.0f)
-			return plan;
-		const float frameTime = a_dt < a_params.maxFrameTime ? a_dt : a_params.maxFrameTime;
-		if (!(frameTime > 0.0f))
-			return plan;
-		float requestedSubSteps = std::ceil(frameTime / a_params.fixedStep);
-		if (!(requestedSubSteps > 1.0f))
-			requestedSubSteps = 1.0f;
-		if (requestedSubSteps > static_cast<float>(a_params.maxSubSteps))
-			requestedSubSteps = static_cast<float>(a_params.maxSubSteps);
-		plan.count = static_cast<int>(requestedSubSteps);
-		plan.step = frameTime / static_cast<float>(plan.count);
-		return plan;
 	}
 
 	void ProbeSpheres(const std::vector<std::vector<BoneSphere>>& a_spheres, const std::vector<Collider>& a_colliders, const std::vector<SkinnedSurface>& a_surfaces,

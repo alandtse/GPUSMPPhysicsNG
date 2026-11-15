@@ -9,11 +9,10 @@
 namespace SmpPhysics
 {
 	/**
-	 * @brief The stop ERP and CFM hdtSMP64 gives every constraint axis when its file does not set them.
+	 * @brief The stop CFM hdtSMP64 gives every angular constraint axis when its file does not set it.
 	 * @details SMP writes the angular motors' stop CFM directly while its linear axes keep Bullet's zero, which is
 	 *          what every recorded trace header carries.
 	 */
-	inline constexpr float kRigidStopErp = 0.2f;
 	inline constexpr float kRigidAngularStopCfm = 0.001f;
 
 	/**

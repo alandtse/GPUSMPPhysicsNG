@@ -1,7 +1,7 @@
 #pragma once
 
 // Shared Direct3D plumbing for the rigid-body compute-kernel tests: the device, the kernel compile, one packed step's
-// buffers and views, and a GPU timer. The WARP replay test and the hardware benchmark dispatch the same kernels.
+// buffers and views, and a GPU timer. The WARP replay test and the GPU contact tests dispatch the same kernels.
 
 #include "Utils/D3D.h"
 #include "shader_cache_dir.h"

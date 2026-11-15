@@ -22,27 +22,16 @@ namespace SmpPhysics
 		float gravityScale{ 1.0f };
 		float stiffnessScale{ 1.0f };
 		float dampingScale{ 1.0f };
-		float bodyScale{ 1.0f };  ///< The rig nodes' world scale: hdtSMP64 scales a body's mass by its cube and its inertia and angular springs by its fifth power
-		float fixedStep{ 1.0f / 60.0f };
-		int maxSubSteps{ 4 };
-		float maxFrameTime{ 0.1f };
-		float maxAngularSpeed{ 60.0f };  ///< rad/s
-		Vec3 wind{};                     ///< World wind velocity in Skyrim units per second; zero switches wind off
-		float windTime{};                ///< Gust clock in seconds, advanced once per frame by the caller
-		float windFactor{ 1.0f };        ///< The actor's wind exposure, 0 fully sheltered to 1 fully exposed
+		float bodyScale{ 1.0f };   ///< The rig nodes' world scale: hdtSMP64 scales a body's mass by its cube and its inertia and angular springs by its fifth power
+		Vec3 wind{};               ///< World wind velocity in Skyrim units per second; zero switches wind off
+		float windTime{};          ///< Gust clock in seconds, advanced once per frame by the caller
+		float windFactor{ 1.0f };  ///< The actor's wind exposure, 0 fully sheltered to 1 fully exposed
 	};
 
 	/** @brief Wind speed, in Skyrim units per second, that one unit of wind strength gives at full sky wind speed. */
 	inline constexpr float kWindSpeedPerStrength = 300.0f;
 	/** @brief Fastest wind a bone is exposed to, so a transient blast cannot overpower the joints. */
 	inline constexpr float kMaxWindSpeed = 900.0f;
-	/** @brief The substeps one frame is split into. A count below one means the frame is not stepped at all. */
-	struct SubStepPlan
-	{
-		int count{};
-		float step{};
-	};
-
 	/**
 	 * @brief How far, in Skyrim units, in front of a surface a hair sphere's contact already engages.
 	 * @details About one substep's fall under gravity, so a bone resting on a surface keeps its contact between
@@ -65,9 +54,6 @@ namespace SmpPhysics
 	inline constexpr float kProbeBehindReach = 8.0f;
 	/** @brief Distance behind a one-sided face past which a probe counts the sphere as behind it, a little over the armor allowance and skin. */
 	inline constexpr float kProbeLostBehind = 0.5f;
-
-	/** @brief The substeps the compute solver takes for a_dt: the fixed-step policy, with a count below one meaning the frame is not stepped. */
-	[[nodiscard]] SubStepPlan PlanSubSteps(float a_dt, const SolverParams& a_params) noexcept;
 
 	/**
 	 * @brief hdtSMP64's frame-to-step policy: SkyrimPhysicsWorld::doUpdate and SkinnedMeshWorld::stepSimulation.

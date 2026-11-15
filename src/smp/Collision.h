@@ -11,8 +11,6 @@ namespace SmpPhysics
 {
 	/** @brief Most per-vertex spheres one dynamic bone keeps; a bone with more hair vertices is thinned evenly. */
 	inline constexpr int kMaxContactSpheresPerBone = 64;
-	/** @brief Skin weight a vertex needs before DominantBone counts it as a member of a bone's cluster. */
-	inline constexpr float kMinimumBoneWeight = Util::kMinDominantBoneWeight;
 	/** @brief Half-extents a default head proxy starts from, in Skyrim units. */
 	inline constexpr float kDefaultHeadRadius = 9.0f;
 	/** @brief Radius of a neck capsule fitted between two skeleton nodes when no mesh is available, in Skyrim units. */
@@ -148,7 +146,7 @@ namespace SmpPhysics
 	/**
 	 * @brief The bone a vertex's skinning is dominated by.
 	 * @param a_boneCount How many bones the vertex's indices are valid within.
-	 * @return The bone Util::DominantSkinBone picks, or -1 when none reaches kMinimumBoneWeight.
+	 * @return The bone Util::DominantSkinBone picks, or -1 when none reaches Util::kMinDominantBoneWeight.
 	 */
 	[[nodiscard]] int DominantBone(const SkinnedVertex& a_vertex, int a_boneCount) noexcept;
 

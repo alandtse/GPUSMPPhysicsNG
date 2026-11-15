@@ -307,7 +307,7 @@ TEST_CASE("A vertex's dominant bone is its heaviest one above the weight thresho
 	REQUIRE(DominantBone(vertex, 3) == 1);
 
 	// A weight at the threshold counts, and an index past the bone count does not.
-	vertex.weight[1] = kMinimumBoneWeight;
+	vertex.weight[1] = Util::kMinDominantBoneWeight;
 	REQUIRE(DominantBone(vertex, 3) == 1);
 	REQUIRE(DominantBone(vertex, 1) == -1);
 	REQUIRE(DominantBone(WeightedVertex({}, 0, 0.4f), 3) == -1);

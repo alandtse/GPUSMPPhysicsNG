@@ -624,14 +624,14 @@ namespace SmpPhysics::RigidReference
 			const float upper = Component(a_joint.config->linear.upper, a_axis);
 			if (lower > upper) {
 				SetComponent(a_joint.linearError, a_axis, 0.0f);
-				a_joint.linearLimit[a_axis] = 0;
+				a_joint.linearLimit[a_axis] = kLimitFree;
 			} else if (lower == upper) {
 				SetComponent(a_joint.linearError, a_axis, a_value - lower);
-				a_joint.linearLimit[a_axis] = 3;
+				a_joint.linearLimit[a_axis] = kLimitEqual;
 			} else {
 				SetComponent(a_joint.linearError, a_axis, a_value - lower);
 				SetComponent(a_joint.linearErrorHi, a_axis, a_value - upper);
-				a_joint.linearLimit[a_axis] = 4;
+				a_joint.linearLimit[a_axis] = kLimitRange;
 			}
 		}
 
@@ -1208,8 +1208,6 @@ namespace SmpPhysics::RigidReference
 					continue;
 				body.linearVelocity = Scale(body.linearVelocity, std::pow(1.0f - body.linearDamping, a_timeStep));
 				body.angularVelocity = Scale(body.angularVelocity, std::pow(1.0f - body.angularDamping, a_timeStep));
-				Transform predicted;
-				IntegrateTransform(body.worldTransform, body.linearVelocity, body.angularVelocity, a_timeStep, predicted);
 			}
 		}
 

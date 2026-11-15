@@ -94,7 +94,7 @@ TEST_CASE("A joint carries its angular limits, springs and SMP's stop defaults",
 	CHECK(joint.angular[0].equilibrium == Approx(0.05f));
 	CHECK(joint.angular[0].stopCfm == Approx(kRigidAngularStopCfm));
 	CHECK(joint.linear.stopCfm.x == 0.0f);
-	CHECK(joint.linear.stopErp.x == Approx(kRigidStopErp));
+	CHECK(joint.linear.stopErp.x == Approx(0.2f));
 }
 
 TEST_CASE("A joint carries its linear window, spring and damping, scaled as SMP scales them", "[smpphysics][rigid_rig]")
