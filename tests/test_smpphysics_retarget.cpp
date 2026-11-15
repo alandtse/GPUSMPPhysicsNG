@@ -1,6 +1,7 @@
 // Unit tests for the claim-time rest retarget (src/smp/RestRetarget.cpp) and the grid query it uses.
 
 #include "smp/RestRetarget.h"
+#include "smp/SolverCommon.h"
 #include "smp/TriangleGrid.h"
 
 #include <catch2/catch_approx.hpp>
@@ -43,7 +44,7 @@ namespace
 </system>)XML";
 
 	constexpr RetargetLoad kNoGravity{ 0.0f, 1.0f };
-	constexpr RetargetLoad kGravity{ 687.7193f, 1.0f };
+	const RetargetLoad kGravity{ SolverParams{}.gravity, 1.0f };
 	constexpr float kBone = 20.0f;
 	constexpr float kTilt = 0.3f;  ///< the tilted fixture leans each bone this far outward from vertical, in radians
 
