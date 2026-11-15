@@ -19,7 +19,7 @@ everything else, so the two run side by side.
 - hdtSMP64 with plugin interface 2.2 or newer (mesh owner API and frame events), loaded before this plugin. Until the
   upstream pull requests [#479](https://github.com/DaymareOn/hdtSMP64/pull/479) and
   [#480](https://github.com/DaymareOn/hdtSMP64/pull/480) are released, use the
-  [alandtse/hdtSMP64](https://github.com/alandtse/hdtSMP64) fork.
+  [alandtse/hdtSMP64 preview build](https://github.com/alandtse/hdtSMP64/releases/tag/v3.0.0-ci-gpusmp-3354120).
 - Optional: [SKSE Menu Framework](https://github.com/alandtse/SKSE-Menu-Framework-3) for the in-game settings page.
   Without it, edit `Settings.json`.
 - Optional: [Community Shaders / Open Shaders](https://github.com/alandtse/open-shaders) for wind; without it the
