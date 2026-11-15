@@ -8,8 +8,6 @@ namespace SmpPhysics
 {
 	/** @brief Length below which a vector is treated as having no usable direction. */
 	inline constexpr float kDirectionEpsilon = 1e-8f;
-	/** @brief Rotation magnitude below which FromRotationVector uses its series expansion, because sin(a/2)/a loses precision to cancellation there. */
-	inline constexpr float kSmallRotationAngle = 1e-4f;
 	/** @brief Cosine above which Slerp falls back to a normalized lerp, because the sine normalizer vanishes on nearly parallel inputs. */
 	inline constexpr float kSlerpLinearThreshold = 0.9995f;
 	/** @brief Largest-squared-component below which FromRotationMatrix treats a matrix as degenerate, because its 1/sqrt divisor would otherwise reach infinity. */
@@ -149,17 +147,6 @@ namespace SmpPhysics
 		const float half = a_angle * 0.5f;
 		const float sine = std::sin(half);
 		return { std::cos(half), direction.x * sine, direction.y * sine, direction.z * sine };
-	}
-
-	/** @brief Exponential map: axis scaled by angle. Stable for angles down to zero. */
-	[[nodiscard]] inline Quat FromRotationVector(const Vec3& a_rotation) noexcept
-	{
-		const float angle = Length(a_rotation);
-		if (angle < kSmallRotationAngle)
-			return Quat{ 1.0f, a_rotation.x * 0.5f, a_rotation.y * 0.5f, a_rotation.z * 0.5f }.Normalized();
-		const float half = angle * 0.5f;
-		const float sineScale = std::sin(half) / angle;
-		return { std::cos(half), a_rotation.x * sineScale, a_rotation.y * sineScale, a_rotation.z * sineScale };
 	}
 
 	/** @brief Rotation vector of a quaternion, taking the shorter of the two equivalent rotations. */

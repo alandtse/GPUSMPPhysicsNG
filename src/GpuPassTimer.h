@@ -113,8 +113,6 @@ namespace GpuPassTimer
 		}
 	}
 
-	[[nodiscard]] inline bool IsEnabled() { return detail::GetState().enabled.load(std::memory_order_relaxed); }
-
 	/** @brief Starts or stops measuring; stopping only raises a flag, because the context belongs to the thread that issues passes and NextFrame() closes the frames there. */
 	inline void SetEnabled(bool a_enabled)
 	{

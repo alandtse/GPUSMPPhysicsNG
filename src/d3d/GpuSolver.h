@@ -149,11 +149,9 @@ namespace SmpPhysics
 		[[nodiscard]] std::optional<std::uint32_t> BoneOffset(std::uint64_t a_token) const;
 		/** @return Whether a_token has been stepped at least once, so its world poses are valid. */
 		[[nodiscard]] bool PoseReady(std::uint64_t a_token) const;
-		/** @brief The view over every tree's per-frame input; its current translation is the tree's kinematic parent position. */
-		[[nodiscard]] winrt::com_ptr<ID3D11ShaderResourceView> InputsView() const noexcept { return inputsSrv; }
 		/**
-		 * @return For each rig bone of a_token, the slot of the input record of the tree the bone belongs to (the
-		 *         same slot as the tree's kinematic parent in InputsView), or kNoTree for a kinematic bone.
+		 * @return For each rig bone of a_token, the slot of the input record of the tree the bone belongs to,
+		 *         or kNoTree for a kinematic bone.
 		 */
 		[[nodiscard]] std::vector<std::uint32_t> BoneTreeSlots(std::uint64_t a_token) const;
 		static constexpr std::uint32_t kNoTree = GpuRig::kNoTree;

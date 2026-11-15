@@ -80,7 +80,6 @@ namespace SmpPhysics
 		[[nodiscard]] const RigidGpu::IslandSizes& IslandSizeSummary() const noexcept { return islandSizes; }
 		[[nodiscard]] const std::string& UnavailableReason() const noexcept { return unavailableReason; }
 		[[nodiscard]] std::size_t ClaimCount() const noexcept { return claims.size(); }
-		[[nodiscard]] bool HasClaim(std::uint64_t a_token) const { return claimIndex.contains(a_token); }
 
 		/** @return false, registering nothing, when the world cannot be packed or the backend is unavailable. */
 		[[nodiscard]] bool AddClaim(ClaimSetup&& a_setup, std::string& a_reason);

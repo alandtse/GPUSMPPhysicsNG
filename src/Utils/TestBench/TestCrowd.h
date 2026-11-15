@@ -71,7 +71,6 @@ namespace TestBench
 		 * @details Turning it on dresses the player in what the crowd wears now; turning it off puts the player's own outfit back and takes the cloak off.
 		 */
 		void SetIncludePlayer(bool a_include);
-		[[nodiscard]] bool IncludesPlayer() const noexcept { return includePlayer.load(std::memory_order_relaxed); }
 		/** @brief Dresses every character in the next (a_step 1) or previous body armor of ArmorNames(), with weapons and other gear off and what hooks keep left on. */
 		void CycleArmor(int a_step);
 		/** @brief Dresses every character in the body armor at a_index of ArmorNames(), as CycleArmor does. */
@@ -112,16 +111,12 @@ namespace TestBench
 		 * @param a_index Which character, in spawn order; -1 turns them all.
 		 */
 		void Turn(int a_index, float a_degrees);
-		/** @brief Whether the crowd is stripped or in cycled armor rather than its own outfit. */
-		[[nodiscard]] bool IsStripped() const noexcept { return stripped.load(std::memory_order_relaxed); }
 		/** @brief Plays the idle with this editor ID on every character standing now, and on each character spawned later; empty plays the default. */
 		void PlayAnimation(std::string a_editorId);
 		/** @brief Whether characters spawn animating, which keeps their AI running; off leaves them frozen, so a feature can be tested on its own. */
 		void SetAnimateOnSpawn(bool a_animate) { animateOnSpawn.store(a_animate, std::memory_order_relaxed); }
-		[[nodiscard]] bool IsAnimateOnSpawn() const noexcept { return animateOnSpawn.load(std::memory_order_relaxed); }
 		/** @brief Whether a character plays its idle again whenever the animation ends, so a dance repeats indefinitely. */
 		void SetLoopAnimation(bool a_loop);
-		[[nodiscard]] bool IsLoopAnimation() const noexcept { return loopAnimation.load(std::memory_order_relaxed); }
 		/** @brief The editor ID of the idle characters play when spawned; a Cicero idle until one is chosen. */
 		[[nodiscard]] std::string Animation() const;
 		/** @brief What one test character wears now: its form ID and the names of its worn armor and weapons, and of what hooks keep on it. */

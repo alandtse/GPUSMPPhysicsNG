@@ -212,11 +212,6 @@ namespace Util
 		compileFailures.clear();
 	}
 
-	const std::wstring& GetShaderRoot()
-	{
-		return shaderRoot;
-	}
-
 	winrt::com_ptr<ID3DBlob> CompileShaderBlob(const wchar_t* FilePath, const std::vector<std::pair<const char*, const char*>>& Defines, const char* ProgramType, const char* Program)
 	{
 		const std::filesystem::path source = Resolve(FilePath);
