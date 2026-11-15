@@ -18,7 +18,7 @@ namespace
 	constexpr auto kQueryTimeout = std::chrono::milliseconds(5000);
 
 	constexpr const char* kToolDescriptor =
-		R"({"description":"GPUSMPPhysicsNG commands and read-only queries. Owners: SmpPhysics (the plugin itself: status, solverBones, reevaluate, setClaimEnabled, setClaimSolver, probes and audits) and TestCrowd (spawnTestCrowd, clearTestCrowd, outfits, animations and hair colours for a crowd of test characters). Actions: listCommands/listQueries (param shortName; with none they list every owner), invokeCommand (queued for the game thread) and invokeQuery (waits up to 5000 ms and returns the result). Unknown owners or names return a plain error.",)"
+		R"({"description":"GPUSMPPhysicsNG commands and read-only queries. Owners: SmpPhysics (the plugin itself: status, solverBones, reevaluate, setClaimEnabled, probes and audits) and TestCrowd (spawnTestCrowd, clearTestCrowd, outfits, animations and hair colours for a crowd of test characters). Actions: listCommands/listQueries (param shortName; with none they list every owner), invokeCommand (queued for the game thread) and invokeQuery (waits up to 5000 ms and returns the result). Unknown owners or names return a plain error.",)"
 		R"("inputSchema":{"type":"object","properties":{)"
 		R"("action":{"type":"string","enum":["listCommands","listQueries","invokeCommand","invokeQuery"],"description":"List registered actions, queue a command, or wait for a query."},)"
 		R"("shortName":{"type":"string","description":"SmpPhysics or TestCrowd; omit to list the owners."},)"
@@ -46,7 +46,7 @@ namespace
 		});
 		if (future.wait_for(kQueryTimeout) != std::future_status::ready) {
 			cancelled->store(true, std::memory_order_release);
-			return json{ { "error", "the game thread did not run the query within 5000 ms (mid-load?)" } };
+			return json{ { "error", "the game thread did not run the query within " + std::to_string(kQueryTimeout.count()) + " ms (mid-load?)" } };
 		}
 		return future.get();
 	}

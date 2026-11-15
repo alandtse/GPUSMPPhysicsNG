@@ -172,7 +172,7 @@ namespace Util::BodyCapsules
 				radii.palm = std::clamp(palm, MinFitRadius, MaxPalmFitRadius);
 			handRadii[side] = radii;
 		}
-		logger::info("[Fur Shells] Fitted hand capsule radii from {} meshes: fingers {:.2f}, palm {:.2f}", meshes, GetAverageFingerRadius(), GetAveragePalmRadius());
+		logger::info("[BodyCapsules] Fitted hand capsule radii from {} meshes: fingers {:.2f}, palm {:.2f}", meshes, GetAverageFingerRadius(), GetAveragePalmRadius());
 	}
 
 	void Tracker::Push(Capsule a_capsule, size_t a_index)
@@ -239,11 +239,11 @@ namespace Util::BodyCapsules
 				if (handNodes[side].nodes[index])
 					++handNodesFound;
 				else if (root)
-					logger::debug("[Fur Shells] Hand node not found: {}", name);
+					logger::debug("[BodyCapsules] Hand node not found: {}", name);
 			}
 		}
 		if (root)
-			logger::info("[Fur Shells] Found {} of {} hand and finger nodes in the {} skeleton", handNodesFound, handNodes.size() * HandNodeCount, vrik ? "third-person" : "first-person");
+			logger::info("[BodyCapsules] Found {} of {} hand and finger nodes in the {} skeleton", handNodesFound, handNodes.size() * HandNodeCount, vrik ? "third-person" : "first-person");
 	}
 
 	void Tracker::AddHandCapsules(RE::Actor* a_player, bool a_left)

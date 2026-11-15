@@ -47,7 +47,7 @@ namespace TestBench
 	/**
 	 * @brief Developer tool: characters standing in front of the player, made from NPC bases, for testing how a feature renders characters.
 	 * @details Spawn and Clear queue their work for the game thread, so they are safe to call from the menu or a devbench command. A feature
-	 *          adds its own touches through CrowdHooks; the crowd itself knows nothing about hair, fur or weather.
+	 *          adds its own touches through CrowdHooks; the crowd itself knows nothing about hair or weather.
 	 */
 	class TestCrowd
 	{
@@ -64,7 +64,7 @@ namespace TestBench
 		void Spawn(std::size_t a_count, std::vector<std::uint32_t> a_bases = {});
 		/** @brief Removes every character this tool spawned. */
 		void Clear();
-		/** @brief Takes armor and weapons off the characters standing now, except what hooks keep,, or puts it back; characters spawned later start stripped while it is on. */
+		/** @brief Takes armor and weapons off the characters standing now, except what hooks keep, or puts it back; characters spawned later start stripped while it is on. */
 		void SetStripped(bool a_stripped);
 		/**
 		 * @brief Makes the outfit controls (stripping, armor and cloak) act on the player as well as the spawned characters, or not.

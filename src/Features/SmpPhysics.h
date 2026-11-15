@@ -40,6 +40,7 @@ namespace Util::BodyCapsules
 /** @brief Bounds of the user-facing settings, shared by the settings page and the feature's own clamping. */
 namespace SmpPhysicsLimits
 {
+	constexpr int kMaxDebugActors = 8;
 	constexpr float kMinSimulationDistance = 100.0f;
 	constexpr float kMaxSimulationDistance = 20000.0f;
 	constexpr int kMinClaims = 1;
@@ -197,8 +198,9 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] json KinematicCheckJson(const json& a_args) const;
 	/** @brief Reports, on demand, the collision proxies this feature built for an actor and how deep its hair mesh sinks into a target mesh. Args: actorFormID, optionally with hairMesh and targetMesh together. */
 	[[nodiscard]] json CollisionAuditJson(const json& a_args) const;
-	/** @brief Arms a per-frame capture of those poses, taken right after the claims are stepped. Args: actorFormID, prefix, frames. */
+	/** @brief Moves a test character so a strand of its hair lies in the cast HIGGS makes from a player hand's palm, for grab tests with injected controllers. */
 	void PlaceCrowdHairAtHand(const json& a_args);
+	/** @brief Arms a per-frame capture of the solver's poses, taken right after the claims are stepped. Args: actorFormID, prefix, frames. */
 	void StartBoneRecording(const json& a_args);
 	/** @brief The frames captured so far by StartBoneRecording. */
 	[[nodiscard]] json RecordedBonesJson() const;
@@ -479,11 +481,11 @@ private:
 	std::vector<SmpPhysics::DebugSegment> debugReachSegments;  ///< The strands within reach of a hand this frame. Guarded by stateMutex.
 	/** @brief Collects the lines the grab debug overlay draws from this frame's grabs, reach and hand contacts. Called with stateMutex held. */
 	void UpdateGrabDebug();
-	/** @brief Appends each of a claim's joints as a line from its parent bone to the bone, orange where its length is off its rest length. */
 	/** @brief Appends the skeletons of the actors near the camera, and the player's hand skeletons. */
 	static void AppendSkeletonLines(std::vector<SmpPhysics::DebugSegment>& a_out, int a_maxActors);
 	/** @brief Draws the meshes hdtSMP64 simulates. Called with stateMutex held. */
 	void AppendDeclinedLines(std::vector<SmpPhysics::DebugSegment>& a_out);
+	/** @brief Appends each of a claim's joints as a line from its parent bone to the bone, orange where its length is off its rest length. */
 	static void AppendJointLines(const Claim& a_claim, std::vector<SmpPhysics::DebugSegment>& a_out, const std::vector<DebugGrabBone>& a_grabBones);
 	/** @brief Appends the edges of a claim's collision meshes (worn armor, head) that lie within reach of its hair. */
 	static void AppendSurfaceEdgesNearHair(const Claim& a_claim, std::vector<SmpPhysics::DebugSegment>& a_out);
@@ -496,7 +498,6 @@ private:
 	[[nodiscard]] json HeldStrandsJson() const;
 	/** @brief Per claim, how far the simulated hair is from where the animation alone would put it, for checking that the overlays and the grab see the solver's pose. */
 	[[nodiscard]] json PoseCheckJson(const json& a_args) const;
-	/** @brief Moves a test character so a strand of its hair lies in the cast HIGGS makes from a player hand's palm, for grab tests with injected controllers. */
 
 	/** @brief A strand held without a hand, for checking the pin from devbench; see the holdStrand command. */
 	struct StrandProbe
@@ -507,8 +508,9 @@ private:
 	};
 	StrandProbe strandProbe;  ///< Guarded by stateMutex.
 	void SetStrandProbe(const json& a_args);
-	/** @brief Developer-mode menu section: the debug overlays and the hand contact measurement. */
+	/** @brief Picks the nearby body capsules a claim's hair collides with this frame and writes them into the claim. Called with stateMutex held. */
 	void UpdateExternalColliders(Claim& a_claim);
+	/** @brief Places a stand-in capsule beside an actor so the hand contact path can be checked without a hand. Args: enabled, actorFormID, length, radius, offset. */
 	void SetBodyContactProbe(const json& a_args);
 	/** @brief Sends a claim back to the pose the engine animates and has the next GPU frame restart it from rest. */
 	void RestartClaim(Claim& a_claim);

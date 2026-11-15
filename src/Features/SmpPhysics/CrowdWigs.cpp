@@ -7,8 +7,6 @@
 #include <optional>
 #include <span>
 
-#define I18N_KEY_PREFIX "feature.smp_physics."
-
 namespace SmpPhysics
 {
 	namespace
@@ -245,5 +243,3 @@ namespace SmpPhysics
 		a_crowd.SetReport(std::format("Restored the natural hair colours of {} characters' bases and refreshed {} characters.", restored, refreshed));
 	}
 }
-
-#undef I18N_KEY_PREFIX

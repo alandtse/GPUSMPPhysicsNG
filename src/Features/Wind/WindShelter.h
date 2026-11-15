@@ -16,8 +16,7 @@ namespace WindShelter
 	/**
 	 * @brief The three rays the world's shelter is estimated from.
 	 * @details A level-ish ray in the wind's heading catches the wall or hill the wind is running into, and two
-	 *          rays 20 degrees either side and higher catch the obstacle's width and height; the weights were fitted
-	 *          by tools/hair-wind-shelter-study.py.
+	 *          rays 20 degrees either side and higher catch the obstacle's width and height.
 	 */
 	inline constexpr std::array<Ray, 3> kRays{ Ray{ 0.0f, 6.0f, 0.55f }, Ray{ -20.0f, 14.0f, 0.225f }, Ray{ 20.0f, 14.0f, 0.225f } };
 	/** @brief A hit this close on the first ray is a wall against the point, which shelters fully whatever its height. */

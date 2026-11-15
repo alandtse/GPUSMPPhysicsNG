@@ -34,8 +34,6 @@
 #include <string>
 #include <utility>
 
-#define I18N_KEY_PREFIX "feature.smp_physics."
-
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	SmpPhysicsFeature::Settings,
 	Enabled,
@@ -121,7 +119,6 @@ namespace
 	constexpr float kSphereTouchTolerance = 0.3f;              ///< A hair sphere this close to a surface, past its radius and the surface margin, counts as resting on it in the collider overlay, in game units.
 	constexpr float kSphereReportGap = 2.0f;                   ///< Hair spheres with more clear space than this to the nearest surface are left out of the collider overlay, in game units.
 	constexpr float kDebugDetailDistance = 400.0f;             ///< Claims farther than this draw no collision mesh edges or sphere rings, in game units.
-	constexpr int kDebugMaxActorsLimit = 16;                   ///< Upper end of the debug overlay actor slider.
 	constexpr float kParallelAxisEpsilon = 1.0e-3f;            ///< A cross product shorter than this means the two directions are parallel.
 	constexpr float kDebugMaxDistance = 1500.0f;               ///< Claims and actors farther from the camera than this are left out of the debug overlays, in game units.
 	constexpr int kSkeletonMaxDepth = 32;                      ///< Deepest node nesting the skeleton overlay follows.
@@ -289,7 +286,7 @@ void SmpPhysicsFeature::LoadSettings(json& a_json)
 	settings.WindStrength = Util::ClampFinite(settings.WindStrength, 0.0f, kMaxWindStrength, Settings{}.WindStrength);
 	settings.StiffnessScale = Util::ClampFinite(settings.StiffnessScale, kMinScale, kMaxScale, Settings{}.StiffnessScale);
 	settings.DampingScale = Util::ClampFinite(settings.DampingScale, kMinScale, kMaxScale, Settings{}.DampingScale);
-	settings.DebugMaxActors = std::clamp(settings.DebugMaxActors, 1, kDebugMaxActorsLimit);
+	settings.DebugMaxActors = std::clamp(settings.DebugMaxActors, 1, SmpPhysicsLimits::kMaxDebugActors);
 }
 
 void SmpPhysicsFeature::SaveSettings(json& a_json)
@@ -715,7 +712,7 @@ json SmpPhysicsFeature::BuildStatusJson() const
 		{
 			const SmpPhysics::DebugLines::Stats lineStats = debugLines.GetStats();
 			result["debugLines"] = { { "requested", lineStats.requested }, { "drawn", lineStats.drawn }, { "stateFailures", lineStats.stateFailures }, { "failed", lineStats.failed },
-				{ "developerMode", globals::state->IsDeveloperMode() }, { "shaderCacheEnabled", false } };
+				{ "developerMode", globals::state->IsDeveloperMode() } };
 		}
 		result["gpuSkinning"] = { { "enabled", settings.GpuSkinning }, { "skinInstances", gpuSkinning.SkinCount() }, { "appliedSinceLastStatus", gpuSkinning.TakeAppliedCount() }, { "batched", settings.BatchSkinPalette }, { "batchedSkinInstances", gpuSkinning.BatchedSkinCount() } };
 
@@ -3241,5 +3238,3 @@ bool SmpPhysicsFeature::StepClaim(Claim& a_claim, const RE::NiPoint3& a_cameraPo
 	a_claim.stepMicroseconds = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
 	return true;
 }
-
-#undef I18N_KEY_PREFIX

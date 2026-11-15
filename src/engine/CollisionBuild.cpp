@@ -38,10 +38,10 @@ namespace
 	using SmpPhysics::Transform;
 	using SmpPhysics::Vec3;
 
-	/** @brief A dynamic tri shape stores its morphing vertices as 16 bytes each: a float3 and a pad. */
 	constexpr std::array<float, 5> kBehindDepthEdges{ 1.0f, 2.0f, 4.0f, 8.0f, 16.0f };  ///< Upper bounds, in game units, of the depth buckets a behind-face report counts into.
 	constexpr float kReportRoundingScale = 100.0f;                                      ///< Reported depths round to hundredths.
 	constexpr std::size_t kDeepestSpheresReported = 12;
+	/** @brief A dynamic tri shape stores its morphing vertices as 16 bytes each: a float3 and a pad. */
 	constexpr std::uint32_t kDynamicVertexStride = 16;
 	/** @brief Vertices a single shape may contribute; a runaway count would otherwise exhaust memory at claim time. */
 	constexpr std::uint32_t kMaximumShapeVertices = 200000;
@@ -49,7 +49,6 @@ namespace
 	constexpr std::uint32_t kMaximumSkinBones = 256;
 	/** @brief Body vertices one claim may pose before it stops measuring and keeps its default radii. */
 	constexpr std::size_t kMaximumBodyVertices = 400000;
-	/** @brief Starting value of the hash a body scan carries, so an empty walk still has a stable signature. */
 	/** @brief Seconds between two hashes of the meshes an actor is wearing, on the path that notices an armour swap. */
 	constexpr double kRefitCheckSeconds = 1.0;
 	using SmpPhysics::kHeadBoneName;

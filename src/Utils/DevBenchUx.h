@@ -121,14 +121,6 @@ namespace Util::DevBenchUx
 #define FEATURE_QUERY(Name, Desc, Fn) \
 	::Util::DevBenchUx::Registry::GetSingleton().RegisterQuery(GetShortName(), Name, Desc, +Fn)
 
-/** @brief Registers a command whose live state belongs to the render thread. */
-#define FEATURE_RENDER_COMMAND(Name, Desc, Fn) \
-	::Util::DevBenchUx::Registry::GetSingleton().RegisterCommand(GetShortName(), Name, Desc, +Fn, ::Util::DevBenchUx::ExecutionThread::Render)
-
-/** @brief Registers a query whose live state belongs to the render thread. */
-#define FEATURE_RENDER_QUERY(Name, Desc, Fn) \
-	::Util::DevBenchUx::Registry::GetSingleton().RegisterQuery(GetShortName(), Name, Desc, +Fn, ::Util::DevBenchUx::ExecutionThread::Render)
-
 /**
  * @brief Registers a devbench command under a tool owner that is not a Feature.
  * @param Owner A short name that must not equal any Feature::GetShortName(); the owner is refused otherwise.
