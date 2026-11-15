@@ -11,6 +11,8 @@ solver's result. One DLL for **SE, AE, and VR**.
 It claims only the meshes whose physics file describes a bone chain; hdtSMP64 keeps simulating
 everything else, so the two run side by side.
 
+![Twenty dancers in the Yue Qingshu Dress, hair and cloth simulated on the GPU](docs/img/hero-dancers.jpg)
+
 ## Requirements
 
 - **SE/AE**: [SKSE64](https://skse.silverlock.org/), [Address Library](https://www.nexusmods.com/skyrimspecialedition/mods/32444)
@@ -72,6 +74,10 @@ without spawning a single NPC by hand:
   animations on all of them. Useful for checking a wig, a cloak or a whole armor list against the solver.
 - **Developer**: debug overlays for colliders, skeletons and joints (joints are coloured by who simulates them: GPU,
   claimed but not stepped, inactive, or hdtSMP64 on the CPU; stretched joints are marked), and a shader reload.
+
+![Joint overlay on dancing characters: wig strands and skirt chains drawn in green](docs/img/joint-overlay.jpg)
+
+![Claims page listing each simulated mesh with its bone count](docs/img/ui-claims.jpg)
 
 ## Performance
 
