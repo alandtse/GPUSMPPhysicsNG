@@ -36,6 +36,8 @@ namespace SmpPhysics
 		static constexpr std::uint32_t kMaximumBones = 80;                     ///< The engine's per draw limit; a skin instance with more bones is left to the engine.
 		static constexpr std::uint32_t kStaticBone = SmpPhysics::kStaticBone;  ///< Marks a bone the solver does not simulate.
 		static constexpr std::uint32_t kBytesPerBone = 3 * 16;
+		static constexpr std::uint32_t kConstantRegisterBytes = 16;     ///< One float4 constant register.
+		static constexpr std::uint32_t kFloatsPerWorldRecord = 8;       ///< A solver world transform: rotation quaternion then translation and padding.
 		static constexpr std::uint32_t kPaletteBytes = 240 * 16;        ///< What the shaders declare for b10 and b9.
 		static constexpr std::uint32_t kBatchPaletteSlots = 768;        ///< Skin instances the batched palette serves; any further one keeps the per-draw path.
 		static constexpr std::uint32_t kBatchStaticCapacity = 4096;     ///< Bones outside the solver the batched palette can follow.

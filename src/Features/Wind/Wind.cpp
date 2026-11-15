@@ -50,8 +50,10 @@ bool Wind::SamplePublishedWind(std::span<const float3> a_worldPositions, std::sp
 	if (!cell || cell->IsInteriorCell())
 		return false;
 
-	const float degrees = sky->currentWeather ? sky->currentWeather->data.windDirection * 180.0f / 256.0f : sky->windAngle * 180.0f / 256.0f;
-	const float heading = (degrees - 90.0f) * std::numbers::pi_v<float> / 180.0f;
+	constexpr float kWindAngleUnitsPerHalfTurn = 256.0f;  ///< The game stores a wind angle as 0..256 over a half turn.
+	constexpr float kWindHeadingOffsetDegrees = 90.0f;
+	const float degrees = (sky->currentWeather ? sky->currentWeather->data.windDirection : sky->windAngle) * 180.0f / kWindAngleUnitsPerHalfTurn;
+	const float heading = (degrees - kWindHeadingOffsetDegrees) * std::numbers::pi_v<float> / 180.0f;
 	const float3 wind{ -std::sin(heading) * sky->windSpeed, std::cos(heading) * sky->windSpeed, 0.0f };
 	for (std::size_t index = 0; index < a_worldPositions.size(); ++index)
 		a_samples[index].windExcludingHavokImpulses = wind;

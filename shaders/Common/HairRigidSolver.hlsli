@@ -4,7 +4,7 @@
 // HLSL counterpart of RigidReference.cpp (hdtSMP64's Bullet 3.25 step); names and operation order match so the two diff.
 //
 // FXC cannot index a struct's array member at runtime, so arrays are named fields with accessors, and an inout
-// parameter is stored back whole. Unrolled copies of the row builder crash FXC, so the caller walks the axes on a count.
+// parameter is stored back whole.
 
 namespace HairRigidSolver
 {
@@ -748,7 +748,7 @@ namespace HairRigidSolver
 		float y = 0.0f;
 		float x = ax;
 		if (ax > 2.414213562373095f) {
-			y = 1.5707963267948966f;
+			y = kHalfPi;
 			x = -1.0f / ax;
 		} else if (ax > 0.4142135623730951f) {
 			y = 0.7853981633974483f;
@@ -763,11 +763,11 @@ namespace HairRigidSolver
 	float PreciseAtan2(float a_y, float a_x)
 	{
 		if (a_x == 0.0f)
-			return a_y > 0.0f ? 1.5707963267948966f : (a_y < 0.0f ? -1.5707963267948966f : 0.0f);
+			return a_y > 0.0f ? kHalfPi : (a_y < 0.0f ? -kHalfPi : 0.0f);
 		const float angle = PreciseAtan(a_y / a_x);
 		if (a_x > 0.0f)
 			return angle;
-		return a_y >= 0.0f ? angle + 3.141592653589793f : angle - 3.141592653589793f;
+		return a_y >= 0.0f ? angle + kPi : angle - kPi;
 	}
 
 	/** @brief std::asin for the joint Euler extraction. */

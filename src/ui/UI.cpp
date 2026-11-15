@@ -45,6 +45,7 @@ namespace SettingsUi
 				row.items = row.itemsFn();
 			constexpr std::size_t kMaxRows = 300;
 			constexpr float kWidth = 420.0f;
+			constexpr float kListBoxRows = 8.0f;
 			ImGuiMCP::TextUnformatted(row.label.c_str());
 			Tip(row.tooltip);
 			ImGuiMCP::SetNextItemWidth(kWidth);
@@ -63,7 +64,7 @@ namespace SettingsUi
 			const int selected = row.selectedFn ? row.selectedFn() : *row.intValue;
 			const bool scroll = selected != row.lastSelected;
 			bool clicked = false;
-			if (ImGuiMCP::BeginListBox(a_id.c_str(), { kWidth, 8.0f * ImGuiMCP::GetTextLineHeightWithSpacing() })) {
+			if (ImGuiMCP::BeginListBox(a_id.c_str(), { kWidth, kListBoxRows * ImGuiMCP::GetTextLineHeightWithSpacing() })) {
 				std::size_t shown = 0;
 				std::size_t hidden = 0;
 				for (std::size_t index = 0; index < row.items.size(); ++index) {
@@ -161,9 +162,10 @@ namespace SettingsUi
 								row.joinedItems.push_back('\0');
 							}
 							if (row.joinedItems.empty())
-								row.joinedItems.assign("(none)", 7);
+								row.joinedItems.assign("(none)", sizeof("(none)"));
 						}
-						ImGuiMCP::SetNextItemWidth(300.0f);
+						constexpr float kComboWidth = 300.0f;
+						ImGuiMCP::SetNextItemWidth(kComboWidth);
 						changed = ImGuiMCP::Combo(id.c_str(), row.intValue, row.joinedItems.c_str(), -1);
 						Tip(row.tooltip);
 					}

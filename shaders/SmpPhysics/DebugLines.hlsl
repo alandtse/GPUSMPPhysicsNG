@@ -46,6 +46,11 @@ struct VS_OUTPUT
 };
 
 #ifdef VSHADER
+static const uint kVerticesPerLine = 6;
+static const float kMinimumClipW = 1e-4;
+static const float kDirectionEpsilon = 1e-8;
+static const float kNoiseScale = 52.9829189;  // interleaved gradient noise
+static const float2 kNoiseDirection = float2(0.06711056, 0.00583715);
 static const uint kCornerEndpoint[6] = { 0, 0, 1, 1, 0, 1 };
 static const float kCornerSide[6] = { -1.0, 1.0, -1.0, -1.0, 1.0, 1.0 };
 
@@ -57,8 +62,8 @@ VS_OUTPUT VSMain(uint a_vertexId : SV_VertexID, uint a_instanceId : SV_InstanceI
 	uint eyeIndex = 0;
 #	endif
 
-	uint lineIndex = a_vertexId / 6;
-	uint corner = a_vertexId % 6;
+	uint lineIndex = a_vertexId / kVerticesPerLine;
+	uint corner = a_vertexId % kVerticesPerLine;
 	float4 a = Vertices[lineIndex * 2];
 	float4 b = Vertices[lineIndex * 2 + 1];
 	float4 self = kCornerEndpoint[corner] != 0 ? b : a;
@@ -74,15 +79,15 @@ VS_OUTPUT VSMain(uint a_vertexId : SV_VertexID, uint a_instanceId : SV_InstanceI
 	eyeViewport.x *= 0.5;
 #	endif
 
-	float2 ndcA = clipA.xy / max(clipA.w, 1e-4);
-	float2 ndcB = clipB.xy / max(clipB.w, 1e-4);
+	float2 ndcA = clipA.xy / max(clipA.w, kMinimumClipW);
+	float2 ndcB = clipB.xy / max(clipB.w, kMinimumClipW);
 	float2 screenDirection = (ndcB - ndcA) * eyeViewport;
 	float lengthSquared = dot(screenDirection, screenDirection);
-	screenDirection = lengthSquared > 1e-8 ? screenDirection * rsqrt(lengthSquared) : float2(0.0, 1.0);
+	screenDirection = lengthSquared > kDirectionEpsilon ? screenDirection * rsqrt(lengthSquared) : float2(0.0, 1.0);
 	float2 perpendicular = float2(-screenDirection.y, screenDirection.x);
 
 	float focal = CameraProj[eyeIndex][1][1];
-	float widthPixels = max(MinimumPixelWidth, self.w * focal * eyeViewport.y * 0.5 / max(clip.w, 1e-4));
+	float widthPixels = max(MinimumPixelWidth, self.w * focal * eyeViewport.y * 0.5 / max(clip.w, kMinimumClipW));
 	float side = kCornerSide[corner];
 	clip.xy += perpendicular * (widthPixels * side) / eyeViewport * clip.w;
 
@@ -108,7 +113,7 @@ float4 PSMain(VS_OUTPUT a_input) : SV_Target0
 {
 	// A line is thinner than a few pixels, so its edge fades by stochastic coverage.
 	float coverage = saturate(1.0 - abs(a_input.Side));
-	float noise = frac(52.9829189 * frac(dot(a_input.Position.xy, float2(0.06711056, 0.00583715))));
+	float noise = frac(kNoiseScale * frac(dot(a_input.Position.xy, kNoiseDirection)));
 	if (coverage <= noise)
 		discard;
 	return float4(LineColor.xyz, 1.0);

@@ -10,7 +10,8 @@ struct HairBoneWorld
 
 namespace HairSkinPalette
 {
-	static const uint kBytesPerBone = 48;
+	static const uint kBytesPerRow = 16;
+	static const uint kBytesPerBone = 3 * kBytesPerRow;
 	static const float kQuaternionEpsilon = 1e-30;
 
 	float3x3 QuatToMatrix(float4 a_wxyz)

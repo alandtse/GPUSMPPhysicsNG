@@ -135,8 +135,11 @@ namespace
 	constexpr float kDebugInfluenceMargin = 2.0f;              ///< How far outside a hand capsule a hair segment still counts as pushed by it in the grab overlay, in game units.
 	constexpr float kTipSegmentExtension = 0.5f;               ///< How far past a tip bone's origin its strand reaches, as a share of the segment that arrives at it.
 	constexpr float kHairBoundMargin = 6.0f;                   ///< Added to the farthest bone from the hair's centre, so the strands around the bones are inside the gather sphere.
+	constexpr std::int64_t kMaxGridCellsPerTriangle = 4096;    ///< A stretched triangle spanning more cells than this is left out of the debug grid.
 	constexpr int kCellKeyBits = 21;                           ///< Bits one axis of a surface-grid cell takes in its packed 64-bit key.
 	constexpr std::int64_t kCellKeyMask = (std::int64_t{ 1 } << kCellKeyBits) - 1;
+	constexpr float kMinProbeRadius = 0.1f;
+	constexpr float kMinSegmentLengthSquared = 1.0e-8f;  ///< Below this a hand segment is a point.
 	constexpr float kMaxHairBoundRadius = 300.0f;        ///< Largest gather sphere a claim may ask for, so a runaway rig cannot gather the whole cell.
 	constexpr float kScreenSizeResumeFactor = 1.25f;     ///< A claim culled for being small resumes once it is this much larger than the limit.
 	constexpr std::uint32_t kOffscreenCullFrames = 30;   ///< Consecutive frames out of view before a claim stops being simulated.
@@ -295,6 +298,7 @@ void SmpPhysicsFeature::LoadSettings(json& a_json)
 	settings.WindStrength = Util::ClampFinite(settings.WindStrength, 0.0f, kMaxWindStrength, Settings{}.WindStrength);
 	settings.StiffnessScale = Util::ClampFinite(settings.StiffnessScale, kMinScale, kMaxScale, Settings{}.StiffnessScale);
 	settings.DampingScale = Util::ClampFinite(settings.DampingScale, kMinScale, kMaxScale, Settings{}.DampingScale);
+	settings.DebugMaxActors = std::clamp(settings.DebugMaxActors, 1, kDebugMaxActorsLimit);
 }
 
 void SmpPhysicsFeature::SaveSettings(json& a_json)
@@ -745,7 +749,7 @@ json SmpPhysicsFeature::BuildStatusJson() const
 			for (const auto& stat : contactStats) {
 				if (stat.token == entry.first)
 					contacts = { { "touching", stat.touching }, { "meanDepth", stat.meanDepth }, { "maxDepth", stat.maxDepth }, { "bones", stat.bones },
-						{ "detail", [&stat]() { json rows = json::array(); for (std::size_t i = 0; i < stat.contacts.size(); ++i) { const auto& c = stat.contacts[i]; rows.push_back({ { "bone", stat.bones[i] }, { "depth", c.depth }, { "deepest", c.deepest }, { "collider", c.collider }, { "normal", { c.normal[0], c.normal[1], c.normal[2] } }, { "position", { c.position[0], c.position[1], c.position[2] } } }); } return rows; }() } };
+						{ "detail", [&stat]() { json rows = json::array(); for (std::size_t i = 0; i < stat.contacts.size(); ++i) { const auto& contact = stat.contacts[i]; rows.push_back({ { "bone", stat.bones[i] }, { "depth", contact.depth }, { "deepest", contact.deepest }, { "collider", contact.collider }, { "normal", { contact.normal[0], contact.normal[1], contact.normal[2] } }, { "position", { contact.position[0], contact.position[1], contact.position[2] } } }); } return rows; }() } };
 			}
 			result["claims"].push_back({ { "token", entry.first },
 				{ "contacts", contacts },
@@ -775,7 +779,7 @@ json SmpPhysicsFeature::BuildStatusJson() const
 					 }
 					 return hit;
 				 }() },
-				{ "windSelfExposure", claim.windSelfExposure }, { "windRayHits", claim.windRayHits }, { "actorFound", RE::TESForm::LookupByID<RE::Actor>(claim.actorFormID) != nullptr }, { "actor3DLoaded", [&claim]() { const auto* actor = RE::TESForm::LookupByID<RE::Actor>(claim.actorFormID); return actor != nullptr && actor->Is3DLoaded(); }() }, { "cameraDistance", claim.lastCameraDistance }, { "steppedFrames", claim.steppedFrames }, { "skippedByDistanceFrames", claim.skippedByDistanceFrames }, { "skippedNotReadyFrames", claim.skippedNotReadyFrames }, { "inactive", claim.inactive }, { "culledByBudget", claim.culledByBudget }, { "culledOffscreen", claim.culledOffscreen }, { "culledSmall", claim.culledSmall }, { "externalColliders", claim.externalCount }, { "externalCapsules", [&claim]() { json rows = json::array(); for (std::size_t i = 0; i < claim.externalColliders.size(); ++i) { const auto& c = claim.externalColliders[i]; rows.push_back({ c.segmentA.x, c.segmentA.y, c.segmentA.z, c.segmentB.x, c.segmentB.y, c.segmentB.z, c.radius, claim.externalOwners[i] }); } return rows; }() }, { "externalCentre", { claim.externalCentre.x, claim.externalCentre.y, claim.externalCentre.z } } });
+				{ "windSelfExposure", claim.windSelfExposure }, { "windRayHits", claim.windRayHits }, { "actorFound", RE::TESForm::LookupByID<RE::Actor>(claim.actorFormID) != nullptr }, { "actor3DLoaded", [&claim]() { const auto* actor = RE::TESForm::LookupByID<RE::Actor>(claim.actorFormID); return actor != nullptr && actor->Is3DLoaded(); }() }, { "cameraDistance", claim.lastCameraDistance }, { "steppedFrames", claim.steppedFrames }, { "skippedByDistanceFrames", claim.skippedByDistanceFrames }, { "skippedNotReadyFrames", claim.skippedNotReadyFrames }, { "inactive", claim.inactive }, { "culledByBudget", claim.culledByBudget }, { "culledOffscreen", claim.culledOffscreen }, { "culledSmall", claim.culledSmall }, { "externalColliders", claim.externalCount }, { "externalCapsules", [&claim]() { json rows = json::array(); for (std::size_t i = 0; i < claim.externalColliders.size(); ++i) { const auto& collider = claim.externalColliders[i]; rows.push_back({ collider.segmentA.x, collider.segmentA.y, collider.segmentA.z, collider.segmentB.x, collider.segmentB.y, collider.segmentB.z, collider.radius, claim.externalOwners[i] }); } return rows; }() }, { "externalCentre", { claim.externalCentre.x, claim.externalCentre.y, claim.externalCentre.z } } });
 		}
 
 		result["declined"] = json::array();
@@ -1235,8 +1239,12 @@ void SmpPhysicsFeature::ReadViewRules(Claim& a_claim)
 		return;
 	const json config = json::parse(configStream, nullptr, false, true);
 	if (config.is_object() && config.contains("smp") && config["smp"].is_object()) {
-		a_claim.hideUnderWig = config["smp"].value("disableSMPHairWhenWigEquipped", false);
-		a_claim.firstPersonOff = config["smp"].value("disable1stPersonViewPhysics", false);
+		const auto flag = [&config](const char* a_key) {
+			const auto found = config["smp"].find(a_key);
+			return found != config["smp"].end() && found->is_boolean() && found->get<bool>();
+		};
+		a_claim.hideUnderWig = flag("disableSMPHairWhenWigEquipped");
+		a_claim.firstPersonOff = flag("disable1stPersonViewPhysics");
 	}
 }
 
@@ -1749,7 +1757,7 @@ void SmpPhysicsFeature::SetBodyContactProbe(const json& a_args)
 	bodyContactProbe.active = a_args.value("enabled", true);
 	bodyContactProbe.actorFormID = a_args.value("actorFormID", 0u);
 	bodyContactProbe.length = Util::ClampFinite(a_args.value("length", Probe::kDefaultLength), 0.0f, Probe::kMaxExtent, Probe::kDefaultLength);
-	bodyContactProbe.radius = Util::ClampFinite(a_args.value("radius", Probe::kDefaultRadius), 0.1f, Probe::kMaxExtent, Probe::kDefaultRadius);
+	bodyContactProbe.radius = Util::ClampFinite(a_args.value("radius", Probe::kDefaultRadius), kMinProbeRadius, Probe::kMaxExtent, Probe::kDefaultRadius);
 	bodyContactProbe.offset = {};
 	if (a_args.contains("offset") && a_args["offset"].is_array() && a_args["offset"].size() == 3) {
 		float offset[3]{};
@@ -2258,6 +2266,9 @@ void SmpPhysicsFeature::AppendSurfaceEdgesNearHair(const Claim& a_claim, std::ve
 		const NearTriangle& triangle = triangles[index];
 		const SmpPhysics::Vec3 low{ std::min({ triangle.a.x, triangle.b.x, triangle.c.x }), std::min({ triangle.a.y, triangle.b.y, triangle.c.y }), std::min({ triangle.a.z, triangle.b.z, triangle.c.z }) };
 		const SmpPhysics::Vec3 high{ std::max({ triangle.a.x, triangle.b.x, triangle.c.x }), std::max({ triangle.a.y, triangle.b.y, triangle.c.y }), std::max({ triangle.a.z, triangle.b.z, triangle.c.z }) };
+		const std::int64_t span = (cellOf(high.x) - cellOf(low.x) + 1) * (cellOf(high.y) - cellOf(low.y) + 1) * (cellOf(high.z) - cellOf(low.z) + 1);
+		if (span > kMaxGridCellsPerTriangle)
+			continue;
 		for (std::int64_t x = cellOf(low.x); x <= cellOf(high.x); ++x) {
 			for (std::int64_t y = cellOf(low.y); y <= cellOf(high.y); ++y) {
 				for (std::int64_t z = cellOf(low.z); z <= cellOf(high.z); ++z)
@@ -2415,7 +2426,7 @@ void SmpPhysicsFeature::UpdateGrabDebug()
 					const SmpPhysics::Vec3 axis = hand.segmentB - hand.segmentA;
 					const float lengthSquared = SmpPhysics::Dot(axis, axis);
 					const SmpPhysics::Vec3 middle = (start + end) * 0.5f;
-					const float along = lengthSquared > 1.0e-8f ? std::clamp(SmpPhysics::Dot(middle - hand.segmentA, axis) / lengthSquared, 0.0f, 1.0f) : 0.0f;
+					const float along = lengthSquared > kMinSegmentLengthSquared ? std::clamp(SmpPhysics::Dot(middle - hand.segmentA, axis) / lengthSquared, 0.0f, 1.0f) : 0.0f;
 					if (SmpPhysics::Length(middle - (hand.segmentA + axis * along)) < hand.radius + kDebugInfluenceMargin) {
 						push(start, end, SmpPhysics::DebugColor::Influenced);
 						break;

@@ -97,7 +97,8 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 			break;
 		}
 	};
-	SKSE::AllocTrampoline(128);
+	constexpr std::size_t kTrampolineBytes = 128;  ///< Room for the hook branch stubs this plugin writes.
+	SKSE::AllocTrampoline(kTrampolineBytes);
 	TestBench::IdleCache::Install();
 
 	auto* messaging = SKSE::GetMessagingInterface();

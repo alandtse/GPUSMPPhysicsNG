@@ -9,8 +9,9 @@ namespace WindShelter
 {
 	Estimate EstimateShelter(RE::Actor& a_ignored, const RE::NiPoint3& a_origin, const RE::NiPoint3& a_windVelocity)
 	{
+		constexpr float kMinWindSpeed = 1e-4f;
 		Estimate estimate;
-		if (!(std::hypot(a_windVelocity.x, a_windVelocity.y) > 1e-4f))
+		if (!(std::hypot(a_windVelocity.x, a_windVelocity.y) > kMinWindSpeed))
 			return estimate;
 		constexpr float kRadiansPerDegree = std::numbers::pi_v<float> / 180.0f;
 		const float heading = std::atan2(-a_windVelocity.y, -a_windVelocity.x);

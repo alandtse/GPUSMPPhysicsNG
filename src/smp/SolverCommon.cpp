@@ -14,6 +14,7 @@ namespace SmpPhysics
 	{
 		constexpr float kDefaultFixedStep = 1.0f / 60.0f;
 		constexpr int kMaxSubStepsLimit = 64;
+		constexpr float kIntervalSmoothing = 0.125f;  ///< Share of each new frame interval folded into the running average.
 	}
 
 	SolverParams SanitizeParams(SolverParams a_params) noexcept
@@ -61,7 +62,7 @@ namespace SmpPhysics
 		if (!std::isfinite(a_interval) || a_interval <= 0.0f)
 			return frame;
 		accumulated += a_interval;
-		averageInterval += (a_interval - averageInterval) * 0.125f;
+		averageInterval += (a_interval - averageInterval) * kIntervalSmoothing;
 		const float tick = std::min(averageInterval, kTimeTick);
 		if (!(accumulated * 2.0f > tick))
 			return frame;

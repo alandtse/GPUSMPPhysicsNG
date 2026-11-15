@@ -57,13 +57,13 @@ namespace SmpPhysics
 			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc{};
 			srvDesc.Format = DXGI_FORMAT_R32_TYPELESS;
 			srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
-			srvDesc.BufferEx.NumElements = a_bytes / 4;
+			srvDesc.BufferEx.NumElements = a_bytes / sizeof(std::uint32_t);
 			srvDesc.BufferEx.Flags = D3D11_BUFFEREX_SRV_FLAG_RAW;
 
 			D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc{};
 			uavDesc.Format = DXGI_FORMAT_R32_TYPELESS;
 			uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
-			uavDesc.Buffer.NumElements = a_bytes / 4;
+			uavDesc.Buffer.NumElements = a_bytes / sizeof(std::uint32_t);
 			uavDesc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_RAW;
 			return CreateBufferWithViews(desc, a_name, a_buffer, &srvDesc, &a_srv, a_uav ? &uavDesc : nullptr, a_uav);
 		}
@@ -693,9 +693,9 @@ namespace SmpPhysics
 					const auto* worlds = static_cast<const float*>(mapped.pData);
 					for (std::uint32_t index = 0; index < boneCount; ++index) {
 						const std::uint32_t slot = a_entry.slots[index];
-						if (slot == kStaticBone || (slot + 1u) * 8u * sizeof(float) > worldsDesc.ByteWidth)
+						if (slot == kStaticBone || (slot + 1u) * kFloatsPerWorldRecord * sizeof(float) > worldsDesc.ByteWidth)
 							continue;
-						const float* record = worlds + static_cast<std::size_t>(slot) * 8;
+						const float* record = worlds + static_cast<std::size_t>(slot) * kFloatsPerWorldRecord;
 						const Transform world{ Quat{ record[0], record[1], record[2], record[3] }, { record[4], record[5], record[6] } };
 						const RE::NiAVObject* node = a_skin->bones[index];
 						capture.reference[index] = ComposeSkinRows(world, node ? node->world.scale : 1.0f, a_entry.skinToBone[index]);
@@ -720,7 +720,7 @@ namespace SmpPhysics
 		if (entry.kinematicCheck.armed)
 			MeasureKinematicBones(entry, a_skin);
 		if (batched && entry.batchable && entry.batchSlot >= 0 && entry.batchSerial == batchSerial && batch && batch->context1 && !entry.captureRequested) {
-			constexpr UINT kPaletteConstants = kPaletteBytes / 16;
+			constexpr UINT kPaletteConstants = kPaletteBytes / kConstantRegisterBytes;
 			const UINT first = static_cast<UINT>(entry.batchSlot) * kPaletteConstants;
 			ID3D11Buffer* current = batch->currentConstants.get();
 			ID3D11Buffer* previous = batch->previousConstants.get();

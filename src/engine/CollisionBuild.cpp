@@ -40,6 +40,8 @@ namespace
 
 	/** @brief A dynamic tri shape stores its morphing vertices as 16 bytes each: a float3 and a pad. */
 	constexpr std::array<float, 5> kBehindDepthEdges{ 1.0f, 2.0f, 4.0f, 8.0f, 16.0f };  ///< Upper bounds, in game units, of the depth buckets a behind-face report counts into.
+	constexpr float kReportRoundingScale = 100.0f;                                      ///< Reported depths round to hundredths.
+	constexpr std::size_t kDeepestSpheresReported = 12;
 	constexpr std::uint32_t kDynamicVertexStride = 16;
 	/** @brief Vertices a single shape may contribute; a runaway count would otherwise exhaust memory at claim time. */
 	constexpr std::uint32_t kMaximumShapeVertices = 200000;
@@ -689,14 +691,14 @@ json SmpPhysicsFeature::DescribeAuditClaims(RE::FormID a_formID) const
 		SmpPhysics::ProbeSpheres(claim.spheres, probeColliders, claim.surfaces, boneWorld, claim.driverWorld, probes);
 		json behindBySphere = json::array();
 		for (const auto& probe : probes)
-			behindBySphere.push_back(std::round(probe.behind * 100.0f) / 100.0f);
+			behindBySphere.push_back(std::round(probe.behind * kReportRoundingScale) / kReportRoundingScale);
 		std::sort(probes.begin(), probes.end(), [](const auto& a_left, const auto& a_right) { return a_left.depth > a_right.depth; });
 		json deepest = json::array();
 		int inside = 0;
 		for (const auto& probe : probes) {
 			if (probe.depth > 0.0f)
 				++inside;
-			if (deepest.size() < 12 && probe.depth > 0.0f)
+			if (deepest.size() < kDeepestSpheresReported && probe.depth > 0.0f)
 				deepest.push_back({ { "bone", claim.parsed->rig.bones[static_cast<std::size_t>(probe.bone)].name },
 					{ "depth", probe.depth }, { "collider", probe.collider },
 					{ "center", { probe.center.x, probe.center.y, probe.center.z } } });

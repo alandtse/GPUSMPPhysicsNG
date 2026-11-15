@@ -17,9 +17,11 @@ namespace
 
 json SmpPhysicsFeature::SkinProbeJson(const json& a_args)
 {
+	constexpr int kDefaultBoneLimit = 3;
+	constexpr int kMaxBoneLimit = 8;
 	const RE::FormID formID = a_args.value("actorFormID", 0u);
 	const std::string meshName = a_args.value("mesh", std::string{});
-	const int boneLimit = std::clamp(a_args.value("bones", 3), 1, 8);
+	const int boneLimit = std::clamp(a_args.value("bones", kDefaultBoneLimit), 1, kMaxBoneLimit);
 	auto* actor = formID ? RE::TESForm::LookupByID<RE::Actor>(formID) : nullptr;
 	RE::NiAVObject* root = actor ? actor->Get3D() : nullptr;
 	if (!root || meshName.empty())
@@ -50,7 +52,7 @@ json SmpPhysicsFeature::SkinProbeJson(const json& a_args)
 	}
 
 	json bones = json::array();
-	const std::uint32_t count = std::min<std::uint32_t>(skin->numMatrices, static_cast<std::uint32_t>(boneLimit));
+	const std::uint32_t count = std::min({ skin->numMatrices, static_cast<std::uint32_t>(boneLimit), skin->skinData ? skin->skinData->GetBoneCount() : 0u });
 	for (std::uint32_t index = 0; index < count; ++index) {
 		const RE::NiAVObject* bone = skin->bones[index];
 		json entry = { { "index", index }, { "name", bone && bone->name.c_str() ? bone->name.c_str() : "" } };

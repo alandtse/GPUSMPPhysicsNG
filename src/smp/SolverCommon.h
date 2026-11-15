@@ -61,7 +61,7 @@ namespace SmpPhysics
 	 * @param a_origin The bone's world position, Skyrim units.
 	 * @param a_velocity The bone's world linear velocity, Skyrim units per second.
 	 * @param a_boneFactor The bone's own <wind-factor>, times the actor's exposure.
-	 * @note Mirrored by HairCollision::WindForce in package/Shaders/Common/HairCollision.hlsli.
+	 * @note Mirrored by HairCollision::WindForce in shaders/Common/HairCollision.hlsli.
 	 */
 	[[nodiscard]] Vec3 WindForce(const SolverParams& a_params, float a_boneFactor, float a_mass, float a_area, const Vec3& a_axis,
 		const Vec3& a_origin, const Vec3& a_velocity) noexcept;
@@ -77,7 +77,7 @@ namespace SmpPhysics
 	 * @brief Contact spring stiffness, in force units per unit of penetration.
 	 * @details Sized so a resting contact settles at a depth of |torque| / (J * k), which for the hair XMLs'
 	 *          mass 0.1 and 16 inertia is about 0.02 units against gravity's own torque.
-	 * @note Mirrored by its namesake in package/Shaders/Common/HairCollision.hlsli, which
+	 * @note Mirrored by its namesake in shaders/Common/HairCollision.hlsli, which
 	 *       test_smpphysics_gpurig.cpp checks these values against.
 	 */
 	inline constexpr float kContactStiffness = 4000.0f;
@@ -107,7 +107,7 @@ namespace SmpPhysics
 	/**
 	 * @brief Slack a bone's bound sphere carries when it decides whether the whole bone can be skipped.
 	 * @details Covers the bound's own enlargement not being an exact Euclidean distance for an ellipsoid proxy.
-	 * @note Mirrored by kBoundCullPad in package/Shaders/Common/HairCollision.hlsli.
+	 * @note Mirrored by kBoundCullPad in shaders/Common/HairCollision.hlsli.
 	 */
 	inline constexpr float kBoundCullPad = 0.5f;
 	/** @brief How far from a one-sided face a diagnostic probe still measures which side a sphere is on. */

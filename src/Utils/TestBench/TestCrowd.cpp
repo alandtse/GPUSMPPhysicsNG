@@ -5,6 +5,7 @@
 
 #include "Globals.h"
 #include "Utils/ActorUtils.h"
+#include "Utils/MathUtils.h"
 
 #include <algorithm>
 #include <cmath>
@@ -25,6 +26,7 @@ namespace TestBench
 		constexpr float kStandHeightOffset = 1.0f;
 		constexpr const char* kResetIdle = "ResetRoot";      ///< The idle that returns a character to its neutral stance, which Stop plays before freezing it.
 		constexpr std::uint32_t kNonPlayableFlag = 1u << 2;  ///< The record flag of an armor the player cannot wear.
+		constexpr float kMaxTurnDegrees = 720.0f;            ///< Largest turn a test command may ask for.
 		constexpr float kGroundProbeAbove = 200.0f;          ///< How far above the player's feet the ground ray starts, so a slope that rises ahead is still found.
 		constexpr float kGroundProbeBelow = 1500.0f;         ///< How far below the player's feet it reaches, so a drop ahead is still found.
 		constexpr float kGroundProbeSkip = 2.0f;             ///< How far under a character the ray restarts when it meets one.
@@ -311,7 +313,7 @@ namespace TestBench
 		auto* player = globals::game::player;
 		if (!player)
 			return;
-		const float heading = player->GetAngleZ() + std::numbers::pi_v<float> + a_degrees * (std::numbers::pi_v<float> / 180.0f);
+		const float heading = player->GetAngleZ() + std::numbers::pi_v<float> + Util::ClampFinite(a_degrees, -kMaxTurnDegrees, kMaxTurnDegrees, 0.0f) * (std::numbers::pi_v<float> / 180.0f);
 		std::size_t turned = 0;
 		for (std::size_t index = 0; index < spawned.size(); ++index) {
 			if (a_index >= 0 && static_cast<std::size_t>(a_index) != index)
@@ -549,7 +551,7 @@ namespace TestBench
 		}
 		const int worn = armorIndex.load(std::memory_order_relaxed);
 		const int from = worn >= 0 ? worn : (a_step > 0 ? -1 : 0);
-		DressArmorNow(static_cast<std::size_t>(((from + a_step) % size + size) % size));
+		DressArmorNow(static_cast<std::size_t>(((from + a_step % size) % size + size) % size));
 	}
 
 	void TestCrowd::DressArmorNow(std::size_t a_index)

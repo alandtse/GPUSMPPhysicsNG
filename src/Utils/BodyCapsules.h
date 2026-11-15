@@ -11,6 +11,8 @@
 
 namespace Util::BodyCapsules
 {
+	inline constexpr float kMinSegmentLength = 1e-4f;  ///< Divisor floor for a degenerate capsule or hand segment.
+
 	/** @brief Most capsules Select can return for one query. */
 	inline constexpr size_t MaxSelectedCapsules = 64;
 
@@ -33,7 +35,7 @@ namespace Util::BodyCapsules
 		[[nodiscard]] float3 ClosestPointOnAxis(const float3& a_point) const
 		{
 			const float3 axis = pointB - pointA;
-			const float t = std::clamp((a_point - pointA).Dot(axis) / std::max(axis.LengthSquared(), 1e-4f), 0.0f, 1.0f);
+			const float t = std::clamp((a_point - pointA).Dot(axis) / std::max(axis.LengthSquared(), kMinSegmentLength), 0.0f, 1.0f);
 			return pointA + axis * t;
 		}
 	};

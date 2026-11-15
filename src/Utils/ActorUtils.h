@@ -8,7 +8,6 @@
 #include <string>
 #include <vector>
 
-// Forward declarations for Skyrim types
 namespace RE
 {
 	class bhkNiCollisionObject;

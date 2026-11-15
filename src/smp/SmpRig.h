@@ -161,8 +161,7 @@ namespace SmpPhysics
 	 * @brief Damping ratio every joint spring is held at least to when a rig is claimed.
 	 * @details The solver moves each bone under its parent's motion without the bone loading the parent back, so a
 	 *          chain of lightly damped joints multiplies its resonance at every link and the tip whips at idle;
-	 *          Bullet's coupled solve does not. At 0.7 an offline replay of a heavy rig's captured turn
-	 *          peaks at about what hdtSMP64 shows for the same hair.
+	 *          Bullet's coupled solve does not. 0.7 matches hdtSMP64's peak on a heavy rig's turn.
 	 */
 	inline constexpr float kMinimumSpringDampingRatio = 0.7f;
 

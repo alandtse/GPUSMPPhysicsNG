@@ -1159,6 +1159,11 @@ namespace SmpPhysics
 			const auto contactPass = [this, &values](std::uint32_t) { DispatchContacts(values); };
 			const bool takeContacts = std::ranges::any_of(a_claims, [](const FrameClaim& a_claim) { return a_claim.rigidContacts; });
 			(void)rigidSolver.Dispatch(pack.rigidClaims, worldsUav.get(), outputsUav.get(), takeContacts ? contactsSrv.get() : nullptr, contactPass);
+			if (!rigidSolver.Available()) {
+				UndoFramePack(pack);
+				Fail("the rigid solver became unavailable; claimed hair stays at the engine's pose");
+				return false;
+			}
 		}
 
 		if (!contactStagingPending && contactStatsRequested.exchange(false)) {

@@ -1,7 +1,5 @@
 #pragma once
 
-// Stand-in for Open Shaders' Feature base: only what the ported SmpPhysics feature touches.
-
 #include "pch.h"
 
 namespace FeatureCategories

@@ -15,7 +15,7 @@ namespace SmpPhysics
 	 * @brief How far, in Skyrim units, behind a one-sided face a sphere's centre still makes contact.
 	 * @details A sphere authored inside the body, or tunnelled in during a fast move, is deeper behind a face
 	 *          than the shape's allowance; without this reach it would rest inside the mesh forever.
-	 * @note Mirrored by kDeepPushReach in package/Shaders/Common/HairCollision.hlsli.
+	 * @note Mirrored by kDeepPushReach in shaders/Common/HairCollision.hlsli.
 	 */
 	inline constexpr float kDeepPushReach = 2.0f;
 

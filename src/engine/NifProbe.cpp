@@ -204,7 +204,13 @@ namespace NifProbe
 		}
 		done.store(0, std::memory_order_relaxed);
 		running.store(true, std::memory_order_release);
-		worker = std::thread(Run, std::move(targets));
+		worker = std::thread([scan = std::move(targets)]() mutable {
+			try {
+				Run(std::move(scan));
+			} catch (const std::exception&) {
+				running.store(false, std::memory_order_release);
+			}
+		});
 	}
 
 	bool Running()

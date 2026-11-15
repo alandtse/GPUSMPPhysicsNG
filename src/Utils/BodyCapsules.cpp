@@ -18,7 +18,6 @@ namespace Util::BodyCapsules
 {
 	namespace
 	{
-		constexpr float kMinSegmentLength = 1e-4f;  ///< Divisor floor for a degenerate hand segment.
 		constexpr size_t MaxActors = 8;
 		constexpr size_t MaxCapsulesPerActor = 6;
 		constexpr float MinActorCapsuleRadius = 3.0f;

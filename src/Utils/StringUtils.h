@@ -1,7 +1,4 @@
-// Self-contained string helpers.
-//
-// Header-only and dependency-free (no PCH, RE, or SKSE) so the pure logic can be
-// unit-tested directly in tests/cpp. Heavier string formatting lives in Format.h.
+// Header-only string helpers with no PCH, RE or SKSE dependency.
 
 #pragma once
 

@@ -646,7 +646,7 @@ uint FindBodySlot(uint a_body)
 /**
  * @brief SolveConstraint with the two bodies' solver state held in groupshared slots instead of the global buffer.
  * @details The row masks load together and each row's record is requested before the previous row is solved, so a
- *          constraint's rows no longer wait on one global-memory round trip each; the rows are solved in the same order.
+ *          constraint's rows do not each wait on a global-memory round trip; the rows are solved in the same order.
  */
 float SolveConstraintCached(uint a_constraint, uint a_slotA, uint a_slotB)
 {

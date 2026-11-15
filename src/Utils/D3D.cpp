@@ -94,6 +94,7 @@ namespace Util
 		constexpr UINT kCompileFlags = D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_OPTIMIZATION_LEVEL3;
 		constexpr std::string_view kCacheTag = "v4";
 		constexpr std::size_t kHashChunkBytes = 4096;
+		constexpr std::size_t kMaxCompileThreads = 4;
 
 		/** @brief A dependency as "path-under-shader-root<TAB>content hash", so a cache built elsewhere stays valid. */
 		std::string StampOf(const std::filesystem::path& a_path)
@@ -271,7 +272,7 @@ namespace Util
 		prewarm = state;
 		const auto jobs = std::make_shared<std::vector<ShaderJob>>(std::move(a_jobs));
 		const auto next = std::make_shared<std::atomic<std::size_t>>(0);
-		const std::size_t workers = std::clamp<std::size_t>(std::thread::hardware_concurrency() / 2, 1, std::min<std::size_t>(4, jobs->size()));
+		const std::size_t workers = std::clamp<std::size_t>(std::thread::hardware_concurrency() / 2, 1, std::min<std::size_t>(kMaxCompileThreads, jobs->size()));
 		logger::info("Compiling {} shaders on {} background threads.", jobs->size(), workers);
 		for (std::size_t worker = 0; worker < workers; ++worker) {
 			std::thread([state, jobs, next] {
@@ -280,7 +281,12 @@ namespace Util
 					const std::vector<std::pair<const char*, const char*>> defines;
 					const std::string name = std::format("{} {}", WStringToString(job.path), job.entry);
 					const auto start = std::chrono::steady_clock::now();
-					const bool ok = static_cast<bool>(CompileShaderBlob(job.path, defines, job.target, job.entry));
+					bool ok = false;
+					try {
+						ok = static_cast<bool>(CompileShaderBlob(job.path, defines, job.target, job.entry));
+					} catch (const std::exception& error) {
+						logger::warn("Shader {} threw while compiling: {}", name, error.what());
+					}
 					logger::info("Shader {} {} in {} ms.", name, ok ? "ready" : "failed", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count());
 					std::lock_guard lock(state->mutex);
 					if (++state->done == state->total)

@@ -54,14 +54,14 @@ static const uint kUnusedBone = 0xFFFFFFFFu;
 	uint offset = index * HairSkinPalette::kBytesPerBone;
 	if (active.y != 0u) {
 		Previous.Store4(offset, Current.Load4(offset));
-		Previous.Store4(offset + 16, Current.Load4(offset + 16));
-		Previous.Store4(offset + 32, Current.Load4(offset + 32));
+		Previous.Store4(offset + HairSkinPalette::kBytesPerRow, Current.Load4(offset + HairSkinPalette::kBytesPerRow));
+		Previous.Store4(offset + 2u * HairSkinPalette::kBytesPerRow, Current.Load4(offset + 2u * HairSkinPalette::kBytesPerRow));
 	} else {
 		Previous.Store4(offset, asuint(rows[0]));
-		Previous.Store4(offset + 16, asuint(rows[1]));
-		Previous.Store4(offset + 32, asuint(rows[2]));
+		Previous.Store4(offset + HairSkinPalette::kBytesPerRow, asuint(rows[1]));
+		Previous.Store4(offset + 2u * HairSkinPalette::kBytesPerRow, asuint(rows[2]));
 	}
 	Current.Store4(offset, asuint(rows[0]));
-	Current.Store4(offset + 16, asuint(rows[1]));
-	Current.Store4(offset + 32, asuint(rows[2]));
+	Current.Store4(offset + HairSkinPalette::kBytesPerRow, asuint(rows[1]));
+	Current.Store4(offset + 2u * HairSkinPalette::kBytesPerRow, asuint(rows[2]));
 }

@@ -137,7 +137,7 @@ namespace Util
 		RE::bhkRigidBody* bhkRigid = collisionObj->body.get() ? collisionObj->body.get()->AsBhkRigidBody() : nullptr;
 		RE::hkpRigidBody* hkpRigid = bhkRigid ? skyrim_cast<RE::hkpRigidBody*>(bhkRigid->referencedObject.get()) : nullptr;
 		const auto* shape = hkpRigid ? hkpRigid->collidable.GetShape() : nullptr;
-		if (bhkRigid && hkpRigid && shape && !skyrim_cast<const RE::hkpListShape*>(shape)) {  // Ignore hkpListShape, unsupported
+		if (bhkRigid && hkpRigid && shape && !skyrim_cast<const RE::hkpListShape*>(shape)) {
 			if (shape->type == RE::hkpShapeType::kCapsule) {
 				RE::hkTransform transform;
 				bhkRigid->GetTransform(transform);

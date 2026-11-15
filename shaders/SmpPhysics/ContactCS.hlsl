@@ -338,6 +338,7 @@ struct HairSphereHit
 RWStructuredBuffer<HairSphereHit> HairSphereHits : register(u5);  // per sphere list entry
 RWStructuredBuffer<uint4> HairBoneCull : register(u6);            // per bone slot: x the surfaces its bound reaches, y a kCull state, z the colliders it touches
 
+static const float kBoundCullScale = 1.25f;  // slack on a bone's bound radius before the cull test
 static const uint kCullSkip = 0u;   // the bone takes no contact this substep, so its merged contact is left as it was
 static const uint kCullEmpty = 1u;  // the bone merges to no contact: its spheres cannot reach anything
 static const uint kCullWork = 2u;   // the bone's spheres are queried
@@ -394,7 +395,7 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 		if (BoxOverlapsNode(HairSurfaceNodes[meta.base.y], boundCentre - float3(reach, reach, reach), boundCentre + float3(reach, reach, reach)))
 			a_surfaceMask |= 1u << surface;
 	}
-	float boundReach = a_bone.bound.w * 1.25f + a_skin + HairCollision::kBoundCullPad;
+	float boundReach = a_bone.bound.w * kBoundCullScale + a_skin + HairCollision::kBoundCullPad;
 	bool anyCollider;
 	a_colliderMask = ColliderBoundMask(a_tree, boundCentre, boundReach, anyCollider);
 	return a_surfaceMask != 0u || anyCollider || a_surface.y > 32u;
