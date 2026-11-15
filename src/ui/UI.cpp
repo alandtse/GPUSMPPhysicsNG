@@ -100,6 +100,17 @@ namespace SettingsUi
 		{
 			if (!model)
 				return;
+			if (model->alerts) {
+				constexpr ImGuiMCP::ImVec4 kAlertColour{ 1.0f, 0.30f, 0.30f, 1.0f };
+				const std::vector<std::string> alerts = model->alerts();
+				for (const std::string& alert : alerts) {
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kAlertColour);
+					ImGuiMCP::TextWrapped("%s", alert.c_str());
+					ImGuiMCP::PopStyleColor(1);
+				}
+				if (!alerts.empty())
+					ImGuiMCP::Separator();
+			}
 			if (model->status) {
 				const std::string status = model->status();
 				ImGuiMCP::TextWrapped("%s", status.c_str());

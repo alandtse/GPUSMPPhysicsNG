@@ -1,5 +1,6 @@
 #include "Utils/D3D.h"
 #include "Utils/MathUtils.h"
+#include "Utils/ShaderFailure.h"
 
 #include <algorithm>
 #include <atomic>
@@ -31,7 +32,7 @@ namespace Util
 		std::wstring shaderRoot;
 		std::filesystem::path shaderCacheDir;
 		std::mutex failureMutex;
-		std::unordered_set<std::string> compileFailures;
+		std::unordered_map<std::string, std::string> compileFailures;  ///< Failure key to the line the menu shows.
 		std::mutex inflightMutex;
 		std::unordered_map<std::string, std::shared_ptr<std::mutex>> inflight;
 
@@ -210,6 +211,19 @@ namespace Util
 		compileFailures.clear();
 	}
 
+	std::vector<std::string> GetShaderFailures()
+	{
+		std::vector<std::string> lines;
+		{
+			std::lock_guard lock(failureMutex);
+			lines.reserve(compileFailures.size());
+			for (const auto& entry : compileFailures)
+				lines.push_back(entry.second);
+		}
+		std::ranges::sort(lines);
+		return lines;
+	}
+
 	winrt::com_ptr<ID3DBlob> CompileShaderBlob(const wchar_t* FilePath, const std::vector<std::pair<const char*, const char*>>& Defines, const char* ProgramType, const char* Program)
 	{
 		const std::filesystem::path source = Resolve(FilePath);
@@ -254,10 +268,14 @@ namespace Util
 			logger::error("Failed to compile shader; {} does not exist", source.string());
 		}
 		if (FAILED(result)) {
-			if (errors)
-				logger::warn("Shader compilation failed:\n\n{}", std::string_view(static_cast<const char*>(errors->GetBufferPointer()), errors->GetBufferSize()));
+			std::string detail = stream ? std::string() : std::string("the shader file does not exist");
+			if (errors) {
+				const std::string_view message(static_cast<const char*>(errors->GetBufferPointer()), errors->GetBufferSize());
+				logger::warn("Shader compilation failed:\n\n{}", message);
+				detail = FirstShaderErrorLine(message);
+			}
 			std::lock_guard lock(failureMutex);
-			compileFailures.insert(failureKey);
+			compileFailures[failureKey] = DescribeShaderFailure(std::filesystem::path(FilePath).generic_string(), Program, detail);
 			return nullptr;
 		}
 		return blob;
@@ -339,6 +357,9 @@ namespace Util
 		}
 		if (FAILED(result)) {
 			logger::error("Failed to create shader object for {}:{}", WStringToString(FilePath), Program);
+			std::lock_guard lock(failureMutex);
+			compileFailures[std::format("create|{}|{}", WStringToString(FilePath), Program)] =
+				DescribeShaderFailure(std::filesystem::path(FilePath).generic_string(), Program, "the GPU rejected the compiled shader");
 			return nullptr;
 		}
 		SetResourceName(shader, "%s:%s", WStringToString(FilePath).c_str(), Program);

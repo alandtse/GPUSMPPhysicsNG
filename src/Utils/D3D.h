@@ -36,6 +36,8 @@ namespace Util
 	void SetShaderCacheDir(const std::wstring& a_dir);
 	/** @brief Forgets which shaders failed to compile, so the next request compiles them again. */
 	void ClearShaderFailures();
+	/** @brief One line per shader that failed to compile or be created since the failures were last cleared, sorted, for the menu to show. */
+	[[nodiscard]] std::vector<std::string> GetShaderFailures();
 
 	/** @brief Compiles FilePath (relative to the shader root) and returns the blob, or null after logging the error. */
 	winrt::com_ptr<ID3DBlob> CompileShaderBlob(const wchar_t* FilePath, const std::vector<std::pair<const char*, const char*>>& Defines, const char* ProgramType, const char* Program);

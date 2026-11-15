@@ -74,6 +74,7 @@ namespace SettingsUi
 		bool showFooter{ true };                             ///< Whether the page ends with Re-evaluate and Save.
 		std::function<std::vector<ReportBlock>()> reports;   ///< When set, the page lists these, each with a Copy button.
 		std::function<std::string()> status;                 ///< Text shown above the controls, refreshed every frame.
+		std::function<std::vector<std::string>()> alerts;    ///< Problems drawn in red above the status on every refresh; none when the list is empty.
 		std::function<void()> onSave;                        ///< Writes Settings.json.
 		std::function<void()> onReevaluate;                  ///< Asks hdtSMP64 to offer every actor's meshes again.
 		std::function<void()> onReset;                       ///< Puts every setting back to its default; the page then shows them and Save writes them.

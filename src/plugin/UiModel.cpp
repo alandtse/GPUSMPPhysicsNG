@@ -486,5 +486,17 @@ void PluginUi::Register()
 		Button("Reload shaders", "Recompiles the skinning and debug line shaders from the shader folder on the next frame.", [&feature] { feature.ReloadVisualShaders(); }),
 	};
 
+	const auto shaderAlerts = [] {
+		std::vector<std::string> alerts = Util::GetShaderFailures();
+		if (alerts.empty())
+			return alerts;
+		for (std::string& line : alerts)
+			line.insert(0, "  - ");
+		alerts.insert(alerts.begin(), "SHADER COMPILE FAILED. The parts of the plugin that need these shaders do not work, and the log has the compiler output:");
+		return alerts;
+	};
+	for (SettingsUi::Model* page : { &model, &claimsModel, &physicsModel, &reportModel, &crowdModel, &developerModel })
+		page->alerts = shaderAlerts;
+
 	SettingsUi::Register({ &model, &claimsModel, &physicsModel, &reportModel, &crowdModel, &developerModel });
 }
