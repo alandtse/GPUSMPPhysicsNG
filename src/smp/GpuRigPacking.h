@@ -123,12 +123,11 @@ namespace SmpPhysics::GpuRig
 	/** @brief One posed collision surface's hierarchy, as a frame's AppendSurfaces writes it. */
 	struct SurfaceMeta
 	{
-		Float4 gridOrigin{};  ///< zero; the hierarchy has no origin and these lanes keep the record layout
-		Uint4 dimensions{};   ///< xyz zero, w the triangle count
-		Uint4 base{};         ///< x first triangle, y first node, z node count, in the frame's shared arrays
-		Float4 contact{};     ///< x the surface margin, y its contact penetration allowance, z how far behind a one-sided face it holds a sphere
+		Uint4 dimensions{};  ///< xyz zero, w the triangle count
+		Uint4 base{};        ///< x first triangle, y first node, z node count, in the frame's shared arrays
+		Float4 contact{};    ///< x the surface margin, y its contact penetration allowance, z how far behind a one-sided face it holds a sphere
 	};
-	static_assert(sizeof(SurfaceMeta) == 64);
+	static_assert(sizeof(SurfaceMeta) == 48);
 
 	/** @brief One posed triangle, in leaf order: its corners, its unit face normal with twice its area in w, and its source index in a.w. */
 	struct SurfaceTriangle
@@ -189,24 +188,13 @@ namespace SmpPhysics::GpuRig
 		std::uint32_t driverCount{};  ///< how many drivers the colliders index
 	};
 
-	/** @brief One tree's inputs for a single frame. */
+	/** @brief One tree's contact inputs for a single frame. */
 	struct TreeInput
 	{
-		Float4 previousRotation{};
-		Float4 previousTranslation{};
-		Float4 currentRotation{};
-		Float4 currentTranslation{};
-		Float4 solver{};                      ///< x substep length, y gravity, z gravity scale, w maximum angular speed
-		Float4 scales{};                      ///< x stiffness scale, y damping scale, z the actor's wind exposure
-		Float4 contact{};                     ///< x contact spring stiffness, y contact damping, z contact skin
-		Float4 wind{};                        ///< xyz world wind vector, w gust clock
-		Uint4 control{};                      ///< x substep count, y a previous input exists, z a reset was requested
-		Uint4 surface{};                      ///< x first surface record this frame's AppendSurfaces gave the tree's claim, y how many, z 1 when the rigid solver owns the tree and the contact passes run for it every substep, w the claim's bone span
-		Uint4 grabSlots{};                    ///< per pin, the held bone's slot plus one (0 for no pin)
-		std::array<Float4, 4> grabTargets{};  ///< per pin, xyz where the hand holds the point and w the pin's stiffness
-		std::array<Float4, 4> grabLocals{};   ///< per pin, xyz the held point in the bone's own frame
+		Float4 contact{};  ///< z contact skin
+		Uint4 surface{};   ///< x first surface record this frame's AppendSurfaces gave the tree's claim, y how many, z 1 when the rigid solver owns the tree and the contact passes run for it every substep, w the claim's bone span
 	};
-	static_assert(sizeof(TreeInput) == 304);
+	static_assert(sizeof(TreeInput) == 32);
 
 	/** @brief One bone's world transform while a tree is being stepped. */
 	struct BoneWorld
@@ -332,19 +320,8 @@ namespace SmpPhysics::GpuRig
 	 */
 	[[nodiscard]] bool PoseExceedsReach(const SmpRig& a_rig, const std::vector<Transform>& a_bones, const std::vector<float>& a_reach);
 
-	/** @brief Packs a frame's kinematic input for one tree, for the compute solver to interpolate from. */
-	/** @brief Most pins one tree's input carries. */
-	inline constexpr std::size_t kMaxGrabPinsPerTree = 4;
-
-	/**
-	 * @brief Adds a pin holding the point a_local of the bone at a_slot toward a_target to a tree's input.
-	 * @return False when the tree already carries kMaxGrabPinsPerTree pins.
-	 */
-	[[nodiscard]] bool AddGrab(TreeInput& a_input, std::uint32_t a_slot, const Vec3& a_local, const Vec3& a_target, float a_stiffness) noexcept;
-
-	[[nodiscard]] TreeInput MakeTreeInput(const SolverParams& a_params, const SubStepPlan& a_plan,
-		const Transform& a_previousKinematic, const Transform& a_currentKinematic,
-		bool a_hasPreviousInput, bool a_resetRequested);
+	/** @brief Packs one tree's contact input: the claim's surface records and bone span, and whether the rigid solver owns the tree. */
+	[[nodiscard]] TreeInput MakeTreeInput(std::uint32_t a_firstSurface, std::uint32_t a_surfaceCount, bool a_rigidContacts, std::uint32_t a_boneSpan) noexcept;
 
 	/** @brief One surface vertex's bind position and the global skin-bone slot of each of its four bone weights. */
 	struct SurfacePrepVertex

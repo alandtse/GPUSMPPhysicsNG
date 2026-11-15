@@ -40,24 +40,12 @@ struct HairDriverWorld
 
 struct HairTreeInput
 {
-	float4 previousRotation;
-	float4 previousTranslation;
-	float4 currentRotation;
-	float4 currentTranslation;
-	float4 solver;          // x = substep length, y = gravity, z = gravity scale, w = maximum angular speed
-	float4 scales;          // x = stiffness scale, y = damping scale, z = the actor's wind exposure
-	float4 contact;         // x = contact spring stiffness, y = contact damping, z = contact skin
-	float4 wind;            // xyz = world wind vector, w = gust clock
-	uint4 control;          // x = substep count, y = 1 when a previous input exists, z = 1 when a reset is requested
-	uint4 surface;          // x = first surface record of the tree's claim this frame, y = how many
-	uint4 grabSlots;        // per pin, the held bone's slot plus one (0 for no pin)
-	float4 grabTargets[4];  // per pin, xyz = where the hand holds the point, w = the pin's stiffness
-	float4 grabLocals[4];   // per pin, xyz = the held point in the bone's own frame
+	float4 contact;  // z = contact skin
+	uint4 surface;   // x = first surface record of the tree's claim this frame, y = how many, z = 1 when the rigid solver owns the tree, w = the claim's bone span
 };
 
 struct HairSurfaceMeta
 {
-	float4 gridOrigin;  // unused, kept for the packed layout
 	uint4 dimensions;   // w = face count
 	uint4 base;         // x = first face, y = first node, z = node count
 	float4 contact;     // x = the surface margin, y = its contact penetration allowance, z = how far behind a one-sided face it holds a sphere

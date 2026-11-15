@@ -100,12 +100,6 @@ namespace SmpPhysics
 			return UploadDiscard(globals::d3d::context, a_buffer->resource.get(), a_data.data(), a_data.size() * sizeof(T));
 		}
 
-		/** @brief The tree's kinematic parent, in the caller's own bone indexing. */
-		std::uint32_t LocalKinematicParent(const GpuRig::TreeStatic& a_tree, std::uint32_t a_boneOffset) noexcept
-		{
-			return a_tree.range.z - a_boneOffset;
-		}
-
 		/** @brief The rigid-body setup of a rig: SMP's world, the kinematic body each dynamic body hangs from, and its rest pose relative to it. */
 		RigidGpuSolver::ClaimSetup BuildRigidSetup(std::uint64_t a_token, std::uint32_t a_boneOffset, const SmpRig& a_rig,
 			const std::vector<Transform>& a_restWorld, const SolverParams& a_params)
@@ -465,7 +459,6 @@ namespace SmpPhysics
 		claim.driverOffset = claim.colliderOffset + static_cast<std::uint32_t>(rigData.collision.colliders.size());
 		claim.driverCount = rigData.collision.driverCount;
 		claim.rig = std::move(rigData);
-		claim.params = a_params;
 		claim.surfaces = a_surfaces;
 		for (const SkinnedSurface& surface : claim.surfaces) {
 			for (const int driver : surface.boneDriver) {
@@ -477,9 +470,6 @@ namespace SmpPhysics
 		claim.surfaceCache.resize(claim.surfaces.size());
 		claim.surfaceBvhs.resize(claim.surfaces.size());
 		claim.inputs.assign(claim.rig.trees.size(), GpuRig::TreeInput{});
-		claim.previousKinematic.resize(claim.rig.trees.size());
-		for (std::size_t tree = 0; tree < claim.rig.trees.size(); ++tree)
-			claim.previousKinematic[tree] = a_restWorld[LocalKinematicParent(claim.rig.trees[tree], *offset)];
 
 		claimIndex.emplace(a_token, claims.size());
 		claims.push_back(std::move(claim));
@@ -907,10 +897,6 @@ namespace SmpPhysics
 			if (kinematic.size() != claim.boneCount)
 				continue;
 
-			claim.params.wind = frameClaim.wind;
-			claim.params.windTime = frameClaim.windTime;
-			claim.params.windFactor = frameClaim.windFactor;
-			const SubStepPlan plan = PlanSubSteps(frameClaim.deltaTime, claim.params);
 			std::uint32_t firstSurface = claim.surfaceFirst;
 			std::uint32_t surfaceCount = claim.surfaceCount;
 			if (!surfacePrepActive) {
@@ -924,26 +910,7 @@ namespace SmpPhysics
 				surfaceCount = static_cast<std::uint32_t>(surfaceFrame.metas.size()) - firstSurface;
 			}
 			for (std::size_t tree = 0; tree < claim.rig.trees.size(); ++tree) {
-				const Transform& current = kinematic[LocalKinematicParent(claim.rig.trees[tree], claim.boneOffset)];
-				claim.inputs[tree] = GpuRig::MakeTreeInput(claim.params, plan, claim.previousKinematic[tree], current,
-					frameClaim.hasPreviousInput, frameClaim.resetRequested);
-				claim.inputs[tree].surface = { firstSurface, surfaceCount, 0u, claim.boneCount };
-				for (const Grab& grab : frameClaim.grabs) {
-					if (grab.bone < 0 || !(grab.stiffness > 0.0f))
-						continue;
-					const std::uint32_t slot = claim.boneOffset + static_cast<std::uint32_t>(grab.bone);
-					const GpuRig::TreeStatic& treeStatic = claim.rig.trees[tree];
-					for (std::uint32_t index = 0; index < treeStatic.range.y; ++index) {
-						if (claim.rig.order[treeStatic.range.x - claim.boneOffset + index] == slot) {
-							(void)GpuRig::AddGrab(claim.inputs[tree], slot, grab.local, grab.target, grab.stiffness);
-							break;
-						}
-					}
-				}
-				claim.previousKinematic[tree] = current;
-				claim.inputs[tree].control.x = 0u;
-				claim.inputs[tree].control.z = 0u;
-				claim.inputs[tree].surface.z = frameClaim.rigidContacts ? 1u : 0u;
+				claim.inputs[tree] = GpuRig::MakeTreeInput(firstSurface, surfaceCount, frameClaim.rigidContacts, claim.boneCount);
 				a_pack.treeInputs[claim.boneOffset + static_cast<std::uint32_t>(tree)] = claim.inputs[tree];
 			}
 			const bool supplied = frameClaim.driverWorld && frameClaim.driverWorld->size() == claim.driverCount;

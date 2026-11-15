@@ -261,50 +261,16 @@ TEST_CASE("A solver pose past a bone's reach, or not finite, is flagged", "[SmpP
 	REQUIRE_FALSE(GpuRig::PoseExceedsReach(rig, std::vector<Transform>(2), reach));
 }
 
-TEST_CASE("The per-frame tree input and the initial state round trip", "[SmpPhysics]")
+TEST_CASE("The per-frame tree input carries the surface range, the rigid flag and the contact skin", "[SmpPhysics]")
 {
-	SolverParams params;
-	params.gravity = 700.0f;
-	params.gravityScale = 0.5f;
-	params.stiffnessScale = 2.0f;
-	params.dampingScale = 3.0f;
-	params.maxAngularSpeed = 42.0f;
-	params.wind = { 3.0f, -4.0f, 0.5f };
-	params.windTime = 12.5f;
-	params.windFactor = 0.25f;
+	const GpuRig::TreeInput input = GpuRig::MakeTreeInput(7u, 3u, true, 24u);
+	REQUIRE(input.surface.x == 7u);
+	REQUIRE(input.surface.y == 3u);
+	REQUIRE(input.surface.z == 1u);
+	REQUIRE(input.surface.w == 24u);
+	REQUIRE(input.contact.z == Approx(kContactSkin));
 
-	const SubStepPlan plan{ 3, 0.05f / 3.0f };
-	const Transform previous{ FromAxisAngle(Vec3{ 0.0f, 1.0f, 0.0f }, 0.3f), { 1.0f, 2.0f, 3.0f } };
-	const Transform current{ FromAxisAngle(Vec3{ 0.0f, 1.0f, 0.0f }, 0.6f), { 4.0f, 5.0f, 6.0f } };
-
-	const GpuRig::TreeInput input = GpuRig::MakeTreeInput(params, plan, previous, current, true, false);
-	REQUIRE(input.control.x == 3u);
-	REQUIRE(input.control.y == 1u);
-	REQUIRE(input.control.z == 0u);
-	REQUIRE(input.solver.x == Approx(plan.step));
-	REQUIRE(input.solver.y == Approx(params.gravity));
-	REQUIRE(input.solver.z == Approx(params.gravityScale));
-	REQUIRE(input.solver.w == Approx(params.maxAngularSpeed));
-	REQUIRE(input.scales.x == Approx(params.stiffnessScale));
-	REQUIRE(input.scales.y == Approx(params.dampingScale));
-	REQUIRE(input.scales.z == Approx(params.windFactor));
-	REQUIRE(input.wind.x == Approx(params.wind.x));
-	REQUIRE(input.wind.y == Approx(params.wind.y));
-	REQUIRE(input.wind.z == Approx(params.wind.z));
-	REQUIRE(input.wind.w == Approx(params.windTime));
-	RequireQuatNear(UnpackQuat(input.previousRotation), previous.rotation, 1e-6f);
-	RequireVecNear(UnpackVec3(input.previousTranslation), previous.translation, 1e-6f);
-	RequireQuatNear(UnpackQuat(input.currentRotation), current.rotation, 1e-6f);
-	RequireVecNear(UnpackVec3(input.currentTranslation), current.translation, 1e-6f);
-
-	const GpuRig::TreeInput reset = GpuRig::MakeTreeInput(params, plan, previous, current, false, true);
-	REQUIRE(reset.control.y == 0u);
-	REQUIRE(reset.control.z == 1u);
-
-	const SubStepPlan empty;
-	const GpuRig::TreeInput notStepped = GpuRig::MakeTreeInput(params, empty, previous, current, true, false);
-	REQUIRE(notStepped.control.x == 0u);  // the shader leaves the tree alone for a zero substep count
-	REQUIRE(notStepped.solver.x == Approx(0.0f));
+	REQUIRE(GpuRig::MakeTreeInput(0u, 0u, false, 1u).surface.z == 0u);
 }
 
 TEST_CASE("Shifting a packed rig to a slot base moves every stored bone index", "[SmpPhysics]")
@@ -326,17 +292,6 @@ TEST_CASE("Shifting a packed rig to a slot base moves every stored bone index", 
 		REQUIRE(shifted.trees[tree].range.y == local.trees[tree].range.y);
 		REQUIRE(shifted.trees[tree].range.z == local.trees[tree].range.z + kBase);
 	}
-}
-
-TEST_CASE("The per-frame input carries the contact spring the shader integrates", "[SmpPhysics]")
-{
-	SolverParams params;
-	const SubStepPlan plan{ 1, 1.0f / 60.0f };
-	const Transform pose{};
-	const GpuRig::TreeInput input = GpuRig::MakeTreeInput(params, plan, pose, pose, true, false);
-	REQUIRE(input.contact.x == Approx(kContactStiffness));
-	REQUIRE(input.contact.y == Approx(kContactDamping));
-	REQUIRE(input.contact.z == Approx(kContactSkin));
 }
 
 namespace
@@ -1206,31 +1161,6 @@ TEST_CASE("Surface prep comparison checks the normal only of a well-conditioned 
 	comparison = GpuRig::CompareSurfacePrep(expected, nodes, actual.data(), nodes.data(), static_cast<std::uint32_t>(actual.size()), 0u);
 	REQUIRE(comparison.triangleMismatches == 1u);
 	REQUIRE(comparison.maxNormalError == Approx(2.0f));
-}
-
-TEST_CASE("Held points are packed into their tree's input, up to four", "[SmpPhysics]")
-{
-	GpuRig::TreeInput input;
-	REQUIRE(input.grabSlots.x == 0u);
-	REQUIRE(input.grabTargets[0].w == 0.0f);
-
-	REQUIRE(GpuRig::AddGrab(input, 41u, Vec3{ 0.0f, 0.0f, -5.0f }, Vec3{ 1.0f, 2.0f, 3.0f }, kGrabStiffness));
-	REQUIRE(input.grabSlots.x == 42u);
-	REQUIRE(input.grabTargets[0].x == 1.0f);
-	REQUIRE(input.grabTargets[0].y == 2.0f);
-	REQUIRE(input.grabTargets[0].z == 3.0f);
-	REQUIRE(input.grabTargets[0].w == kGrabStiffness);
-	REQUIRE(input.grabLocals[0].z == -5.0f);
-
-	REQUIRE(GpuRig::AddGrab(input, 7u, Vec3{ 1.0f, 0.0f, 0.0f }, Vec3{ 4.0f, 5.0f, 6.0f }, 100.0f));
-	REQUIRE(input.grabSlots.y == 8u);
-	REQUIRE(input.grabTargets[1].w == 100.0f);
-	REQUIRE(GpuRig::AddGrab(input, 8u, Vec3{}, Vec3{}, 1.0f));
-	REQUIRE(GpuRig::AddGrab(input, 9u, Vec3{}, Vec3{}, 1.0f));
-	REQUIRE(input.grabSlots.w == 10u);
-
-	REQUIRE_FALSE(GpuRig::AddGrab(input, 10u, Vec3{}, Vec3{}, 1.0f));
-	REQUIRE(input.grabSlots.x == 42u);
 }
 
 TEST_CASE("A claim's statics pack at its slots the same way appended or rebuilt", "[SmpPhysics]")

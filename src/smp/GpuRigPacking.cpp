@@ -377,35 +377,11 @@ namespace SmpPhysics::GpuRig
 		return false;
 	}
 
-	bool AddGrab(TreeInput& a_input, std::uint32_t a_slot, const Vec3& a_local, const Vec3& a_target, float a_stiffness) noexcept
-	{
-		std::uint32_t* slots[kMaxGrabPinsPerTree] = { &a_input.grabSlots.x, &a_input.grabSlots.y, &a_input.grabSlots.z, &a_input.grabSlots.w };
-		for (std::size_t pin = 0; pin < kMaxGrabPinsPerTree; ++pin) {
-			if (*slots[pin] != 0u)
-				continue;
-			*slots[pin] = a_slot + 1u;
-			a_input.grabLocals[pin] = { a_local.x, a_local.y, a_local.z, 0.0f };
-			a_input.grabTargets[pin] = { a_target.x, a_target.y, a_target.z, a_stiffness };
-			return true;
-		}
-		return false;
-	}
-
-	TreeInput MakeTreeInput(const SolverParams& a_params, const SubStepPlan& a_plan,
-		const Transform& a_previousKinematic, const Transform& a_currentKinematic,
-		bool a_hasPreviousInput, bool a_resetRequested)
+	TreeInput MakeTreeInput(std::uint32_t a_firstSurface, std::uint32_t a_surfaceCount, bool a_rigidContacts, std::uint32_t a_boneSpan) noexcept
 	{
 		TreeInput input;
-		input.previousRotation = PackQuat(a_previousKinematic.rotation);
-		input.previousTranslation = PackVec3(a_previousKinematic.translation);
-		input.currentRotation = PackQuat(a_currentKinematic.rotation);
-		input.currentTranslation = PackVec3(a_currentKinematic.translation);
-		input.solver = { a_plan.step, a_params.gravity, a_params.gravityScale, a_params.maxAngularSpeed };
-		input.scales = { a_params.stiffnessScale, a_params.dampingScale, a_params.windFactor, 0.0f };
-		input.contact = { kContactStiffness, kContactDamping, kContactSkin, 0.0f };
-		input.wind = { a_params.wind.x, a_params.wind.y, a_params.wind.z, a_params.windTime };
-		input.control = { static_cast<std::uint32_t>(a_plan.count),
-			a_hasPreviousInput ? 1u : 0u, a_resetRequested ? 1u : 0u, 0u };
+		input.contact = { 0.0f, 0.0f, kContactSkin, 0.0f };
+		input.surface = { a_firstSurface, a_surfaceCount, a_rigidContacts ? 1u : 0u, a_boneSpan };
 		return input;
 	}
 

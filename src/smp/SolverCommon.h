@@ -44,25 +44,12 @@ namespace SmpPhysics
 	};
 
 	/**
-	 * @brief Contact spring stiffness, in force units per unit of penetration.
-	 * @details Sized so a resting contact settles at a depth of |torque| / (J * k), which for the hair XMLs'
-	 *          mass 0.1 and 16 inertia is about 0.02 units against gravity's own torque.
-	 * @note Mirrored by its namesake in shaders/Common/HairCollision.hlsli, which
-	 *       test_smpphysics_gpurig.cpp checks these values against.
-	 */
-	inline constexpr float kContactStiffness = 4000.0f;
-	/** @brief Contact damping, in torque units per radian per second. Critical for the same reference inertia: 2 * sqrt(kContactStiffness * 16). */
-	inline constexpr float kContactDamping = 506.0f;
-	/**
 	 * @brief How far, in Skyrim units, in front of a surface a hair sphere's contact already engages.
 	 * @details About one substep's fall under gravity, so a bone resting on a surface keeps its contact between
 	 *          substeps instead of losing it, falling back and chattering. Passed to the shader in TreeInput.
 	 */
 	inline constexpr float kContactSkin = 0.1f;
-	/**
-	 * @brief Stiffness of the pin that holds a grabbed strand to a hand, in force units per unit of distance.
-	 * @note Mirrored by the grab term in ContactCS.hlsl, which takes it from the tree's input.
-	 */
+	/** @brief Stiffness of the pin that holds a grabbed strand to a hand, in force units per unit of distance. */
 	inline constexpr float kGrabStiffness = 1500.0f;
 
 	/** @brief A strand held by a hand: a point on the bone is pulled toward the target like a contact that pushes it there. */

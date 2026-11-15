@@ -56,7 +56,7 @@ namespace SmpPhysics
 			float windTime{};         ///< The gust clock.
 			float windFactor{};       ///< The actor's wind exposure, 0 to 1.
 			bool rigidContacts{};     ///< Move the claim's bodies out of the collision proxies every substep.
-			std::vector<Grab> grabs;  ///< Points a hand holds, by claim-local rig bone; a tree takes the first kMaxGrabPinsPerTree.
+			std::vector<Grab> grabs;  ///< Points a hand holds, by claim-local rig bone.
 		};
 
 		/** @brief One claim's newest completed result: root-relative, one entry per rig bone. */
@@ -190,10 +190,8 @@ namespace SmpPhysics
 			bool surfaceTopologyReady{};                     ///< the surfaceBvhs were built from the claim's first supplied drivers
 			std::uint32_t surfaceFirst{};                    ///< this claim's first record in the GPU surface metas
 			std::uint32_t surfaceCount{};                    ///< how many records the claim added to them
-			SolverParams params;
-			std::vector<GpuRig::TreeInput> inputs;     ///< One per tree, refreshed every submitted frame.
-			std::vector<Transform> previousKinematic;  ///< One per tree: its kinematic parent's transform last frame.
-			std::uint64_t firstFrame{};                ///< The first frame this claim's output is in the output buffer; zero until then.
+			std::vector<GpuRig::TreeInput> inputs;           ///< One per tree, refreshed every submitted frame.
+			std::uint64_t firstFrame{};                      ///< The first frame this claim's output is in the output buffer; zero until then.
 		};
 
 		struct Readback
