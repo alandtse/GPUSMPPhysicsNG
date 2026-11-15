@@ -1051,6 +1051,24 @@ struct SmpPhysicsFeature::CollisionBuildState
 			}
 		}
 	}
+
+	/** @brief Fills a_surface with the part of a_shape within reach of a_anchor and binds its drivers; false when no triangle is in reach. */
+	bool BuildNearSurface(const SkinnedShape& a_shape, const Vec3& a_anchor, SmpPhysics::SkinnedSurface& a_surface)
+	{
+		std::vector<Vec3> posed(a_shape.positions.size());
+		for (std::size_t vertex = 0; vertex < posed.size(); ++vertex)
+			posed[vertex] = Posed(a_shape, vertex);
+		const std::vector<std::uint32_t> triangles(a_shape.triangles.begin(), a_shape.triangles.end());
+		a_surface.vertices.reserve(a_shape.positions.size());
+		for (std::size_t vertex = 0; vertex < a_shape.positions.size(); ++vertex)
+			a_surface.vertices.push_back(VertexOf(a_shape, vertex));
+		a_surface.indices = SmpPhysics::KeepTrianglesNear(posed, triangles, a_anchor, SmpPhysics::kArmorSurfaceRadius);
+		if (a_surface.indices.empty())
+			return false;
+		SmpPhysics::CompactSurface(a_surface);
+		BindSurfaceDrivers(a_shape, a_surface);
+		return true;
+	}
 };
 
 bool SmpPhysicsFeature::ResolveCollisionInputs(CollisionBuildState& s, std::string& a_reason) const
@@ -1611,11 +1629,6 @@ void SmpPhysicsFeature::BuildArmorSurfaces(CollisionBuildState& s) const
 				}
 				if (SkinsToDynamicBone(mesh, a_rig, a_context))
 					continue;
-				std::vector<Vec3> posed(wornShape.positions.size());
-				for (std::size_t vertex = 0; vertex < posed.size(); ++vertex)
-					posed[vertex] = Posed(wornShape, vertex);
-				const std::vector<std::uint32_t> triangles(wornShape.triangles.begin(), wornShape.triangles.end());
-
 				SmpPhysics::SkinnedSurface surface;
 				surface.name = std::format("{}: {}", bareBody ? "bare body" : "worn armor", meshName);
 				surface.margin = SmpPhysics::kArmorSurfaceMargin;
@@ -1624,14 +1637,8 @@ void SmpPhysicsFeature::BuildArmorSurfaces(CollisionBuildState& s) const
 				// Armor NIFs carry the body under the plate as their own mesh; hair was modelled against that skin and must not be turned away from it.
 				const std::string lowerName = Util::ToLowerAscii(meshName);
 				surface.skin = bareBody || lowerName.find("body") != std::string::npos || lowerName.find("torso") != std::string::npos;
-				surface.vertices.reserve(wornShape.positions.size());
-				for (std::size_t vertex = 0; vertex < wornShape.positions.size(); ++vertex)
-					surface.vertices.push_back(VertexOf(wornShape, vertex));
-				surface.indices = SmpPhysics::KeepTrianglesNear(posed, triangles, hairAnchor, SmpPhysics::kArmorSurfaceRadius);
-				if (surface.indices.empty())
+				if (!s.BuildNearSurface(wornShape, hairAnchor, surface))
 					continue;
-				SmpPhysics::CompactSurface(surface);
-				s.BindSurfaceDrivers(wornShape, surface);
 				armorSurfaces.push_back(std::move(surface));
 			}
 		}
@@ -1713,24 +1720,13 @@ void SmpPhysicsFeature::BuildClothSurfaces(CollisionBuildState& s) const
 			logger::debug("[GPU SMP Physics] cloth mesh '{}' not used for collision: {}", mesh->name.c_str(), clothReason);
 			continue;
 		}
-		std::vector<Vec3> posed(clothShape.positions.size());
-		for (std::size_t vertex = 0; vertex < posed.size(); ++vertex)
-			posed[vertex] = Posed(clothShape, vertex);
-		const std::vector<std::uint32_t> triangles(clothShape.triangles.begin(), clothShape.triangles.end());
-
 		SmpPhysics::SkinnedSurface surface;
 		surface.name = std::format("cloth: {}", mesh->name.c_str() ? mesh->name.c_str() : "");
 		surface.margin = SmpPhysics::kClothSurfaceMargin;
 		surface.contactPenetration = 0.0f;
 		surface.deepPush = false;
-		surface.vertices.reserve(clothShape.positions.size());
-		for (std::size_t vertex = 0; vertex < clothShape.positions.size(); ++vertex)
-			surface.vertices.push_back(VertexOf(clothShape, vertex));
-		surface.indices = SmpPhysics::KeepTrianglesNear(posed, triangles, hairAnchor, SmpPhysics::kArmorSurfaceRadius);
-		if (surface.indices.empty())
+		if (!s.BuildNearSurface(clothShape, hairAnchor, surface))
 			continue;
-		SmpPhysics::CompactSurface(surface);
-		s.BindSurfaceDrivers(clothShape, surface);
 		s.collision.surfaces.push_back(std::move(surface));
 	}
 }
