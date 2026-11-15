@@ -24,6 +24,13 @@ namespace HairRigidSolver
 	static const float kFuzzyEpsilon = 1.19209290e-7f;
 	static const float kSpringStiffnessDivisor = 16.0f;
 
+	/** @brief btGeneric6DofSpring2Constraint's limit states of one axis. Mirrors kLimitFree and its neighbours in RigidReference.cpp. */
+	static const int kLimitFree = 0;
+	static const int kLimitAtLower = 1;
+	static const int kLimitAtUpper = 2;
+	static const int kLimitEqual = 3;
+	static const int kLimitRange = 4;
+
 	/** @brief btGeneric6DofSpring2Constraint's BT_6DOF_FLAGS_* per-axis bits. */
 	static const int kFlagCfmStop = 1;
 	static const int kFlagErpStop = 2;
@@ -314,7 +321,7 @@ namespace HairRigidSolver
 		result.position = 0.0f;
 		result.error = 0.0f;
 		result.errorHi = 0.0f;
-		result.limit = 0;
+		result.limit = kLimitFree;
 		return result;
 	}
 
@@ -1095,15 +1102,15 @@ namespace HairRigidSolver
 		MotorState state = ZeroMotorState();
 		state.position = angle;
 		if (motor.lower > motor.upper) {
-			state.limit = 0;
+			state.limit = kLimitFree;
 			state.error = 0.0f;
 		} else if (motor.lower == motor.upper) {
 			state.error = angle - motor.lower;
-			state.limit = 3;
+			state.limit = kLimitEqual;
 		} else {
 			state.error = angle - motor.lower;
 			state.errorHi = angle - motor.upper;
-			state.limit = 4;
+			state.limit = kLimitRange;
 		}
 		joint = SetAngularState(joint, a_axis, state);
 		return joint;
@@ -1135,9 +1142,9 @@ namespace HairRigidSolver
 	{
 		int rows = 0;
 		for (int axis = 0; axis < 3; ++axis) {
-			if (GetLinearLimit(a_joint, axis) == 4)
+			if (GetLinearLimit(a_joint, axis) == kLimitRange)
 				rows += 2;
-			else if (GetLinearLimit(a_joint, axis) != 0)
+			else if (GetLinearLimit(a_joint, axis) != kLimitFree)
 				rows += 1;
 			if (HasFlag(Component(a_config.linearLimits.flags, axis), (int)kAxisMotor))
 				rows += 1;
@@ -1145,9 +1152,9 @@ namespace HairRigidSolver
 				rows += 1;
 		}
 		for (int axis = 0; axis < 3; ++axis) {
-			if (GetAngularState(a_joint, axis).limit == 4)
+			if (GetAngularState(a_joint, axis).limit == kLimitRange)
 				rows += 2;
-			else if (GetAngularState(a_joint, axis).limit != 0)
+			else if (GetAngularState(a_joint, axis).limit != kLimitFree)
 				rows += 1;
 			if (HasFlag(GetMotorSettings(a_config, axis).flags, (int)kAxisMotor))
 				rows += 1;
@@ -1194,7 +1201,7 @@ namespace HairRigidSolver
 		const SolverRow empty = ZeroRow();
 		SolverRow row;
 
-		if (a_limot.currentLimit == 4) {
+		if (a_limot.currentLimit == kLimitRange) {
 			const float velocity = a_rotational ?
 			                           Dot(a_bodyA.angularVelocity, a_axis) - Dot(a_bodyB.angularVelocity, a_axis) :
 			                           Dot(a_bodyA.linearVelocity, a_axis) - Dot(a_bodyB.linearVelocity, a_axis);
@@ -1240,7 +1247,7 @@ namespace HairRigidSolver
 			row.cfm = a_limot.stopCfm;
 			rows.limitUpper = row;
 			rows.present |= kRowLimitUpper;
-		} else if (a_limot.currentLimit == 3) {
+		} else if (a_limot.currentLimit == kLimitEqual) {
 			row = CalculateJacobi(a_joint, empty, a_axis, a_rotational, a_rotAllowed, a_bodyA, a_bodyB);
 			row.rhs = a_limot.stopErp * a_limot.currentLimitError * (a_rotational ? -1.0f : 1.0f) * a_framesPerSecond;
 			row.lowerLimit = kNegInfinity;
@@ -1376,9 +1383,9 @@ namespace HairRigidSolver
 
 	bool IsLimitViolated(in MotorState a_motor)
 	{
-		return a_motor.limit == 1 || a_motor.limit == 2 ||
-		       (a_motor.limit == 3 && (a_motor.error < -kRotationViolationThreshold || a_motor.error > kRotationViolationThreshold)) ||
-		       (a_motor.limit == 4 && (a_motor.error < -kRotationViolationThreshold || a_motor.errorHi > kRotationViolationThreshold));
+		return a_motor.limit == kLimitAtLower || a_motor.limit == kLimitAtUpper ||
+		       (a_motor.limit == kLimitEqual && (a_motor.error < -kRotationViolationThreshold || a_motor.error > kRotationViolationThreshold)) ||
+		       (a_motor.limit == kLimitRange && (a_motor.error < -kRotationViolationThreshold || a_motor.errorHi > kRotationViolationThreshold));
 	}
 
 	/** @brief The cfm of the constraint's row 0 after a block of rows was written, or the running value when it wrote none. */
@@ -1436,7 +1443,7 @@ namespace HairRigidSolver
 		if (rotational) {
 			const MotorSettings motor = GetMotorSettings(a_config, axis);
 			const MotorState state = GetAngularState(a_joint, axis);
-			if (state.limit == 0 && !HasFlag(motor.flags, (int)kAxisMotor) && !HasFlag(motor.flags, (int)kAxisSpring))
+			if (state.limit == kLimitFree && !HasFlag(motor.flags, (int)kAxisMotor) && !HasFlag(motor.flags, (int)kAxisSpring))
 				return ZeroAxisRows();
 
 			limot.loLimit = motor.lower;

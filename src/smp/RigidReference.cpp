@@ -86,7 +86,13 @@ namespace SmpPhysics::RigidReference
 		constexpr float kVelocityLimit{ 1.0e9f };
 		constexpr float kRotationViolationThreshold{ 1.0e-3f };
 		constexpr float kSpringFrequencyFraction{ 0.25f };
+		constexpr int kLimitFree{ 0 };
+		constexpr int kLimitAtLower{ 1 };
+		constexpr int kLimitAtUpper{ 2 };
+		constexpr int kLimitEqual{ 3 };
+		constexpr int kLimitRange{ 4 };
 		constexpr float kSpringStiffnessDivisor{ 16.0f };
+		constexpr float kUnboundedImpulse{ 1.0e10f };  ///< Mirrors kUnboundedImpulse in HairRigidContact.hlsli.
 
 		float Component(const Vec3& a_value, int a_axis) noexcept
 		{
@@ -707,15 +713,15 @@ namespace SmpPhysics::RigidReference
 			MotorState& state = a_joint.angular[a_axis];
 			state.position = angle;
 			if (motor.lower > motor.upper) {
-				state.limit = 0;
+				state.limit = kLimitFree;
 				state.error = 0.0f;
 			} else if (motor.lower == motor.upper) {
 				state.error = angle - motor.lower;
-				state.limit = 3;
+				state.limit = kLimitEqual;
 			} else {
 				state.error = angle - motor.lower;
 				state.errorHi = angle - motor.upper;
-				state.limit = 4;
+				state.limit = kLimitRange;
 			}
 		}
 
@@ -737,9 +743,9 @@ namespace SmpPhysics::RigidReference
 		{
 			int rows = 0;
 			for (int axis = 0; axis < 3; ++axis) {
-				if (a_joint.linearLimit[axis] == 4)
+				if (a_joint.linearLimit[axis] == kLimitRange)
 					rows += 2;
-				else if (a_joint.linearLimit[axis] != 0)
+				else if (a_joint.linearLimit[axis] != kLimitFree)
 					rows += 1;
 				if (a_joint.config->linear.motorEnabled[axis])
 					rows += 1;
@@ -747,9 +753,9 @@ namespace SmpPhysics::RigidReference
 					rows += 1;
 			}
 			for (int axis = 0; axis < 3; ++axis) {
-				if (a_joint.angular[axis].limit == 4)
+				if (a_joint.angular[axis].limit == kLimitRange)
 					rows += 2;
-				else if (a_joint.angular[axis].limit != 0)
+				else if (a_joint.angular[axis].limit != kLimitFree)
 					rows += 1;
 				if (a_joint.config->angular[axis].motorEnabled)
 					rows += 1;
@@ -794,7 +800,7 @@ namespace SmpPhysics::RigidReference
 		{
 			int count = 0;
 
-			if (a_limot.currentLimit == 4) {
+			if (a_limot.currentLimit == kLimitRange) {
 				const float velocity = a_rotational ?
 				                           Dot(a_bodyA.angularVelocity, a_axis) - Dot(a_bodyB.angularVelocity, a_axis) :
 				                           Dot(a_bodyA.linearVelocity, a_axis) - Dot(a_bodyB.linearVelocity, a_axis);
@@ -840,7 +846,7 @@ namespace SmpPhysics::RigidReference
 				a_row[a_localRow].cfm = a_limot.stopCfm;
 				++a_localRow;
 				++count;
-			} else if (a_limot.currentLimit == 3) {
+			} else if (a_limot.currentLimit == kLimitEqual) {
 				CalculateJacobi(a_joint, a_row[a_localRow], a_axis, a_rotational, a_rotAllowed, a_bodyA, a_bodyB);
 				a_row[a_localRow].rhs = a_limot.stopErp * a_limot.currentLimitError * (a_rotational ? -1.0f : 1.0f) * a_framesPerSecond;
 				a_row[a_localRow].lowerLimit = -kInfinity;
@@ -983,9 +989,9 @@ namespace SmpPhysics::RigidReference
 
 		bool IsLimitViolated(const MotorState& a_motor) noexcept
 		{
-			return a_motor.limit == 1 || a_motor.limit == 2 ||
-			       (a_motor.limit == 3 && (a_motor.error < -kRotationViolationThreshold || a_motor.error > kRotationViolationThreshold)) ||
-			       (a_motor.limit == 4 && (a_motor.error < -kRotationViolationThreshold || a_motor.errorHi > kRotationViolationThreshold));
+			return a_motor.limit == kLimitAtLower || a_motor.limit == kLimitAtUpper ||
+			       (a_motor.limit == kLimitEqual && (a_motor.error < -kRotationViolationThreshold || a_motor.error > kRotationViolationThreshold)) ||
+			       (a_motor.limit == kLimitRange && (a_motor.error < -kRotationViolationThreshold || a_motor.errorHi > kRotationViolationThreshold));
 		}
 
 		// btGeneric6DofSpring2Constraint::setAngularLimits.
@@ -1031,7 +1037,7 @@ namespace SmpPhysics::RigidReference
 				const int axis = order[index];
 				const RotationalMotor& motor = a_joint.config->angular[axis];
 				const MotorState& state = a_joint.angular[axis];
-				if (state.limit == 0 && !motor.motorEnabled && !motor.springEnabled)
+				if (state.limit == kLimitFree && !motor.motorEnabled && !motor.springEnabled)
 					continue;
 
 				LimitMotor limot;
@@ -1083,7 +1089,7 @@ namespace SmpPhysics::RigidReference
 			const LinearAxisLimits& limits = a_joint.config->linear;
 			int row = a_rowOffset;
 			for (int axis = 0; axis < 3; ++axis) {
-				if (a_joint.linearLimit[axis] == 0 && !limits.motorEnabled[axis] && !limits.springEnabled[axis])
+				if (a_joint.linearLimit[axis] == kLimitFree && !limits.motorEnabled[axis] && !limits.springEnabled[axis])
 					continue;
 
 				LimitMotor limot;
@@ -1271,7 +1277,7 @@ namespace SmpPhysics::RigidReference
 			}
 			row.cfm = cfm * row.jacDiagABInv;
 			row.lowerLimit = 0.0f;
-			row.upperLimit = 1.0e10f;
+			row.upperLimit = kUnboundedImpulse;
 			row.solverBodyA = a_contact.bodyA;
 			row.solverBodyB = a_contact.bodyB;
 			return row;
