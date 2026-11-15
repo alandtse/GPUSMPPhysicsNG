@@ -124,9 +124,6 @@ namespace SmpPhysics
 		bool palmSideOnly = false;  ///< Only hair in front of the palm plane (less kGrabFingerThickness) and between the wrist and the fingertips counts.
 	};
 
-	/** @brief A shape that is the single segment a_start to a_end, with no side preference. */
-	[[nodiscard]] GrabHandShape MakeGrabLine(const Vec3& a_start, const Vec3& a_end) noexcept;
-
 	/**
 	 * @brief The region the inside of a hand catches hair in: the curl between the palm and the closing fingers, and the fingers themselves.
 	 * @details A hand slides its fingers between the hair and the head and closes, so hair along the fingers or already in the curl is taken.

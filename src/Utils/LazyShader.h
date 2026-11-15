@@ -14,9 +14,7 @@ namespace Util
 	 * a failed compile returns nullptr on every call until Reset() is called.
 	 * Callers must null-check Get()'s return before binding it, since
 	 * Util::CompileShader returns nullptr on any compile or shader-object
-	 * creation failure. Reset() belongs in the owning feature's
-	 * ClearShaderCache(), the same entry point ShaderCache's file watcher
-	 * already calls to invalidate standalone (non-BSShader) shaders.
+	 * creation failure. Reset() belongs wherever the owner reloads its shaders.
 	 */
 	template <typename ShaderT>
 	class LazyShader

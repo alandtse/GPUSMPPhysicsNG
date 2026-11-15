@@ -113,15 +113,6 @@ namespace SmpPhysics
 		return PalmTarget::Hair;
 	}
 
-	GrabHandShape MakeGrabLine(const Vec3& a_start, const Vec3& a_end) noexcept
-	{
-		GrabHandShape shape;
-		shape.segments[0] = { a_start, a_end };
-		shape.segmentCount = 1;
-		shape.palm = a_start;
-		return shape;
-	}
-
 	GrabHandShape MakeHandGrabShape(const Vec3& a_palm, const Vec3& a_normal, const Vec3& a_fingerDirection) noexcept
 	{
 		GrabHandShape shape;

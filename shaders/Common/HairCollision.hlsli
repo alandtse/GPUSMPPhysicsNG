@@ -12,10 +12,9 @@ namespace HairCollision
 	static const float kMinimumHalfExtent = 1e-3f;
 	/** @brief Colliders a sphere's rest-exemption mask can name. Mirrors kMaximumExemptColliders in Collision.h. */
 	static const uint kMaximumExemptColliders = 32u;
-	/** @brief Slack a bone's bound sphere carries when it decides whether the whole bone can be skipped. Mirrors kBoundCullPad in SolverCommon.h. */
+	/** @brief Slack a bone's bound sphere carries when it decides whether the whole bone can be skipped. */
 	static const float kBoundCullPad = 0.5f;
-	/** @brief Collider kind values, mirroring Collider::Type in Collision.h. */
-	static const int kColliderEllipsoid = 0;
+	/** @brief Collider kind values, mirroring Collider::Type in Collision.h; an ellipsoid is 0. */
 	static const int kColliderCapsule = 1;
 	static const int kColliderPlane = 2;
 

@@ -817,29 +817,6 @@ TEST_CASE("Shapes collide by the can-collide and no-collide tag lists of both si
 	}
 }
 
-TEST_CASE("Dropping bones keeps jointed ones and remaps joint indices", "[SmpPhysics]")
-{
-	SmpRig rig;
-	for (const char* name : { "Root", "Extra", "Chain" }) {
-		RigBone bone;
-		bone.name = name;
-		rig.bones.push_back(bone);
-	}
-	RigJoint joint;
-	joint.child = 2;
-	joint.parent = 0;
-	rig.joints.push_back(joint);
-
-	const SmpRig kept = DropUnjointedBones(rig, { true, true, true });
-
-	REQUIRE(kept.bones.size() == 2);
-	REQUIRE(kept.bones[0].name == "Root");
-	REQUIRE(kept.bones[1].name == "Chain");
-	REQUIRE(kept.joints.size() == 1);
-	REQUIRE(kept.joints[0].child == 1);
-	REQUIRE(kept.joints[0].parent == 0);
-}
-
 namespace
 {
 	constexpr std::string_view kRingTipsXml = R"XML(<?xml version="1.0" encoding="utf-8"?>

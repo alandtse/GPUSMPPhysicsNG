@@ -239,10 +239,4 @@ namespace SmpPhysics::RigidGpu
 
 	/** @brief Counts each island and its constraints into the size bucket its constraint count falls in. */
 	[[nodiscard]] IslandSizes SummariseIslands(const std::vector<IslandRecord>& a_islands);
-
-	/**
-	 * @brief Writes the shader's integrated bodies back into a_world: world transform and both velocities.
-	 * @param a_bodies One record per body, read back from the shader's body buffer.
-	 */
-	void UnpackBodies(const std::vector<BodyRecord>& a_bodies, RigidReference::World& a_world);
 }

@@ -36,24 +36,6 @@ namespace stl
 {
 	using namespace SKSE::stl;
 
-	template <class T, std::size_t Size = 5>
-	void write_thunk_call(std::uintptr_t a_src)
-	{
-		auto& trampoline = SKSE::GetTrampoline();
-		if constexpr (Size == 6) {
-			T::func = *(std::uintptr_t*)trampoline.write_call<6>(a_src, T::thunk);
-		} else {
-			T::func = trampoline.write_call<Size>(a_src, T::thunk);
-		}
-	}
-
-	template <class F, std::size_t index, class T>
-	void write_vfunc()
-	{
-		REL::Relocation<std::uintptr_t> vtbl{ F::VTABLE[index] };
-		T::func = vtbl.write_vfunc(T::size, T::thunk);
-	}
-
 	template <std::size_t idx, class T>
 	void write_vfunc(REL::VariantID id)
 	{
@@ -61,11 +43,6 @@ namespace stl
 		T::func = vtbl.write_vfunc(idx, T::thunk);
 	}
 
-	template <class F, class T>
-	void write_vfunc()
-	{
-		write_vfunc<F, 0, T>();
-	}
 }
 
 namespace logger = SKSE::log;

@@ -227,15 +227,6 @@ namespace
 	}
 }
 
-std::pair<std::string, std::vector<std::string>> SmpPhysicsFeature::GetFeatureSummary()
-{
-	return { T(TKEY("description"), "Simulates hair and cloth meshes with the {brand} rigid-body solver, taking them over from hdtSMP64."),
-		{ T(TKEY("key_feature_1"), "Runs its own pendulum solver on the meshes whose physics file describes a bone chain"),
-			T(TKEY("key_feature_2"), "Claims only what the settings cover: head parts, armor, distance from the camera and a claim limit"),
-			T(TKEY("key_feature_3"), "Hands meshes back to hdtSMP64 the moment the settings stop covering them, with no restart"),
-			T(TKEY("key_feature_4"), "Works alongside hdtSMP64, which keeps simulating every mesh this feature declines") } };
-}
-
 void SmpPhysicsFeature::DataLoaded()
 {
 	TestBench::GetCrowd().AddHooks(&crowdWigs);
@@ -306,11 +297,6 @@ void SmpPhysicsFeature::SaveSettings(json& a_json)
 	a_json = settings;
 }
 
-void SmpPhysicsFeature::RestoreDefaultSettings()
-{
-	settings = {};
-}
-
 /** @brief World pose of named nodes below an actor's 3D, so the motion of a bone can be compared whoever simulates it. */
 static json NodeWorldJson(const json& a_args)
 {
@@ -337,13 +323,6 @@ static json NodeWorldJson(const json& a_args)
 	};
 	visit(root);
 	return { { "nodes", rows } };
-}
-
-void SmpPhysicsFeature::ClearShaderCache()
-{
-	gpuSolver.InvalidateShaders();
-	gpuSkinning.InvalidateShader();
-	debugLines.InvalidateShaders();
 }
 
 void SmpPhysicsFeature::ReloadVisualShaders()

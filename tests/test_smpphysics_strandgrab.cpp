@@ -11,6 +11,19 @@
 using namespace SmpPhysics;
 using Catch::Approx;
 
+namespace
+{
+	/** @brief A shape that is the single segment a_start to a_end, with no side preference. */
+	GrabHandShape MakeGrabLine(const Vec3& a_start, const Vec3& a_end)
+	{
+		GrabHandShape shape;
+		shape.segments[0] = { a_start, a_end };
+		shape.segmentCount = 1;
+		shape.palm = a_start;
+		return shape;
+	}
+}
+
 TEST_CASE("The pick takes each strand in reach, nearest first, with the nearest point of it", "[SmpPhysics]")
 {
 	const Vec3 palm{ 0.0f, 0.0f, 0.0f };

@@ -96,66 +96,6 @@ namespace SmpPhysics
 		return plan;
 	}
 
-	Vec3 WindForce(const SolverParams& a_params, float a_boneFactor, float a_mass, float a_area, const Vec3& a_axis,
-		const Vec3& a_origin, const Vec3& a_velocity) noexcept
-	{
-		constexpr float kCrosswindTimeScale = 0.004f;
-		constexpr float kVerticalPhaseScale = 0.006f;
-		constexpr float kEpsilon = 1.1920929e-7f;
-		constexpr float kLongGustRate = 0.55f;
-		constexpr float kLongGustVertical = 0.35f;
-		constexpr float kMidGustRate = 1.35f;
-		constexpr float kMidGustFeedback = 0.5f;
-		constexpr float kFlutterRate = 4.15f;
-		constexpr float kFlutterVertical = 2.2f;
-		constexpr float kPulseRate = 0.85f;
-		constexpr float kPulseVertical = 0.6f;
-		constexpr float kSidewaysMid = 0.13f;
-		constexpr float kSidewaysFlutter = 0.06f;
-		constexpr float kSidewaysBurst = 0.04f;
-		constexpr float kLiftRate = 1.9f;
-		constexpr float kLiftVertical = 1.4f;
-		constexpr float kLiftGust = 0.018f;
-		constexpr float kLiftFlutter = 0.01f;
-
-		const float magnitude = Length(a_params.wind);
-		if (!(magnitude > kEpsilon) || !(a_boneFactor > kEpsilon) || !(a_area > kEpsilon))
-			return {};
-		const Vec3 relativeWind = a_params.wind - a_velocity;
-		const Vec3 across = relativeWind - a_axis * Dot(a_axis, relativeWind);
-		const float speed = Length(across);
-		if (!(speed > kEpsilon))
-			return {};
-		Vec3 force = across * (kWindDrag * a_area * a_boneFactor * speed);
-		float forceLength = Length(force);
-		const float maximumForce = a_mass * kMaxWindAcceleration;
-		if (forceLength > maximumForce) {
-			force = force * (maximumForce / forceLength);
-			forceLength = maximumForce;
-		}
-
-		const float time = std::fmod(a_params.windTime, kWindClockWrap);
-		const Vec3 direction = a_params.wind / magnitude;
-		const Vec3 up{ 0.0f, 0.0f, 1.0f };
-		Vec3 side = Cross(direction, up);
-		side = Dot(side, side) < kEpsilon ? Vec3{ 1.0f, 0.0f, 0.0f } : Normalized(side);
-
-		const float gustSpeed = std::clamp(magnitude * kGustSpeedPerAcceleration, kMinGustSpeed, kMaxGustSpeed);
-		const Vec3 origin = a_origin * kBulletPerSkyrimUnit;
-		const float advected = time - Dot(origin, direction) / gustSpeed - Dot(origin, side) * kCrosswindTimeScale;
-		const float vertical = origin.z * kVerticalPhaseScale;
-
-		const float longGust = std::sin(advected * kLongGustRate + vertical * kLongGustVertical);
-		const float midGust = std::sin(advected * kMidGustRate + vertical + longGust * kMidGustFeedback);
-		const float flutter = std::sin(advected * kFlutterRate + vertical * kFlutterVertical + midGust);
-		const float pulse = 0.5f + 0.5f * std::sin(advected * kPulseRate + vertical * kPulseVertical);
-		const float burst = pulse * pulse;
-
-		const float sideways = (midGust * kSidewaysMid + flutter * kSidewaysFlutter + burst * kSidewaysBurst) * forceLength;
-		const float lift = (std::sin(advected * kLiftRate + vertical * kLiftVertical) * kLiftGust + flutter * kLiftFlutter) * forceLength;
-		return force + side * sideways + up * lift;
-	}
-
 	void ProbeSpheres(const std::vector<std::vector<BoneSphere>>& a_spheres, const std::vector<Collider>& a_colliders, const std::vector<SkinnedSurface>& a_surfaces,
 		const std::vector<Transform>& a_boneWorld, const std::vector<Transform>& a_driverWorld, std::vector<SphereProbe>& a_out)
 	{

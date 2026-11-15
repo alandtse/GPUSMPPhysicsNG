@@ -304,21 +304,4 @@ namespace SmpPhysics::RigidGpu
 		data.constants.axisSlots = kAxisSlots;
 		return data;
 	}
-
-	void UnpackBodies(const std::vector<BodyRecord>& a_bodies, RigidReference::World& a_world)
-	{
-		const std::size_t count = std::min(a_bodies.size(), a_world.bodies.size());
-		for (std::size_t index = 0; index < count; ++index) {
-			const BodyRecord& record = a_bodies[index];
-			RigidReference::Body& body = a_world.bodies[index];
-			body.worldTransform.basis = RigidReference::Mat3{
-				RigidReference::Vec3{ record.basis0.x, record.basis0.y, record.basis0.z },
-				RigidReference::Vec3{ record.basis1.x, record.basis1.y, record.basis1.z },
-				RigidReference::Vec3{ record.basis2.x, record.basis2.y, record.basis2.z },
-			};
-			body.worldTransform.origin = { record.origin.x, record.origin.y, record.origin.z };
-			body.linearVelocity = { record.linearVelocity.x, record.linearVelocity.y, record.linearVelocity.z };
-			body.angularVelocity = { record.angularVelocity.x, record.angularVelocity.y, record.angularVelocity.z };
-		}
-	}
 }

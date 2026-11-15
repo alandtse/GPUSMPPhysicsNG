@@ -1104,37 +1104,6 @@ namespace SmpPhysics
 		return mask;
 	}
 
-	SmpRig DropUnjointedBones(const SmpRig& a_rig, const std::vector<bool>& a_drop)
-	{
-		std::vector<bool> jointed(a_rig.bones.size(), false);
-		for (const std::vector<RigJoint>* joints : { &a_rig.joints, &a_rig.additionalJoints }) {
-			for (const RigJoint& joint : *joints) {
-				jointed[static_cast<std::size_t>(joint.child)] = true;
-				jointed[static_cast<std::size_t>(joint.parent)] = true;
-			}
-		}
-
-		SmpRig kept;
-		kept.collision = a_rig.collision;
-		std::vector<int> newIndex(a_rig.bones.size(), -1);
-		for (std::size_t index = 0; index < a_rig.bones.size(); ++index) {
-			if (index < a_drop.size() && a_drop[index] && !jointed[index])
-				continue;
-			newIndex[index] = static_cast<int>(kept.bones.size());
-			kept.bones.push_back(a_rig.bones[index]);
-		}
-		const auto remap = [&newIndex](const std::vector<RigJoint>& a_from, std::vector<RigJoint>& a_to) {
-			for (RigJoint joint : a_from) {
-				joint.child = newIndex[static_cast<std::size_t>(joint.child)];
-				joint.parent = newIndex[static_cast<std::size_t>(joint.parent)];
-				a_to.push_back(joint);
-			}
-		};
-		remap(a_rig.joints, kept.joints);
-		remap(a_rig.additionalJoints, kept.additionalJoints);
-		return kept;
-	}
-
 	SmpRig DropBones(const SmpRig& a_rig, const std::vector<bool>& a_drop)
 	{
 		SmpRig kept;

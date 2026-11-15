@@ -1,4 +1,4 @@
-// Wind drag on a hair segment. Mirrors WindForce in smp/SolverCommon.h; keep the constants in step.
+// Wind drag on a hair segment. The drag and gust constants are defined here.
 #ifndef __HAIR_WIND_DEPENDENCY_HLSL__
 #define __HAIR_WIND_DEPENDENCY_HLSL__
 

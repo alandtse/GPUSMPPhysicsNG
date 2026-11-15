@@ -1,5 +1,7 @@
 #include "smp/RepairLog.h"
 
+#include "Utils/StringUtils.h"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -7,24 +9,13 @@
 
 namespace SmpPhysics
 {
-	namespace
-	{
-		std::string Lower(std::string_view a_text)
-		{
-			std::string lowered(a_text);
-			for (char& character : lowered)
-				character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
-			return lowered;
-		}
-	}
-
 	void RepairLog::Record(std::string_view a_file, std::string_view a_problem, std::string_view a_action)
 	{
 		if (a_file.empty() || a_problem.empty())
 			return;
-		const std::string key = Lower(a_file);
+		const std::string key = Util::ToLowerAscii(a_file);
 		const std::scoped_lock lock(mutex);
-		auto report = std::ranges::find_if(reports, [&key](const FileReport& a_report) { return Lower(a_report.file) == key; });
+		auto report = std::ranges::find_if(reports, [&key](const FileReport& a_report) { return Util::ToLowerAscii(a_report.file) == key; });
 		if (report == reports.end()) {
 			if (reports.size() >= kMaxFiles)
 				return;
@@ -41,7 +32,7 @@ namespace SmpPhysics
 	{
 		const std::scoped_lock lock(mutex);
 		std::vector<FileReport> sorted = reports;
-		std::ranges::sort(sorted, [](const FileReport& a_left, const FileReport& a_right) { return Lower(a_left.file) < Lower(a_right.file); });
+		std::ranges::sort(sorted, [](const FileReport& a_left, const FileReport& a_right) { return Util::ToLowerAscii(a_left.file) < Util::ToLowerAscii(a_right.file); });
 		return sorted;
 	}
 

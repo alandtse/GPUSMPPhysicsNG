@@ -32,40 +32,10 @@ namespace SmpPhysics
 		float windFactor{ 1.0f };        ///< The actor's wind exposure, 0 fully sheltered to 1 fully exposed
 	};
 
-	/** @brief hdtSMP64's Bullet world is the Skyrim world scaled by this; its gust phases are laid out in Bullet units. */
-	inline constexpr float kBulletPerSkyrimUnit = 0.01425f;
 	/** @brief Wind speed, in Skyrim units per second, that one unit of wind strength gives at full sky wind speed. */
 	inline constexpr float kWindSpeedPerStrength = 300.0f;
 	/** @brief Fastest wind a bone is exposed to, so a transient blast cannot overpower the joints. */
 	inline constexpr float kMaxWindSpeed = 900.0f;
-	/**
-	 * @brief Drag force per unit of exposed area and squared relative speed.
-	 * @details Sized so a 20 by 4 unit segment of mass 0.1 at the default wind leans about a fifth of gravity.
-	 */
-	inline constexpr float kWindDrag = 1.0e-6f;
-	/** @brief Largest wind acceleration, in Skyrim units per second squared, a bone feels whatever its area; gravity is about 688. */
-	inline constexpr float kMaxWindAcceleration = 400.0f;
-	/** @brief Gust phase travel speed per unit of wind speed, and its bounds in Bullet units per second. */
-	inline constexpr float kGustSpeedPerAcceleration = 0.05f;
-	inline constexpr float kMinGustSpeed = 180.0f;
-	inline constexpr float kMaxGustSpeed = 1200.0f;
-
-	/**
-	 * @brief The force of wind drag on a bone's hair segment.
-	 * @details The force is quadratic drag from the wind relative to the bone, using only the part across the
-	 *          segment, on the area the segment presents, so wide, light hair is pushed more than narrow, heavy
-	 *          hair and a bone moving with the wind feels less. It is capped at kMaxWindAcceleration times the
-	 *          bone's mass. The Wind feature's field carries the gusts, so only hdtSMP64's fine flutter is added.
-	 * @param a_area Segment length times width, from ComputeBoneWindGeometry.
-	 * @param a_axis Unit vector along the segment, in the world frame.
-	 * @param a_origin The bone's world position, Skyrim units.
-	 * @param a_velocity The bone's world linear velocity, Skyrim units per second.
-	 * @param a_boneFactor The bone's own <wind-factor>, times the actor's exposure.
-	 * @note Mirrored by HairCollision::WindForce in shaders/Common/HairCollision.hlsli.
-	 */
-	[[nodiscard]] Vec3 WindForce(const SolverParams& a_params, float a_boneFactor, float a_mass, float a_area, const Vec3& a_axis,
-		const Vec3& a_origin, const Vec3& a_velocity) noexcept;
-
 	/** @brief The substeps one frame is split into. A count below one means the frame is not stepped at all. */
 	struct SubStepPlan
 	{
@@ -104,12 +74,6 @@ namespace SmpPhysics
 		float stiffness{ kGrabStiffness };
 	};
 
-	/**
-	 * @brief Slack a bone's bound sphere carries when it decides whether the whole bone can be skipped.
-	 * @details Covers the bound's own enlargement not being an exact Euclidean distance for an ellipsoid proxy.
-	 * @note Mirrored by kBoundCullPad in shaders/Common/HairCollision.hlsli.
-	 */
-	inline constexpr float kBoundCullPad = 0.5f;
 	/** @brief How far from a one-sided face a diagnostic probe still measures which side a sphere is on. */
 	inline constexpr float kProbeBehindReach = 8.0f;
 	/** @brief Distance behind a one-sided face past which a probe counts the sphere as behind it, a little over the armor allowance and skin. */

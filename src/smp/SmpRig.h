@@ -174,13 +174,6 @@ namespace SmpPhysics
 	void ApplySpringLimits(SmpRig& a_rig, float a_step, float a_minimumDampingRatio = 0.0f) noexcept;
 
 	/**
-	 * @brief A copy of a_rig without the bones flagged in a_drop that no joint names.
-	 * @details Joint indices are remapped to the kept bones. A flagged bone a joint drives or hangs from stays, since
-	 *          removing it would cut a chain.
-	 */
-	[[nodiscard]] SmpRig DropUnjointedBones(const SmpRig& a_rig, const std::vector<bool>& a_drop);
-
-	/**
 	 * @brief A copy of a_rig without the bones flagged in a_drop and every joint that touches one of them.
 	 * @details SMP skips a bone whose node is missing and the constraints that name it; this does the same.
 	 */

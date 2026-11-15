@@ -1,5 +1,7 @@
 #include "ClaimTally.h"
 
+#include "Utils/StringUtils.h"
+
 #include <algorithm>
 #include <cctype>
 
@@ -7,13 +9,6 @@ namespace SmpPhysics
 {
 	namespace
 	{
-		std::string Lower(std::string_view a_text)
-		{
-			std::string lower(a_text);
-			std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char a_c) { return static_cast<char>(std::tolower(a_c)); });
-			return lower;
-		}
-
 		constexpr const char* kOtherReason = "<other reasons>";
 	}
 
@@ -47,7 +42,7 @@ namespace SmpPhysics
 		const std::scoped_lock lock(mutex);
 		KindCount& count = kinds[static_cast<std::size_t>(a_kind)];
 		++count.attempts;
-		const std::string file = Lower(a_file);
+		const std::string file = Util::ToLowerAscii(a_file);
 
 		const auto fileEntry = files.find(file);
 		FileRow* fileRow = nullptr;

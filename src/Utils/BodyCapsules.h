@@ -40,12 +40,6 @@ namespace Util::BodyCapsules
 		}
 	};
 
-	/** @brief True for a skeleton bone of a hand or a finger, such as "NPC L Finger12 [LF12]". */
-	[[nodiscard]] inline bool IsHandBone(std::string_view a_name)
-	{
-		return a_name.find("Hand [") != std::string_view::npos || a_name.find("Finger") != std::string_view::npos;
-	}
-
 	/**
 	 * @brief Collects the collision capsules of nearby actors and the player's VR hands and fingers.
 	 * @details Actor capsules come from the same Havok collision objects Grass Collision reads. Finger capsules come from

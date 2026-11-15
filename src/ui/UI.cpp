@@ -16,6 +16,7 @@ namespace logger = SKSE::log;
 
 #include "SKSEMenuFramework.h"
 
+#include "Utils/StringUtils.h"
 #include "ui/UiModel.h"
 
 namespace SettingsUi
@@ -31,13 +32,6 @@ namespace SettingsUi
 				ImGuiMCP::SetTooltip("%s", a_text.c_str());
 		}
 
-		std::string Lower(std::string a_text)
-		{
-			for (char& character : a_text)
-				character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
-			return a_text;
-		}
-
 		/** @brief Draws a filter box above a list of row.items and returns true when an item was clicked; the page scrolls to the selected item when it changes elsewhere. */
 		bool RenderList(Row& row, const std::string& a_id)
 		{
@@ -50,7 +44,7 @@ namespace SettingsUi
 			Tip(row.tooltip);
 			ImGuiMCP::SetNextItemWidth(kWidth);
 			ImGuiMCP::InputTextWithHint(("##gsp_filter_" + row.label).c_str(), "Filter", row.filterText.data(), row.filterText.size());
-			const std::string filter = Lower(row.filterText.data());
+			const std::string filter = Util::ToLowerAscii(row.filterText.data());
 			std::vector<int> status;
 			if (row.itemStatusFn) {
 				status = row.itemStatusFn();
@@ -69,7 +63,7 @@ namespace SettingsUi
 				std::size_t hidden = 0;
 				for (std::size_t index = 0; index < row.items.size(); ++index) {
 					const std::string& name = row.items[index];
-					if (!filter.empty() && Lower(name).find(filter) == std::string::npos)
+					if (!filter.empty() && Util::ToLowerAscii(name).find(filter) == std::string::npos)
 						continue;
 					const int state = statusOf(index);
 					if ((row.showMode == 1 && state == 0) || (row.showMode == 2 && state < 2))

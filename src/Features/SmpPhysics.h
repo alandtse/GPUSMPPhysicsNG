@@ -102,30 +102,22 @@ struct SmpPhysicsFeature final : Feature
 
 	Settings settings;
 
-	virtual inline std::string GetName() override { return "GPU SMP Physics"; }
-	virtual std::string GetDisplayName() override { return T("feature.smp_physics.name", "GPU SMP Physics"); }
 	virtual inline std::string GetShortName() override { return "SmpPhysics"; }
-	virtual inline std::string_view GetCategory() const override { return FeatureCategories::kCharacters; }
-	virtual inline bool SupportsVR() override { return true; }
-	virtual std::pair<std::string, std::vector<std::string>> GetFeatureSummary() override;
 
 	/** @brief Registers the hdtSMP64 startup listener, the only work this feature does before it is enabled. */
 	virtual void OnPluginMessage(const SKSE::MessagingInterface::Message* a_message) override;
 	virtual void DataLoaded() override;
-	virtual void ClearShaderCache() override;
 	/** @brief Drops the compiled skinning and debug line shaders only, leaving the solver running, so edited shader files take effect. */
 	void ReloadVisualShaders();
 	/** @brief Drops the solver's compute shaders so edited files compile on the next step; claims keep their state. */
 	void ReloadSolverShaders();
 	virtual void RegisterUxActions() override;
-	virtual bool WantsBoneUploadHook() const override { return true; }
 	/** @brief Draws the debug overlay's lines into the deferred G-buffer. */
 	virtual void OnDeferredGeometryEnd() override;
 	/** @brief Rebinds a claimed mesh's skinning matrices to the GPU solver's pose, on the render thread. */
 	virtual void OnBoneMatricesUploaded(RE::NiSkinInstance* a_skin) override;
 	virtual void LoadSettings(json& a_json) override;
 	virtual void SaveSettings(json& a_json) override;
-	virtual void RestoreDefaultSettings() override;
 
 	/** @brief One row of the settings UI's claim table: a claimed physics file, or one switched off for testing. */
 	struct ClaimRow
@@ -250,13 +242,6 @@ private:
 
 	private:
 		SmpPhysicsFeature& feature;
-	};
-
-	/** @brief One declined physics file and the reason, for the settings UI. */
-	struct Decline
-	{
-		std::string file;
-		std::string reason;
 	};
 
 	/** @brief The collision proxies built for one claim, and how many of them had to fall back on a default. */
