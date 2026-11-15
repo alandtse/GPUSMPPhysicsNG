@@ -188,6 +188,12 @@ set_group("tests")
 add_deps("GPUSMPPhysicsNG-Core", "GPUSMPPhysicsNG-D3D")
 add_packages("catch2", "nlohmann_json", "thread-pool")
 add_files("tests/*.cpp")
+add_files(
+    "src/Utils/TestBench/CrowdBases.cpp",
+    "src/Utils/TestBench/CrowdFilter.cpp",
+    "src/Utils/TestBench/TestCrowdLayout.cpp",
+    "src/Features/SmpPhysics/CrowdStyles.cpp"
+)
 add_includedirs("tests")
 add_defines('SMPPHYSICS_FIXTURE_DIR="' .. path.join(os.projectdir(), "tests", "fixtures"):gsub("\\", "/") .. '"')
 add_defines('SMPPHYSICS_SHADER_DIR="' .. path.join(os.projectdir(), "shaders"):gsub("\\", "/") .. '"')

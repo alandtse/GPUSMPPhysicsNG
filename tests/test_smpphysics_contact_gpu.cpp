@@ -158,6 +158,18 @@ namespace
 		return scene;
 	}
 
+	/** @brief A floor that keeps pushing a sphere a little below it, with spheres from just above to far under it. */
+	Scene MakeDeepReachScene()
+	{
+		Scene scene = MakeSurfaceScene();
+		scene.surfaces[0].margin = 0.2f;
+		scene.surfaces[0].contactPenetration = 0.4f;
+		const std::array<float, kBoneCount> heights{ 0.5f, -0.2f, -0.5f, -2.5f };
+		for (std::size_t bone = 0; bone < kBoneCount; ++bone)
+			scene.boneWorld[bone].translation.z = heights[bone];
+		return scene;
+	}
+
 	/** @brief Twelve triangles in two clusters at z = 0, far enough apart that the BVH splits and the gap between them lies inside its root box. */
 	SkinnedSurface MakeClusteredSurface()
 	{
@@ -404,6 +416,14 @@ TEST_CASE("The passes find a bone's penetration of a skinned surface as the CPU 
 	CheckSurfaceDepthsMatchProbe(MakeSurfaceScene(), probes);
 	CHECK(probes[0].depth > 0.0f);
 	CHECK(probes[3].depth == 0.0f);
+}
+
+TEST_CASE("The passes find the deep push reach of a surface as the CPU probe does", "[smpphysics][contact_gpu]")
+{
+	std::vector<SphereProbe> probes;
+	CheckSurfaceDepthsMatchProbe(MakeDeepReachScene(), probes);
+	CHECK(probes[0].depth > 0.0f);
+	CHECK(probes[1].depth > 0.0f);
 }
 
 TEST_CASE("A bone between two surface clusters, inside the BVH root box, finds no contact", "[smpphysics][contact_gpu]")
