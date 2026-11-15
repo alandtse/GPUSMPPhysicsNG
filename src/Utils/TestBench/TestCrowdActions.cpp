@@ -20,6 +20,8 @@ using json = nlohmann::json;
 
 namespace
 {
+	constexpr int kDefaultListLimit = 100;  ///< Entries a list query returns when it gives no limit.
+
 	json TestCrowdJson(const TestBench::TestCrowd& a_crowd)
 	{
 		json result;
@@ -34,7 +36,7 @@ void TestBench::RegisterUxActions()
 	TOOL_COMMAND(kOwnerName, "spawnTestCrowd", "Spawn characters in rows ahead of the player, standing still and dressed by whatever features hook into the crowd (GPU SMP Physics gives each a wig), reusing the characters of an earlier spawn. Args: count (number, 1 to 60, default 10), bases (optional array of NPC base form IDs, as numbers or 0x strings, taken in turn so the crowd mixes characters; default one generic female character; a character left from an earlier spawn is reused only when its base matches), anyAdultWoman (bool, default false; picks from every named female NPC of a humanoid race the game loaded that is friendly or neutral to the player (never a bandit or other enemy) instead of bases), randomOrder (bool, default false; shuffles the picks), excludeChildren and excludeElderly (bool; leave out child races and elderly races, default true with anyAdultWoman and false otherwise). The pick and what the filter left out are logged as [Test Crowd] Character pool. Read what happened with testCrowdReport.",
 		[](const json& a_args) {
 			TestBench::SpawnChoice choice;
-			choice.count = static_cast<std::size_t>(std::clamp(a_args.value("count", 10), 1, static_cast<int>(TestBench::kMaxTestCrowd)));
+			choice.count = static_cast<std::size_t>(std::clamp(a_args.value("count", static_cast<int>(TestBench::kDefaultTestCrowd)), 1, static_cast<int>(TestBench::kMaxTestCrowd)));
 			choice.anyAdultWoman = a_args.value("anyAdultWoman", false);
 			choice.randomOrder = a_args.value("randomOrder", false);
 			choice.seed = std::random_device{}();
@@ -90,7 +92,7 @@ void TestBench::RegisterUxActions()
 	TOOL_QUERY(kOwnerName, "testCrowdCloaks", "List the cloaks and capes the test crowd can wear, with their index for setTestCrowdCloak, and which one it wears now (worn is -1 for none). Args: filter (string, case-insensitive part of the name, default none), limit (number, default 100).",
 		[](const json& a_args) -> json {
 			const std::string filter = Util::ToLowerAscii(a_args.value("filter", std::string{}));
-			const std::size_t limit = static_cast<std::size_t>(std::max(a_args.value("limit", 100), 1));
+			const std::size_t limit = static_cast<std::size_t>(std::max(a_args.value("limit", kDefaultListLimit), 1));
 			json rows = json::array();
 			const auto& names = TestBench::TestCrowd::CloakNames();
 			for (std::size_t index = 0; index < names.size() && rows.size() < limit; ++index) {
@@ -109,7 +111,7 @@ void TestBench::RegisterUxActions()
 	TOOL_QUERY(kOwnerName, "testCrowdAnimations", "List the game's idle animations by editor ID with the event that plays each; paired animations are left out. Args: filter (string, case-insensitive part of the editor ID, default none), limit (number, default 100).",
 		[](const json& a_args) -> json {
 			const std::string filter = Util::ToLowerAscii(a_args.value("filter", std::string{}));
-			const std::size_t limit = static_cast<std::size_t>(std::max(a_args.value("limit", 100), 1));
+			const std::size_t limit = static_cast<std::size_t>(std::max(a_args.value("limit", kDefaultListLimit), 1));
 			json rows = json::array();
 			for (const TestBench::IdleChoice& idle : TestBench::IdleCache::Snapshot()) {
 				if (rows.size() >= limit)

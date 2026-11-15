@@ -285,7 +285,7 @@ namespace
 	/** @brief What the Test crowd page edits; the buttons turn it into the same commands devbench sends. */
 	struct CrowdChoices
 	{
-		int count = 10;
+		int count = static_cast<int>(TestBench::kDefaultTestCrowd);
 		bool anyAdultWoman = true;
 		bool randomOrder = false;
 		bool stripped = false;

@@ -21,12 +21,18 @@ namespace Util
 	 */
 	[[nodiscard]] inline float HalfToFloat(std::uint16_t a_half) noexcept
 	{
-		const bool negative = (a_half & 0x8000u) != 0;
-		const std::uint32_t exponent = (a_half >> 10) & 0x1Fu;
-		const std::uint32_t mantissa = a_half & 0x3FFu;
-		if (exponent == 0x1Fu)
+		constexpr std::uint32_t kSignBit = 0x8000u;
+		constexpr int kMantissaBits = 10;
+		constexpr std::uint32_t kMantissaMask = (1u << kMantissaBits) - 1u;
+		constexpr std::uint32_t kExponentMask = 0x1Fu;
+		constexpr int kExponentBias = 15;
+		const bool negative = (a_half & kSignBit) != 0;
+		const std::uint32_t exponent = (a_half >> kMantissaBits) & kExponentMask;
+		const std::uint32_t mantissa = a_half & kMantissaMask;
+		if (exponent == kExponentMask)
 			return 0.0f;
-		const float magnitude = exponent == 0 ? std::ldexp(static_cast<float>(mantissa), -24) : std::ldexp(1.0f + static_cast<float>(mantissa) / 1024.0f, static_cast<int>(exponent) - 15);
+		const float mantissaScale = static_cast<float>(1u << kMantissaBits);
+		const float magnitude = exponent == 0 ? std::ldexp(static_cast<float>(mantissa), 1 - kExponentBias - kMantissaBits) : std::ldexp(1.0f + static_cast<float>(mantissa) / mantissaScale, static_cast<int>(exponent) - kExponentBias);
 		return negative ? -magnitude : magnitude;
 	}
 

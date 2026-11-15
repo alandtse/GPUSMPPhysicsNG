@@ -29,6 +29,7 @@ namespace TestBench
 		constexpr float kMaxTurnDegrees = 720.0f;            ///< Largest turn a test command may ask for.
 		constexpr float kGroundProbeAbove = 200.0f;          ///< How far above the player's feet the ground ray starts, so a slope that rises ahead is still found.
 		constexpr float kGroundProbeBelow = 1500.0f;         ///< How far below the player's feet it reaches, so a drop ahead is still found.
+		constexpr int kGroundProbeAttempts = 4;              ///< Characters in a row the ground ray steps past before it gives up.
 		constexpr float kGroundProbeSkip = 2.0f;             ///< How far under a character the ray restarts when it meets one.
 
 		/** @brief The height of the ground under a point: the first collision a ray from above meets that is not a character. */
@@ -36,7 +37,7 @@ namespace TestBench
 		{
 			RE::NiPoint3 from{ a_around.x, a_around.y, a_around.z + kGroundProbeAbove };
 			const float bottom = a_around.z - kGroundProbeBelow;
-			for (int attempt = 0; attempt < 4; ++attempt) {
+			for (int attempt = 0; attempt < kGroundProbeAttempts; ++attempt) {
 				const auto hit = Util::FirstOccluder(a_player, from, RE::NiPoint3{ from.x, from.y, bottom });
 				if (!hit)
 					return std::nullopt;

@@ -17,6 +17,8 @@ namespace TestBench
 	inline constexpr float kTestCrowdSpacing = 80.0f;
 	/** @brief Most characters one spawn may ask for. */
 	inline constexpr std::size_t kMaxTestCrowd = 60;
+	/** @brief How many characters a spawn asks for when the request gives no count. */
+	inline constexpr std::size_t kDefaultTestCrowd = 10;
 
 	/** @brief Where a test character stands relative to the player: ahead along the facing, and to the right of it. */
 	struct TestCrowdSlot
