@@ -63,6 +63,7 @@ namespace SettingsUi
 				std::size_t hidden = 0;
 				for (std::size_t index = 0; index < row.items.size(); ++index) {
 					const std::string& name = row.items[index];
+					constexpr const char* kStateTags[] = { "", "  [OK]", "  [REPAIRED]", "  [FAULT]" };
 					if (!filter.empty() && Util::ToLowerAscii(name).find(filter) == std::string::npos)
 						continue;
 					const int state = statusOf(index);
@@ -79,7 +80,7 @@ namespace SettingsUi
 						constexpr ImGuiMCP::ImVec4 kColours[] = { { 0.40f, 0.85f, 0.45f, 1.0f }, { 0.95f, 0.65f, 0.10f, 1.0f }, { 0.95f, 0.35f, 0.35f, 1.0f } };
 						ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kColours[state - 1]);
 					}
-					if (ImGuiMCP::Selectable((name + "##gsp_item_" + std::to_string(index)).c_str(), isSelected, 0, { 0, 0 })) {
+					if (ImGuiMCP::Selectable((name + kStateTags[state < 3 ? state : 3] + "##gsp_item_" + std::to_string(index)).c_str(), isSelected, 0, { 0, 0 })) {
 						*row.intValue = static_cast<int>(index);
 						clicked = true;
 					}
@@ -101,15 +102,26 @@ namespace SettingsUi
 			if (!model)
 				return;
 			if (model->alerts) {
-				constexpr ImGuiMCP::ImVec4 kAlertColour{ 1.0f, 0.30f, 0.30f, 1.0f };
+				constexpr ImGuiMCP::ImVec4 kAlertBackground{ 0.45f, 0.05f, 0.05f, 1.0f };
+				constexpr ImGuiMCP::ImVec4 kAlertText{ 1.0f, 0.92f, 0.92f, 1.0f };
 				const std::vector<std::string> alerts = model->alerts();
-				for (const std::string& alert : alerts) {
-					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kAlertColour);
-					ImGuiMCP::TextWrapped("%s", alert.c_str());
-					ImGuiMCP::PopStyleColor(1);
+				if (!alerts.empty()) {
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_ChildBg, kAlertBackground);
+					ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kAlertText);
+					if (ImGuiMCP::BeginChild("##gsp_alerts", { 0, 0 }, ImGuiMCP::ImGuiChildFlags_Border | ImGuiMCP::ImGuiChildFlags_AutoResizeY, 0)) {
+						for (const std::string& alert : alerts)
+							ImGuiMCP::TextWrapped("%s", alert.c_str());
+					}
+					ImGuiMCP::EndChild();
+					ImGuiMCP::PopStyleColor(2);
 				}
-				if (!alerts.empty())
-					ImGuiMCP::Separator();
+			}
+			if (model->lockedReason) {
+				const std::string reason = model->lockedReason();
+				if (!reason.empty()) {
+					ImGuiMCP::TextWrapped("%s", reason.c_str());
+					return;
+				}
 			}
 			if (model->status) {
 				const std::string status = model->status();
@@ -229,6 +241,7 @@ namespace SettingsUi
 			ImGuiMCP::SameLine(0.0f, -1.0f);
 			if (model->onSave && ImGuiMCP::Button("Save settings##gsp_save", { 0, 0 }))
 				model->onSave();
+			Tip("Writes your settings so they apply the next time the game starts. Changes made here already apply to the running game.");
 			if (model->onReset) {
 				ImGuiMCP::SameLine(0.0f, -1.0f);
 				if (ImGuiMCP::Button("Reset to defaults##gsp_reset", { 0, 0 }))

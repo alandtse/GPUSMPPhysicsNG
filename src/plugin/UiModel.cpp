@@ -5,6 +5,7 @@
 #include "Globals.h"
 #include "Utils/D3D.h"
 #include "Utils/DevBenchUx.h"
+#include "Utils/ShaderFailure.h"
 #include "Utils/TestBench/IdleCache.h"
 #include "Utils/TestBench/TestCrowd.h"
 #include "Utils/TestBench/TestCrowdActions.h"
@@ -12,6 +13,7 @@
 #include "engine/NifProbe.h"
 #include "plugin/Instance.h"
 #include "plugin/Settings.h"
+#include "ui/StatusText.h"
 #include "ui/UiModel.h"
 
 #include <chrono>
@@ -259,9 +261,9 @@ namespace
 	/** @brief A coloured list of items with the selected one's physics state and a button to copy its report; picking only selects. */
 	std::vector<Row> ItemBrowser(const char* a_label, const char* a_copyLabel, const char* a_dressLabel, std::function<void()> a_dress, const char* a_tooltip, int* a_index, std::function<std::vector<std::string>()> a_names, std::function<std::vector<RE::TESObjectARMO*>()> a_forms, int a_skip)
 	{
-		Row dress = Button(a_dressLabel, "Dresses every test character in the selected item. Spawn them on the Test crowd page first.", std::move(a_dress), true);
+		Row dress = Button(a_dressLabel, "Dresses every test character in the selected item. Spawn them on the Test crowd page first, which needs developer mode.", std::move(a_dress), true);
 		dress.enabled = [a_index] { return *a_index >= 0; };
-		return { WithHealth(Browse(a_label, a_tooltip, a_index, std::move(a_names), {}, {}), a_forms, static_cast<std::size_t>(a_skip)), ItemNote(a_forms, a_index, a_skip), ItemCopy(a_copyLabel, a_forms, a_index, a_skip), std::move(dress) };
+		return { WithHealth(Browse(a_label, a_tooltip, a_index, std::move(a_names), {}, {}), a_forms, static_cast<std::size_t>(a_skip)), ItemNote(a_forms, a_index, a_skip), ItemCopy(a_copyLabel, a_forms, a_index, a_skip), NeedsDeveloperMode(std::move(dress)) };
 	}
 
 	std::vector<Row> Join(std::vector<Row> a_first, std::vector<Row> a_second)
@@ -333,14 +335,14 @@ void PluginUi::Register()
 		Check("Drape capes on the body", "A cape authored to hang over armor is turned in toward the body it is worn on.", &settings.DrapeCloth),
 		Check("Collide hair with capes and cloth", "Hair rests on top of a cape simulated on the same character.", &settings.ClothCollision),
 		Header("Physics"),
-		Slide("Gravity scale", "Applies to claims made from now on.", &settings.GravityScale, kMinScale, kMaxScale, "%.2f"),
-		Slide("Stiffness scale", "Applies to claims made from now on.", &settings.StiffnessScale, kMinScale, kMaxScale, "%.2f"),
-		Slide("Damping scale", "Applies to claims made from now on.", &settings.DampingScale, kMinScale, kMaxScale, "%.2f"),
-		Slide("Wind strength", "How hard the weather's wind pushes hair and cloth outdoors; 0 switches wind off.", &settings.WindStrength, 0.0f, kMaxWindStrength, "%.1f"),
+		Slide("Gravity scale", "Multiplies the mod author's value; 1 leaves it as authored. Press Re-evaluate actors to apply it to hair that is already simulated.", &settings.GravityScale, kMinScale, kMaxScale, "%.2f"),
+		Slide("Stiffness scale", "Multiplies the mod author's value; 1 leaves it as authored. Press Re-evaluate actors to apply it to hair that is already simulated.", &settings.StiffnessScale, kMinScale, kMaxScale, "%.2f"),
+		Slide("Damping scale", "Multiplies the mod author's value; 1 leaves it as authored. Press Re-evaluate actors to apply it to hair that is already simulated.", &settings.DampingScale, kMinScale, kMaxScale, "%.2f"),
+		Slide("Wind strength", "How hard the weather's wind pushes hair and cloth outdoors; 0 switches wind off, the default is 6. Its scale differs from hdtSMP64's.", &settings.WindStrength, 0.0f, kMaxWindStrength, "%.1f"),
 		Header("Limits and culling"),
 		Slide("Simulation distance", "Game units from the camera beyond which claims are not stepped.", &settings.SimulationDistance, kMinSimulationDistance, kMaxSimulationDistance, "%.0f"),
 		SlideInt("Maximum claims", "Meshes beyond this count keep being simulated by hdtSMP64.", &settings.MaxClaims, kMinClaims, kMaxClaims),
-		SlideInt("Simulation budget", "Claims simulated each frame, nearest to the camera first.", &settings.MaxSimulatedClaims, kMinClaims, kMaxClaims),
+		SlideInt("Simulation budget", "The most physics files simulated each frame, nearest to the camera first.", &settings.MaxSimulatedClaims, kMinClaims, kMaxClaims),
 		Slide("Minimum screen size (%)", "Stops simulating hair that covers less than this share of the screen height for a while; 0 switches it off.", &settings.MinScreenSizePercent, 0.0f, kMaxScreenSizePercent, "%.1f"),
 		Check("Skip hair that is out of view", "Stops simulating hair that has stayed out of view for half a second and is not close to the camera.", &settings.CullOffscreen),
 		Note("Hair that was skipped restarts from rest when it comes back, which can show as a brief pop."),
@@ -351,10 +353,7 @@ void PluginUi::Register()
 	model.status = [&feature] {
 		const auto status = feature.GetUiStatus();
 		const auto shaders = Util::GetShaderPrewarmStatus();
-		return std::format("{}\nActive claims: {}   Simulation time per frame: {:.3f} ms{}",
-			status.linked ? status.linkStatus : std::string("Not linked to hdtSMP64. Install it and load it before this plugin."),
-			status.claimCount, status.stepMilliseconds,
-			shaders.running ? std::format("\nCompiling shaders: {} of {} done. Claimed hair keeps the engine pose until then.", shaders.done, shaders.total) : std::string());
+		return SettingsUi::StatusText(status.linked, status.linkStatus, status.claimCount, status.stepMilliseconds, shaders.running, shaders.done, shaders.total);
 	};
 	model.onSave = [&feature] { PluginSettings::Save(feature); };
 	model.onReevaluate = [&feature] { feature.ReevaluateAllActors(); };
@@ -414,7 +413,7 @@ void PluginUi::Register()
 				const auto [done, total] = NifProbe::Progress();
 				if (NifProbe::Running())
 					return std::format("Scanning: {} of {}", done, total);
-				return NifProbe::Generation() ? std::string("Green: physics file works. Amber: repaired and used. Red: file fault. Plain: no physics found.") : std::string("Not scanned yet."); }) },
+				return NifProbe::Generation() ? std::string("Green [OK]: no file problems detected. Amber [REPAIRED]: repaired and used. Red [FAULT]: file fault. Plain: no physics found.") : std::string("Not scanned yet."); }) },
 		Join(ItemBrowser("Armors", "Copy report for the selected armor", "Dress test characters in it", [] { TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(browseChoices.armor)); }, "Every playable body armor. Click one to see its physics and copy a report for its mod author.", &browseChoices.armor, ArmorNames, ArmorForms, 0), ItemBrowser("Cloaks", "Copy report for the selected cloak", "Put it on test characters", [] { RunCrowdCommand("setTestCrowdCloak", { { "index", browseChoices.cloak - 1 } }); }, "Every cloak and cape. Click one to see its physics and copy a report for its mod author.", &browseChoices.cloak, CloakNames, CloakForms, 1)));
 
 	auto& choices = crowdChoices;
@@ -486,17 +485,10 @@ void PluginUi::Register()
 		Button("Reload shaders", "Recompiles the skinning and debug line shaders from the shader folder on the next frame.", [&feature] { feature.ReloadVisualShaders(); }),
 	};
 
-	const auto shaderAlerts = [] {
-		std::vector<std::string> alerts = Util::GetShaderFailures();
-		if (alerts.empty())
-			return alerts;
-		for (std::string& line : alerts)
-			line.insert(0, "  - ");
-		alerts.insert(alerts.begin(), "SHADER COMPILE FAILED. The parts of the plugin that need these shaders do not work, and the log has the compiler output:");
-		return alerts;
-	};
+	const auto shaderAlerts = [] { return Util::ShaderAlertLines(Util::GetShaderFailures()); };
 	for (SettingsUi::Model* page : { &model, &claimsModel, &physicsModel, &reportModel, &crowdModel, &developerModel })
 		page->alerts = shaderAlerts;
+	crowdModel.lockedReason = [] { return globals::state->IsDeveloperMode() ? std::string() : std::string("Developer tool. Turn on Developer mode on the Developer page to use the test crowd."); };
 
-	SettingsUi::Register({ &model, &claimsModel, &physicsModel, &reportModel, &crowdModel, &developerModel });
+	SettingsUi::Register({ &model, &claimsModel, &physicsModel, &reportModel, &developerModel, &crowdModel });
 }

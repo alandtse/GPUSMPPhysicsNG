@@ -5,6 +5,7 @@
 #include <format>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace Util
 {
@@ -38,5 +39,18 @@ namespace Util
 	[[nodiscard]] inline std::string DescribeShaderFailure(std::string_view a_file, std::string_view a_entry, std::string_view a_detail)
 	{
 		return std::format("{} ({}): {}", a_file, a_entry, a_detail.empty() ? std::string_view("compile failed") : a_detail);
+	}
+
+	/** @brief The menu's alert lines for failed compiles: a heading that says what to do, then one line per failure; empty when none failed. */
+	[[nodiscard]] inline std::vector<std::string> ShaderAlertLines(const std::vector<std::string>& a_failures)
+	{
+		std::vector<std::string> lines;
+		if (a_failures.empty())
+			return lines;
+		lines.reserve(a_failures.size() + 1);
+		lines.emplace_back("Shader compilation failed. Features that use the shaders listed below are unavailable. Check that this release's Shaders folder is installed. If the problem persists, include these errors and the plugin log in your bug report.");
+		for (const std::string& failure : a_failures)
+			lines.push_back("  - " + failure);
+		return lines;
 	}
 }
