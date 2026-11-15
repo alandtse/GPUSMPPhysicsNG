@@ -17,6 +17,7 @@ namespace SmpPhysics
 	{
 		constexpr std::size_t kMaxInputBytes = 4u * 1024u * 1024u;
 		constexpr int kMaxNestingDepth = 32;
+		constexpr float kSpringStiffnessDivisor = 16.0f;  ///< Mirrors the divisor of the same name in the rigid solvers.
 		constexpr std::size_t kMaxFloatTextLength = 64;
 		constexpr std::size_t kMaxElementCount = 20000;
 		constexpr std::size_t kMaxEntityLength = 8;
@@ -1249,7 +1250,7 @@ namespace SmpPhysics
 				continue;
 			const float reduced = 1.0f / inverseInertia;
 			if (joint.angularStiffnessLimited) {
-				const float cap = reduced / (16.0f * a_step * a_step);
+				const float cap = reduced / (kSpringStiffnessDivisor * a_step * a_step);
 				joint.angularStiffness = { std::min(joint.angularStiffness.x, cap), std::min(joint.angularStiffness.y, cap),
 					std::min(joint.angularStiffness.z, cap) };
 			}

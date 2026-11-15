@@ -7,6 +7,7 @@
 
 namespace HairRigidContact
 {
+	static const float kUnboundedImpulse = 1.0e10f;
 	static const float kSor = 1.0f;
 	static const float kLinearSlop = 0.0f;
 	static const float kErp2 = 0.15f;
@@ -92,7 +93,7 @@ namespace HairRigidContact
 		}
 		row.cfm = cfm * row.jacDiagABInv;
 		row.lowerLimit = 0.0f;
-		row.upperLimit = 1.0e10f;
+		row.upperLimit = kUnboundedImpulse;
 		result.normal = row;
 
 		result.hasFriction = a_contact.friction > 0.0f;

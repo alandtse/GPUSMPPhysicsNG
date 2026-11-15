@@ -12,6 +12,8 @@ namespace HairCollision
 	static const float kMinimumHalfExtent = 1e-3f;
 	/** @brief Colliders a sphere's rest-exemption mask can name. Mirrors kMaximumExemptColliders in Collision.h. */
 	static const uint kMaximumExemptColliders = 32u;
+	/** @brief |z| of an axis above which the x axis, not z, is the reference for building a perpendicular. */
+	static const float kNearVerticalAxis = 0.9f;
 	/** @brief Slack a bone's bound sphere carries when it decides whether the whole bone can be skipped. */
 	static const float kBoundCullPad = 0.5f;
 	/** @brief Collider kind values, mirroring Collider::Type in Collision.h; an ellipsoid is 0. */
@@ -150,7 +152,7 @@ namespace HairCollision
 	{
 		float3 result = float3(0.0f, 0.0f, 1.0f);
 		if (length(a_axis) > kDirectionEpsilon) {
-			float3 reference = abs(a_axis.z) > 0.9f ? float3(1.0f, 0.0f, 0.0f) : float3(0.0f, 0.0f, 1.0f);
+			float3 reference = abs(a_axis.z) > kNearVerticalAxis ? float3(1.0f, 0.0f, 0.0f) : float3(0.0f, 0.0f, 1.0f);
 			result = Direction(cross(a_axis, reference));
 		}
 		return result;
