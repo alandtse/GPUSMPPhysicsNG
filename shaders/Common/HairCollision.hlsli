@@ -32,6 +32,25 @@ namespace HairCollision
 		float3 translation;
 	};
 
+	/** @brief A quaternion stored as (w, x, y, z) in a float4. */
+	Quat LoadQuat(float4 a_value)
+	{
+		Quat result;
+		result.w = a_value.x;
+		result.x = a_value.y;
+		result.y = a_value.z;
+		result.z = a_value.w;
+		return result;
+	}
+
+	Transform LoadTransform(float4 a_rotation, float4 a_translation)
+	{
+		Transform result;
+		result.rotation = LoadQuat(a_rotation);
+		result.translation = a_translation.xyz;
+		return result;
+	}
+
 	/** @brief One analytic collision proxy, expressed in the frame of the driver it follows. */
 	struct Collider
 	{

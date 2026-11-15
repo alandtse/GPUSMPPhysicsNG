@@ -104,30 +104,12 @@ cbuffer HairContactParams : register(b0)
 	uint HairSphereCount;  // entries in the sphere list
 };
 
-HairCollision::Quat LoadQuat(float4 a_value)
-{
-	HairCollision::Quat result;
-	result.w = a_value.x;
-	result.x = a_value.y;
-	result.y = a_value.z;
-	result.z = a_value.w;
-	return result;
-}
-
-HairCollision::Transform LoadTransform(float4 a_rotation, float4 a_translation)
-{
-	HairCollision::Transform result;
-	result.rotation = LoadQuat(a_rotation);
-	result.translation = a_translation.xyz;
-	return result;
-}
-
 /** @brief Unpacks one collider, whose radius and penetration ride in the spare lanes of two of its vectors. */
 HairCollision::Collider LoadCollider(HairCollider a_collider)
 {
 	HairCollision::Collider result;
 	result.kind = (int)a_collider.kind.x;
-	result.orientation = LoadQuat(a_collider.orientation);
+	result.orientation = HairCollision::LoadQuat(a_collider.orientation);
 	result.center = a_collider.center.xyz;
 	result.halfExtents = a_collider.halfExtents.xyz;
 	result.segmentA = a_collider.segmentA.xyz;
@@ -161,7 +143,7 @@ HairCollision::Contact QueryColliders(HairTreeStatic a_tree, float3 a_point, flo
 		if (raw.kind.y < driverFirst || raw.kind.y >= driverFirst + driverCount)
 			continue;
 		HairDriverWorld rawWorld = HairDrivers[raw.kind.y];
-		HairCollision::Transform world = LoadTransform(rawWorld.rotation, rawWorld.translation);
+		HairCollision::Transform world = HairCollision::LoadTransform(rawWorld.rotation, rawWorld.translation);
 		if (!HairCollision::IsFiniteTransform(world))
 			continue;
 		HairCollision::MergeContact(best, LoadCollider(raw), world, a_point, a_radius, (int)index);
@@ -360,7 +342,7 @@ uint ColliderBoundMask(HairTreeStatic a_tree, float3 a_centre, float a_reach, ou
 		if (raw.kind.y < driverFirst || raw.kind.y >= driverFirst + driverCount)
 			continue;
 		HairDriverWorld rawWorld = HairDrivers[raw.kind.y];
-		HairCollision::Transform world = LoadTransform(rawWorld.rotation, rawWorld.translation);
+		HairCollision::Transform world = HairCollision::LoadTransform(rawWorld.rotation, rawWorld.translation);
 		if (!HairCollision::IsFiniteTransform(world))
 			continue;
 		HairCollision::Contact touched = HairCollision::NoContact();
@@ -425,7 +407,7 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 	uint state = kCullEmpty;
 	if (sphereRange.range.y != 0u) {
 		HairBoneWorld world = HairBoneWorlds[bone];
-		HairCollision::Transform pose = LoadTransform(world.rotation, world.translation);
+		HairCollision::Transform pose = HairCollision::LoadTransform(world.rotation, world.translation);
 		if (BoneBoundReaches(treeStatic, input.surface, sphereRange, pose, input.contact.z, surfaceMask, colliderMask)) {
 			if (sphereRange.range.w != 0u)
 				surfaceMask &= sphereRange.range.z;
@@ -449,7 +431,7 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 	uint tree = HairBoneTrees[bone];
 	HairTreeInput input = HairTreeInputs[tree];
 	HairBoneWorld world = HairBoneWorlds[bone];
-	HairCollision::Transform pose = LoadTransform(world.rotation, world.translation);
+	HairCollision::Transform pose = HairCollision::LoadTransform(world.rotation, world.translation);
 	float3 centre = pose.translation + HairCollision::QuatRotate(pose.rotation, sphere.centreRadius.xyz);
 	HairCollision::Contact contact = QueryContacts(HairTrees[tree], input.surface, cull.x, cull.z, centre,
 		sphere.centreRadius.w + input.contact.z, sphere.exempt.x);

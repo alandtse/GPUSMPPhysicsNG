@@ -89,24 +89,6 @@ static const float kPrepEmptyLow = 1e30f;             // mirrors kBvhEmptyLow in
 static const float kPrepEmptyHigh = -1e30f;           // mirrors kBvhEmptyHigh in TriangleBvh.h
 static const uint kPrepInvalidSlot = 0xFFFFFFFFu;     // mirrors kInvalidDriverSlot in GpuRigPacking.h
 
-HairCollision::Quat LoadPrepQuat(float4 a_value)
-{
-	HairCollision::Quat result;
-	result.w = a_value.x;
-	result.x = a_value.y;
-	result.y = a_value.z;
-	result.z = a_value.w;
-	return result;
-}
-
-HairCollision::Transform LoadPrepTransform(float4 a_rotation, float4 a_translation)
-{
-	HairCollision::Transform result;
-	result.rotation = LoadPrepQuat(a_rotation);
-	result.translation = a_translation.xyz;
-	return result;
-}
-
 /** @brief Reads one posed corner; false when its slot is out of range or its position is not finite. */
 bool LoadPosedCorner(uint a_index, out float3 a_position)
 {
@@ -132,8 +114,8 @@ bool LoadPosedCorner(uint a_index, out float3 a_position)
 	}
 	HairPrepDriver rawWorld = HairPrepDrivers[driver];
 	HairCollision::Transform skin = HairCollision::TransformMul(
-		LoadPrepTransform(rawWorld.rotation, rawWorld.translation),
-		LoadPrepTransform(packed.rotation, packed.translation));
+		HairCollision::LoadTransform(rawWorld.rotation, rawWorld.translation),
+		HairCollision::LoadTransform(packed.rotation, packed.translation));
 	HairSkinRotations[bone] = float4(skin.rotation.w, skin.rotation.x, skin.rotation.y, skin.rotation.z);
 	HairSkinTranslations[bone] = float4(skin.translation, 1.0f);
 }
@@ -158,7 +140,7 @@ bool LoadPosedCorner(uint a_index, out float3 a_position)
 		float weight = weights[slot];
 		if (!(weight > 0.0f))
 			continue;
-		float3 posed = HairSkinTranslations[bone].xyz + HairCollision::QuatRotate(LoadPrepQuat(HairSkinRotations[bone]), bind);
+		float3 posed = HairSkinTranslations[bone].xyz + HairCollision::QuatRotate(HairCollision::LoadQuat(HairSkinRotations[bone]), bind);
 		sum += posed * weight;
 		total += weight;
 	}
