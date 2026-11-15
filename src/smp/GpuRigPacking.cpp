@@ -24,6 +24,20 @@ namespace SmpPhysics::GpuRig
 			return { a_value.x, a_value.y, a_value.z, 0.0f };
 		}
 
+		/** @brief Writes a triangle's corners, unit normal and twice its area; false and untouched when it is degenerate. */
+		bool FillSurfaceTriangle(SurfaceTriangle& a_record, const Vec3& a_a, const Vec3& a_b, const Vec3& a_c, float a_sourceBits) noexcept
+		{
+			const Vec3 cross = Cross(a_b - a_a, a_c - a_a);
+			const float twiceArea = Length(cross);
+			if (!(twiceArea > kMinimumTriangleArea))
+				return false;
+			a_record.a = { a_a.x, a_a.y, a_a.z, a_sourceBits };
+			a_record.b = { a_b.x, a_b.y, a_b.z, 0.0f };
+			a_record.c = { a_c.x, a_c.y, a_c.z, 0.0f };
+			a_record.normalArea = { cross.x / twiceArea, cross.y / twiceArea, cross.z / twiceArea, twiceArea };
+			return true;
+		}
+
 		/** @brief The root of a dynamic bone's tree: the last dynamic ancestor before the chain reaches a kinematic bone. */
 		int FindTreeRoot(const SmpRig& a_rig, const std::vector<int>& a_jointOfBone, int a_bone) noexcept
 		{
@@ -177,15 +191,8 @@ namespace SmpPhysics::GpuRig
 			const Vec3& c = posed[i2];
 			if (!IsFiniteVector(a) || !IsFiniteVector(b) || !IsFiniteVector(c))
 				continue;
-			const Vec3 cross = Cross(b - a, c - a);
-			const float twiceArea = Length(cross);
-			if (!(twiceArea > kMinimumTriangleArea))
-				continue;
-			record.a = { a.x, a.y, a.z, sourceBits };
-			record.b = { b.x, b.y, b.z, 0.0f };
-			record.c = { c.x, c.y, c.z, 0.0f };
-			record.normalArea = { cross.x / twiceArea, cross.y / twiceArea, cross.z / twiceArea, twiceArea };
-			anyUsable = true;
+			if (FillSurfaceTriangle(record, a, b, c, sourceBits))
+				anyUsable = true;
 		}
 		if (!anyUsable)
 			return;
@@ -625,14 +632,7 @@ namespace SmpPhysics::GpuRig
 			const Vec3& a = posed[prep.corners.x];
 			const Vec3& b = posed[prep.corners.y];
 			const Vec3& c = posed[prep.corners.z];
-			const Vec3 cross = Cross(b - a, c - a);
-			const float twiceArea = Length(cross);
-			if (!(twiceArea > kMinimumTriangleArea))
-				continue;
-			record.a = { a.x, a.y, a.z, sourceBits };
-			record.b = { b.x, b.y, b.z, 0.0f };
-			record.c = { c.x, c.y, c.z, 0.0f };
-			record.normalArea = { cross.x / twiceArea, cross.y / twiceArea, cross.z / twiceArea, twiceArea };
+			FillSurfaceTriangle(record, a, b, c, sourceBits);
 		}
 
 		a_nodes.assign(a_data.nodes.size(), BvhNode{});
