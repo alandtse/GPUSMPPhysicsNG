@@ -122,6 +122,7 @@ DLL and shaders into a game install after a build.
   plugin reproduces and builds on.
 - [Bullet Physics](https://github.com/bulletphysics/bullet3): the model for the rigid-body solver.
 - [CommonLibVR](https://github.com/alandtse/CommonLibVR/tree/ng), the CommonLibSSE-NG fork this builds against.
+- [Yue Qingshu Dress](https://www.nexusmods.com/skyrimspecialedition/mods/48379): the outfit in the screenshots.
 
 ## License
 
