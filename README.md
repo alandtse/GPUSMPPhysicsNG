@@ -25,6 +25,10 @@ everything else, so the two run side by side.
 - Optional: [Community Shaders / Open Shaders](https://github.com/alandtse/open-shaders) for wind; without it the
   weather's wind is used
 
+The preview build also carries hdtSMP64's Tracy profiling and trace export
+([#481](https://github.com/DaymareOn/hdtSMP64/pull/481), [#482](https://github.com/DaymareOn/hdtSMP64/pull/482),
+[#483](https://github.com/DaymareOn/hdtSMP64/pull/483)); this plugin does not need them.
+
 ## Install
 
 Copy `SKSE/Plugins` into `Data`. The plugin compiles its HLSL on your machine from
