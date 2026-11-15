@@ -192,7 +192,8 @@ add_files(
     "src/Utils/TestBench/CrowdBases.cpp",
     "src/Utils/TestBench/CrowdFilter.cpp",
     "src/Utils/TestBench/TestCrowdLayout.cpp",
-    "src/Features/SmpPhysics/CrowdStyles.cpp"
+    "src/Features/SmpPhysics/CrowdStyles.cpp",
+    "src/Features/Wind/WindShelter.cpp"
 )
 add_includedirs("tests")
 add_defines('SMPPHYSICS_FIXTURE_DIR="' .. path.join(os.projectdir(), "tests", "fixtures"):gsub("\\", "/") .. '"')
