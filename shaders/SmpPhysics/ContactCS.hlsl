@@ -94,7 +94,9 @@ StructuredBuffer<HairSurfaceMeta> HairSurfaces : register(t8);
 StructuredBuffer<HairSurfaceTriangle> HairSurfaceTriangles : register(t9);
 StructuredBuffer<HairBvhNode> HairSurfaceNodes : register(t10);
 StructuredBuffer<HairSphereRecord> HairSphereList : register(t12);
-StructuredBuffer<uint> HairBoneTrees : register(t13);  // per bone slot: its tree slot, or 0xFFFFFFFF for a kinematic bone
+StructuredBuffer<uint> HairBoneTrees : register(t13);  // per bone slot: its tree slot, or kNoTree for a kinematic bone
+static const uint kNoTree = 0xFFFFFFFFu;  // mirrors kNoTree in GpuRigPacking.h
+static const uint kNoTriangle = 0xFFFFFFFFu;  // no face has offered itself yet
 
 RWStructuredBuffer<HairBoneWorld> HairBoneWorlds : register(u1);
 
@@ -212,7 +214,7 @@ HairCollision::Contact QuerySurface(HairSurfaceMeta a_meta, float3 a_point, floa
 	float extent = max(a_reach, behind);
 	float3 low = a_point - float3(extent, extent, extent);
 	float3 high = a_point + float3(extent, extent, extent);
-	uint bestId = 0xFFFFFFFFu;
+	uint bestId = kNoTriangle;
 	uint node = 0u;
 	while (node < a_meta.base.z) {
 		HairBvhNode current = HairSurfaceNodes[a_meta.base.y + node];
@@ -245,7 +247,7 @@ HairCollision::Contact QueryContacts(HairTreeStatic a_tree, uint4 a_surface, uin
 	if (!HairCollision::IsFiniteVector(a_point) || !isfinite(a_radius))
 		return best;
 	for (uint index = 0; index < a_surface.y; ++index) {
-		if (index < 32u && (a_surfaceMask & (1u << index)) == 0u)
+		if (index < HairCollision::kMaskedSurfaceLimit && (a_surfaceMask & (1u << index)) == 0u)
 			continue;
 		HairSurfaceMeta meta = HairSurfaces[a_surface.x + index];
 		HairCollision::Contact contact = QuerySurface(meta, a_point, a_radius + meta.contact.x);
@@ -368,7 +370,7 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 {
 	a_surfaceMask = 0u;
 	float3 boundCentre = a_pose.translation + HairCollision::QuatRotate(a_pose.rotation, a_bone.bound.xyz);
-	for (uint surface = 0; surface < a_surface.y && surface < 32u; ++surface) {
+	for (uint surface = 0; surface < a_surface.y && surface < HairCollision::kMaskedSurfaceLimit; ++surface) {
 		HairSurfaceMeta meta = HairSurfaces[a_surface.x + surface];
 		if (meta.base.z == 0u)
 			continue;
@@ -380,7 +382,7 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 	float boundReach = a_bone.bound.w * kBoundCullScale + a_skin + HairCollision::kBoundCullPad;
 	bool anyCollider;
 	a_colliderMask = ColliderBoundMask(a_tree, boundCentre, boundReach, anyCollider);
-	return a_surfaceMask != 0u || anyCollider || a_surface.y > 32u;
+	return a_surfaceMask != 0u || anyCollider || a_surface.y > HairCollision::kMaskedSurfaceLimit;
 }
 
 	/**
@@ -394,7 +396,7 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 		return;
 	HairBoneCull[bone] = uint4(0u, kCullSkip, 0u, 0u);
 	uint tree = HairBoneTrees[bone];
-	if (tree == 0xFFFFFFFFu)
+	if (tree == kNoTree)
 		return;
 	HairTreeStatic treeStatic = HairTrees[tree];
 	HairTreeInput input = HairTreeInputs[tree];
@@ -411,7 +413,7 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 		if (BoneBoundReaches(treeStatic, input.surface, sphereRange, pose, input.contact.z, surfaceMask, colliderMask)) {
 			if (sphereRange.range.w != 0u)
 				surfaceMask &= sphereRange.range.z;
-			if (surfaceMask != 0u || colliderMask != 0u || input.surface.y > 32u)
+			if (surfaceMask != 0u || colliderMask != 0u || input.surface.y > HairCollision::kMaskedSurfaceLimit)
 				state = kCullWork;
 		}
 	}

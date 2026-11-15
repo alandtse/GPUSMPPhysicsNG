@@ -604,6 +604,11 @@ static const uint kCachedConstraints = 512u;
 static const uint kCachedBodies = 128u;
 static const uint kBodyTableSize = 256u;
 static const uint kEmptyKey = 0xFFFFFFFFu;
+static const uint kNoNextRow = 0xFFFFFFFFu;
+static const uint kBodyHashMultiplier = 0x9E3779B1u;
+static const uint kBodyHashShift = 24u;  // 32 minus log2(kBodyTableSize)
+static const uint kSlotBits = 16u;       // two body slots share one entry word
+static const uint kSlotMask = 0xFFFFu;
 
 groupshared uint gTableKey[kBodyTableSize];
 groupshared uint gTableSlot[kBodyTableSize];
@@ -619,7 +624,7 @@ groupshared float4 gTurn[kCachedBodies];
 
 uint BodyHash(uint a_body)
 {
-	return (a_body * 0x9E3779B1u) >> 24;
+	return (a_body * kBodyHashMultiplier) >> kBodyHashShift;
 }
 
 void InsertBody(uint a_body)
@@ -667,7 +672,7 @@ float SolveConstraintCached(uint a_constraint, uint a_slotA, uint a_slotB)
 	remaining &= remaining - 1u;
 	HairRigidRow currentRecord = HairRigidRows[rowBase + current];
 	while (true) {
-		uint next = 0xFFFFFFFFu;
+		uint next = kNoNextRow;
 		HairRigidRow nextRecord = (HairRigidRow)0;
 		if (remaining != 0u) {
 			next = firstbitlow(remaining);
@@ -709,7 +714,7 @@ float SolveConstraintCached(uint a_constraint, uint a_slotA, uint a_slotB)
 			leastSquaresResidual = leastSquaresResidual < residual2 ? residual2 : leastSquaresResidual;
 		}
 
-		if (next == 0xFFFFFFFFu)
+		if (next == kNoNextRow)
 			break;
 		current = next;
 		currentRecord = nextRecord;
@@ -795,7 +800,7 @@ bool CacheIslandBodies(uint4 a_range, uint a_thread)
 
 	for (uint slotEntry = a_thread; slotEntry < a_range.y; slotEntry += kColoredGroupThreads) {
 		const uint4 header = HairRigidConstraints[HairRigidColoredConstraints[a_range.x + slotEntry]].header;
-		gEntrySlots[slotEntry] = (FindBodySlot(header.x) << 16u) | FindBodySlot(header.y);
+		gEntrySlots[slotEntry] = (FindBodySlot(header.x) << kSlotBits) | FindBodySlot(header.y);
 	}
 	for (uint loadSlot = a_thread; loadSlot < gSlotCount; loadSlot += kColoredGroupThreads) {
 		const HairRigidSolverBody body = HairRigidSolverBodies[gSlotBody[loadSlot]];
@@ -840,7 +845,7 @@ bool CacheIslandBodies(uint4 a_range, uint a_thread)
 				for (uint entry = first + a_threadIndex; entry < last; entry += kColoredGroupThreads) {
 					const uint constraint = HairRigidColoredConstraints[range.x + entry];
 					if (cached)
-						residual2 = max(residual2, SolveConstraintCached(constraint, gEntrySlots[entry] >> 16u, gEntrySlots[entry] & 0xFFFFu));
+						residual2 = max(residual2, SolveConstraintCached(constraint, gEntrySlots[entry] >> kSlotBits, gEntrySlots[entry] & kSlotMask));
 					else
 						residual2 = max(residual2, SolveConstraint(constraint));
 				}
@@ -865,7 +870,7 @@ bool CacheIslandBodies(uint4 a_range, uint a_thread)
 					for (uint entry = first + a_threadIndex; entry < last; entry += kColoredGroupThreads) {
 						const uint constraint = HairRigidColoredConstraints[range.x + entry];
 						if (cached)
-							residual2 = max(residual2, SolvePushCached(constraint, gEntrySlots[entry] >> 16u, gEntrySlots[entry] & 0xFFFFu));
+							residual2 = max(residual2, SolvePushCached(constraint, gEntrySlots[entry] >> kSlotBits, gEntrySlots[entry] & kSlotMask));
 						else
 							residual2 = max(residual2, SolvePush(constraint));
 					}

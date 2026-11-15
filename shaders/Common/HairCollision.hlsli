@@ -12,6 +12,8 @@ namespace HairCollision
 	static const float kMinimumHalfExtent = 1e-3f;
 	/** @brief Colliders a sphere's rest-exemption mask can name. Mirrors kMaximumExemptColliders in Collision.h. */
 	static const uint kMaximumExemptColliders = 32u;
+	/** @brief Surfaces a bone's surface mask can name. Mirrors kMaskedSurfaceLimit in Math.h. */
+	static const uint kMaskedSurfaceLimit = 32u;
 	/** @brief |z| of an axis above which the x axis, not z, is the reference for building a perpendicular. */
 	static const float kNearVerticalAxis = 0.9f;
 	/** @brief Slack a bone's bound sphere carries when it decides whether the whole bone can be skipped. */
