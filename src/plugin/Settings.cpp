@@ -36,7 +36,13 @@ void PluginSettings::Load(SmpPhysicsFeature& a_feature)
 			document = json::object();
 		}
 	}
-	a_feature.LoadSettings(document);
+	try {
+		a_feature.LoadSettings(document);
+	} catch (const std::exception& error) {
+		logger::warn("Settings.json has a value of the wrong type ({}); using defaults", error.what());
+		json defaults = json::object();
+		a_feature.LoadSettings(defaults);
+	}
 	if (!std::filesystem::exists(File()))
 		Save(a_feature);
 }

@@ -12,8 +12,13 @@ namespace
 		static void thunk(void* a_this, RE::NiSkinInstance* a_skin, void* a_context, RE::NiTransform* a_transform)
 		{
 			func(a_this, a_skin, a_context, a_transform);
-			if (Instance().loaded)
+			if (!Instance().loaded)
+				return;
+			try {
 				Instance().OnBoneMatricesUploaded(a_skin);
+			} catch (const std::exception& error) {
+				logger::error("The bone upload hook failed: {}", error.what());
+			}
 		}
 
 		static inline REL::Relocation<decltype(thunk)> func;

@@ -4,6 +4,7 @@
 #include "Utils/D3D.h"
 
 #include <d3d11.h>
+#include <stdexcept>
 #include <string>
 
 #include <Windows.Foundation.h>
@@ -80,6 +81,8 @@ public:
 		desc(a_desc)
 	{
 		auto device = globals::d3d::device;
+		if (!device)
+			throw std::runtime_error("no D3D device");
 		DX::ThrowIfFailed(device->CreateBuffer(&desc, nullptr, resource.put()));
 		if (name)
 			detail::SetD3DName(resource.get(), name);
@@ -118,23 +121,6 @@ private:
 	D3D11_BUFFER_DESC desc;
 };
 
-/** @brief Creates a D3D11 structured buffer descriptor with optional CPU write access. */
-template <typename T>
-D3D11_BUFFER_DESC StructuredBufferDesc(UINT a_count = 1, bool cpu_access = true)
-{
-	D3D11_BUFFER_DESC desc{};
-	ZeroMemory(&desc, sizeof(desc));
-	desc.Usage = cpu_access ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_DEFAULT;
-	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-	if (!cpu_access)
-		desc.BindFlags = desc.BindFlags | D3D11_BIND_UNORDERED_ACCESS;
-	desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-	desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-	desc.StructureByteStride = sizeof(T);
-	desc.ByteWidth = sizeof(T) * a_count;
-	return desc;
-}
-
 /** @brief RAII wrapper around a generic D3D11 buffer with SRV and UAV support. */
 class Buffer
 {
@@ -143,6 +129,8 @@ public:
 		desc(a_desc)
 	{
 		auto device = globals::d3d::device;
+		if (!device)
+			throw std::runtime_error("no D3D device");
 		DX::ThrowIfFailed(device->CreateBuffer(&desc, a_init, resource.put()));
 		if (name) {
 			name_ = name;

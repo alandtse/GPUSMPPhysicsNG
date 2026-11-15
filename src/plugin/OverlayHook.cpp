@@ -11,8 +11,13 @@ namespace
 		static void thunk(bool a_arg)
 		{
 			func(a_arg);
-			if (Instance().loaded)
+			if (!Instance().loaded)
+				return;
+			try {
 				Instance().OnDeferredGeometryEnd();
+			} catch (const std::exception& error) {
+				logger::error("The overlay hook failed: {}", error.what());
+			}
 		}
 
 		static inline REL::Relocation<decltype(thunk)> func;

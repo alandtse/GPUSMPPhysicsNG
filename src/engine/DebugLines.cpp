@@ -267,7 +267,13 @@ namespace SmpPhysics
 			values.lineCount = lineCount;
 			for (int channel = 0; channel < 3; ++channel)
 				values.color[channel] = kPalette[color][channel];
-			constants->Update(values);
+			try {
+				constants->Update(values);
+			} catch (const std::exception& error) {
+				stats.failed = true;
+				logger::warn("{} the debug overlay could not update its constants: {}", kLogPrefix, error.what());
+				break;
+			}
 			context->DrawInstanced(ranges[color].second * kVerticesPerLine, globals::game::isVR ? 2u : 1u, ranges[color].first * kVerticesPerLine, 0);
 		}
 

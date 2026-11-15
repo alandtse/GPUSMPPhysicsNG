@@ -33,6 +33,15 @@ namespace
 		       std::isfinite(capsule.radius) && capsule.radius > 0.0f;
 	}
 
+	/** @brief The world-space capsule of a Havok capsule shape on a body with a_transform. */
+	bool WorldCapsule(const RE::hkpCapsuleShape& a_shape, const RE::hkTransform& a_transform, Util::ShapeCollisionCapsule& a_capsule)
+	{
+		a_capsule.pointA = TransformHavokPoint(a_transform, a_shape.vertexA);
+		a_capsule.pointB = TransformHavokPoint(a_transform, a_shape.vertexB);
+		a_capsule.radius = a_shape.radius * RE::bhkWorld::GetWorldScaleInverse();
+		return IsCapsuleFinite(a_capsule);
+	}
+
 	/** @brief Ray hit filter that drops one reference's own collision. */
 	class OccluderRayCollector : public RE::hkpClosestRayHitCollector
 	{
@@ -130,14 +139,9 @@ namespace Util
 		const auto* shape = hkpRigid ? hkpRigid->collidable.GetShape() : nullptr;
 		if (bhkRigid && hkpRigid && shape && !skyrim_cast<const RE::hkpListShape*>(shape)) {  // Ignore hkpListShape, unsupported
 			if (shape->type == RE::hkpShapeType::kCapsule) {
-				const auto* capsuleShape = static_cast<const RE::hkpCapsuleShape*>(shape);
 				RE::hkTransform transform;
 				bhkRigid->GetTransform(transform);
-
-				capsule.pointA = TransformHavokPoint(transform, capsuleShape->vertexA);
-				capsule.pointB = TransformHavokPoint(transform, capsuleShape->vertexB);
-				capsule.radius = capsuleShape->radius * RE::bhkWorld::GetWorldScaleInverse();
-				return IsCapsuleFinite(capsule);
+				return WorldCapsule(*static_cast<const RE::hkpCapsuleShape*>(shape), transform, capsule);
 			}
 
 			RE::hkVector4 massCenter;
@@ -175,14 +179,8 @@ namespace Util
 		/** @brief A world-space capsule along the longest side of a shape's bounds in the body's own frame, or false for a shape this cannot bound. */
 		bool BoundShapeCapsule(const RE::hkpShape* a_shape, const RE::hkTransform& a_transform, ShapeCollisionCapsule& a_capsule)
 		{
-			const float scale = RE::bhkWorld::GetWorldScaleInverse();
-			if (a_shape->type == RE::hkpShapeType::kCapsule) {
-				const auto* capsuleShape = static_cast<const RE::hkpCapsuleShape*>(a_shape);
-				a_capsule.pointA = TransformHavokPoint(a_transform, capsuleShape->vertexA);
-				a_capsule.pointB = TransformHavokPoint(a_transform, capsuleShape->vertexB);
-				a_capsule.radius = capsuleShape->radius * scale;
-				return IsCapsuleFinite(a_capsule);
-			}
+			if (a_shape->type == RE::hkpShapeType::kCapsule)
+				return WorldCapsule(*static_cast<const RE::hkpCapsuleShape*>(a_shape), a_transform, a_capsule);
 			if (a_shape->type == RE::hkpShapeType::kList || a_shape->type == RE::hkpShapeType::kCompound || a_shape->type == RE::hkpShapeType::kMOPP)
 				return false;
 
@@ -257,43 +255,18 @@ namespace Util
 		auto halfDiagonal = [](float hx, float hy, float hz) {
 			return sqrtf(hx * hx + hy * hy + hz * hz);
 		};
-		if (shape->type == ShapeType::kCapsule) {
-			float hx, hy, hz;
-			symmetricHalfExtents(hx, hy, hz);
-			// For capsules, use the maximum half-extent (typically hz for vertical orientation)
-			// as the farthest point lies along the capsule's main axis, not at the diagonal
-			radius = std::max(hx, std::max(hy, hz));
-			return true;
-		} else if (shape->type == ShapeType::kSphere) {
-			// For spheres, any axis should yield the same half-extent; use symmetric X
-			float hx, hy, hz;
-			symmetricHalfExtents(hx, hy, hz);
+		float hx, hy, hz;
+		symmetricHalfExtents(hx, hy, hz);
+		if (shape->type == ShapeType::kSphere) {
 			radius = hx;
-			return true;
 		} else if (shape->type == ShapeType::kBox) {
-			float hx, hy, hz;
-			symmetricHalfExtents(hx, hy, hz);
 			radius = halfDiagonal(hx, hy, hz);
-			return true;
 		} else if (shape->type == ShapeType::kCylinder) {
-			// Use symmetric half-extents; cylinder radius is max of X/Y half-extents
-			float hx, hy, hz;
-			symmetricHalfExtents(hx, hy, hz);
-			float hr = std::max(hx, hy);
+			const float hr = std::max(hx, hy);
 			radius = sqrtf(hr * hr + hz * hz);
-			return true;
-		} else if (shape->type == ShapeType::kConvexVertices || shape->type == ShapeType::kTriangle) {
-			// Offset-invariant estimate: take symmetric half-extents per axis and use the max
-			float hx, hy, hz;
-			symmetricHalfExtents(hx, hy, hz);
-			radius = std::max(hx, std::max(hy, hz));
-			return true;
 		} else {
-			// Fallback: mirror the convex/triangle approach for consistency
-			float hx, hy, hz;
-			symmetricHalfExtents(hx, hy, hz);
 			radius = std::max(hx, std::max(hy, hz));
-			return true;
 		}
+		return true;
 	}
 }

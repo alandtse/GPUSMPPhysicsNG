@@ -1082,9 +1082,13 @@ RE::BSEventNotifyControl SmpPhysicsFeature::FrameSyncListener::ProcessEvent(
 {
 	GpuPassTimer::NextFrame();
 	TracyGpu::NextFrame();
-	feature.crowdWigs.Tick();
-	feature.StepClaims();
-	feature.RecordBoneFrame();
+	try {
+		feature.crowdWigs.Tick();
+		feature.StepClaims();
+		feature.RecordBoneFrame();
+	} catch (const std::exception& error) {
+		logger::error("{} the frame step failed: {}", kLogPrefix, error.what());
+	}
 	return RE::BSEventNotifyControl::kContinue;
 }
 

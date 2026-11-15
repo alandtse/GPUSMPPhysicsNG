@@ -301,7 +301,11 @@ namespace SmpPhysics
 		if (!batch) {
 			auto created = std::make_unique<Batch>();
 			created->shader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
-			created->constants = std::make_unique<ConstantBuffer>(ConstantBufferDesc<SkinPaletteBatchConstants>(true), "SmpPhysics::SkinPaletteBatchConstants");
+			try {
+				created->constants = std::make_unique<ConstantBuffer>(ConstantBufferDesc<SkinPaletteBatchConstants>(true), "SmpPhysics::SkinPaletteBatchConstants");
+			} catch (const std::exception& error) {
+				return fail(error.what());
+			}
 			if (FAILED(globals::d3d::context->QueryInterface(IID_PPV_ARGS(created->context1.put()))) || !created->context1)
 				return fail("ID3D11DeviceContext1 is unavailable");
 
@@ -468,7 +472,14 @@ namespace SmpPhysics
 
 		SkinPaletteBatchConstants values;
 		values.activeCount = static_cast<std::uint32_t>(batch->activeCpu.size());
-		batch->constants->Update(values);
+		try {
+			batch->constants->Update(values);
+		} catch (const std::exception& error) {
+			batchFailed = true;
+			batchedCount = 0;
+			logger::warn("{} the batched skin palette is off, so each skinned mesh builds its own at draw time: {}", kLogPrefix, error.what());
+			return;
+		}
 
 		{
 			CS_GPU_PASS("SmpPhysics::SkinPaletteBatch");
@@ -543,10 +554,10 @@ namespace SmpPhysics
 			return false;
 		if (!shader)
 			shader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
-		if (!constants)
-			constants = std::make_unique<ConstantBuffer>(ConstantBufferDesc<SkinPaletteConstants>(true), "SmpPhysics::SkinPaletteConstants");
 		const std::vector<std::pair<const char*, const char*>> defines;
 		try {
+			if (!constants)
+				constants = std::make_unique<ConstantBuffer>(ConstantBufferDesc<SkinPaletteConstants>(true), "SmpPhysics::SkinPaletteConstants");
 			if (!shader->Get(kShaderPath, defines, kShaderTarget, "main", "SmpPhysics::SkinPaletteCS"))
 				throw std::runtime_error("compilation failed");
 		} catch (const std::exception& error) {
@@ -756,8 +767,15 @@ namespace SmpPhysics
 		}
 
 		const ClaimState& state = stateFound->second;
-		if (entry.lastEngineFrame != a_skin->frameID || entry.lastSolverFrame != state.solverFrame || entry.captureRequested)
-			Refresh(entry, state, a_skin);
+		if (entry.lastEngineFrame != a_skin->frameID || entry.lastSolverFrame != state.solverFrame || entry.captureRequested) {
+			try {
+				Refresh(entry, state, a_skin);
+			} catch (const std::exception& error) {
+				entry.resourcesFailed = true;
+				logger::warn("{} the skin palette of a mesh of claim {} could not be built, so it is drawn from the engine's matrices: {}", kLogPrefix, entry.token, error.what());
+				return;
+			}
+		}
 		if (!entry.hasLast)
 			return;
 
