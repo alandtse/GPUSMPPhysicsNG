@@ -102,13 +102,6 @@ namespace SmpPhysics
 	 * @note Mirrored by kTieStiffness in ContactCS.hlsl, which takes it from the tree's input.
 	 */
 	inline constexpr float kTieStiffness = 1500.0f;
-	/**
-	 * @brief Farthest, in Skyrim units, a pin pulls from, so a hand far from its strand cannot overpower the joints.
-	 * @note Mirrored by kMaxGrabPull in package/Shaders/Common/HairCollision.hlsli.
-	 */
-	inline constexpr float kMaxGrabPull = 25.0f;
-	/** @brief Distance under which a pin does nothing, so its pull has a direction. Mirrored by kMinGrabDistance in HairCollision.hlsli. */
-	inline constexpr float kMinGrabDistance = 1.0e-3f;
 
 	/** @brief A strand held by a hand: a point on the bone is pulled toward the target like a contact that pushes it there. */
 	struct Grab
@@ -119,15 +112,6 @@ namespace SmpPhysics
 		float stiffness{ kGrabStiffness };
 	};
 
-	/** @brief How hard and which way a pin pulls a bone, shaped like a contact: depth is the distance to the target up to kMaxGrabPull. */
-	struct GrabPull
-	{
-		float depth{};
-		Vec3 normal{};
-	};
-
-	/** @brief The pin's pull on a bone at a_position, or depth 0 when it is at the target or either point is not finite. */
-	[[nodiscard]] GrabPull ComputeGrabPull(const Vec3& a_position, const Vec3& a_target) noexcept;
 	/**
 	 * @brief Slack a bone's bound sphere carries when it decides whether the whole bone can be skipped.
 	 * @details Covers the bound's own enlargement not being an exact Euclidean distance for an ellipsoid proxy.

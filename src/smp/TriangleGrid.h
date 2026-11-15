@@ -77,17 +77,6 @@ namespace SmpPhysics
 
 		[[nodiscard]] std::size_t TriangleCount() const noexcept { return m_triangles.size(); }
 
-		/** @brief Whether any triangle's cell lies within a_reach of a_point, a cheap test a Query can only come back positive after. */
-		[[nodiscard]] bool MayTouch(const Vec3& a_point, float a_reach) const noexcept;
-
-		/** @name The bucketing, for a backend that walks the same cells. @{ */
-		[[nodiscard]] const std::vector<Triangle>& Triangles() const noexcept { return m_triangles; }
-		/** @brief One entry per cell plus one; cell n holds CellItems()[CellStart()[n]] up to but excluding CellItems()[CellStart()[n + 1]], each a triangle index. */
-		[[nodiscard]] const std::vector<std::uint32_t>& CellStart() const noexcept { return m_cellStart; }
-		[[nodiscard]] const std::vector<std::uint32_t>& CellItems() const noexcept { return m_cellItems; }
-		[[nodiscard]] const Vec3& Origin() const noexcept { return m_origin; }
-		/** @} */
-
 	private:
 		[[nodiscard]] bool CellRange(const Vec3& a_low, const Vec3& a_high, int (&a_first)[3], int (&a_last)[3]) const noexcept;
 		[[nodiscard]] std::size_t CellIndex(int a_x, int a_y, int a_z) const noexcept;

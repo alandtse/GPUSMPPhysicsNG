@@ -56,35 +56,6 @@ namespace Util::BodyCapsules
 		}
 	}
 
-	bool Tracker::GetHandPositions(bool a_left, float3& a_hand, float3& a_fingerJoint) const
-	{
-		const auto& nodes = handNodes[a_left ? 0 : 1].nodes;
-		const auto& hand = nodes[0];
-		const auto& finger = nodes[1 + 2 * JointsPerFinger + 2];
-		if (!hand || !finger || !hand->parent || !finger->parent)
-			return false;
-		a_hand = ToFloat3(hand->world.translate);
-		a_fingerJoint = ToFloat3(finger->world.translate);
-		return true;
-	}
-
-	Tracker::HandReport Tracker::GetHandReport(bool a_left) const
-	{
-		HandReport report;
-		const auto& nodes = handNodes[a_left ? 0 : 1].nodes;
-		const auto& radii = handRadii[a_left ? 0 : 1];
-		for (size_t joint = 0; joint < report.position.size(); ++joint) {
-			const auto& node = nodes[1 + joint];
-			report.found[joint] = node && node->parent;
-			if (report.found[joint])
-				report.position[joint] = ToFloat3(node->world.translate);
-			report.radius[joint] = radii.finger[joint];
-		}
-		report.tipExtent = radii.tipExtent;
-		report.palmRadius = radii.palm;
-		return report;
-	}
-
 	float Tracker::GetAverageFingerRadius() const
 	{
 		float sum = 0.0f;
@@ -187,7 +158,6 @@ namespace Util::BodyCapsules
 			}
 		});
 
-		fitMeshes = meshes;
 		for (size_t side = 0; side < handRadii.size(); ++side) {
 			HandRadii radii;
 			for (size_t finger = 0; finger < FingerCount; ++finger) {
@@ -332,30 +302,15 @@ namespace Util::BodyCapsules
 	void Tracker::AddHeldCapsules(RE::Actor* a_player)
 	{
 		auto* higgs = Util::Higgs::GetInterface();
-		for (auto& side : heldReports)
-			side.fill({});
 		if (!higgs)
 			return;
 
 		for (int side = 0; side < 2; ++side) {
 			const bool left = side == 0;
 			const auto add = [&](RE::NiObject* a_object, size_t a_slot) {
-				auto& report = heldReports[side][a_slot];
-				report.available = true;
 				auto* body = a_object ? a_object->AsBhkRigidBody() : nullptr;
-				report.body = body != nullptr;
-				if (auto* rigid = body ? skyrim_cast<RE::hkpRigidBody*>(body->referencedObject.get()) : nullptr) {
-					report.inWorld = rigid->world != nullptr;
-					if (const auto* shape = rigid->collidable.GetShape()) {
-						report.shapeType = static_cast<int>(shape->type);
-						if (const auto* list = skyrim_cast<const RE::hkpListShape*>(shape))
-							report.children = static_cast<int>(list->childInfo.size());
-					}
-				}
 				std::array<Util::ShapeCollisionCapsule, MaxPartsPerHeld> parts;
 				const size_t count = Util::GetRigidBodyCapsules(body, parts);
-				report.capsule = count > 0;
-				report.parts = static_cast<int>(count);
 				for (size_t part = 0; part < count; ++part) {
 					Capsule capsule;
 					capsule.pointA = ToFloat3(parts[part].pointA);
@@ -371,10 +326,8 @@ namespace Util::BodyCapsules
 			const auto* armor = equipped ? equipped->As<RE::TESObjectARMO>() : nullptr;
 			const bool holdsWeapon = equipped && (equipped->IsWeapon() || (armor && armor->IsShield()));
 			const auto* state = a_player->AsActorState();
-			auto& weaponReport = heldReports[side][0];
-			weaponReport.drawn = state && state->IsWeaponDrawn();
-			weaponReport.collisionDisabled = higgs->IsWeaponCollisionDisabled(left);
-			if (holdsWeapon && weaponReport.drawn && !weaponReport.collisionDisabled)
+			const bool drawn = state && state->IsWeaponDrawn();
+			if (holdsWeapon && drawn && !higgs->IsWeaponCollisionDisabled(left))
 				add(higgs->GetWeaponRigidBody(left), 0);
 			if (higgs->IsHoldingObject(left))
 				add(higgs->GetGrabbedRigidBody(left), 1);

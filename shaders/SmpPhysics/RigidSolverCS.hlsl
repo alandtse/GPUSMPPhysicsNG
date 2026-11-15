@@ -318,7 +318,6 @@ HairRigidRow StoreRow(in HairRigidSolver::SolverRow a_value)
 	return record;
 }
 
-// Mirrored by kMaxGrabPull and kMinGrabDistance in smp/SolverCommon.h.
 static const float kMaxGrabPull = 25.0f;
 static const float kMinGrabDistance = 1.0e-3f;
 

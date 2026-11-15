@@ -95,15 +95,6 @@ namespace SmpPhysics
 		return plan;
 	}
 
-	GrabPull ComputeGrabPull(const Vec3& a_position, const Vec3& a_target) noexcept
-	{
-		const Vec3 toTarget = a_target - a_position;
-		const float distance = Length(toTarget);
-		if (!std::isfinite(distance) || !(distance > kMinGrabDistance))
-			return {};
-		return { std::min(distance, kMaxGrabPull), toTarget / distance };
-	}
-
 	Vec3 WindForce(const SolverParams& a_params, float a_boneFactor, float a_mass, float a_area, const Vec3& a_axis,
 		const Vec3& a_origin, const Vec3& a_velocity) noexcept
 	{

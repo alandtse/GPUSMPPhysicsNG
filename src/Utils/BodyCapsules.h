@@ -46,14 +46,6 @@ namespace Util::BodyCapsules
 		return a_name.find("Hand [") != std::string_view::npos || a_name.find("Finger") != std::string_view::npos;
 	}
 
-	/** @brief 0 for a left and 1 for a right hand or finger bone, -1 for any other bone. */
-	[[nodiscard]] inline int HandBoneSide(std::string_view a_name)
-	{
-		if (!IsHandBone(a_name))
-			return -1;
-		return a_name.starts_with("NPC L ") ? 0 : (a_name.starts_with("NPC R ") ? 1 : -1);
-	}
-
 	/**
 	 * @brief Collects the collision capsules of nearby actors and the player's VR hands and fingers.
 	 * @details Actor capsules come from the same Havok collision objects Grass Collision reads. Finger capsules come from
@@ -86,48 +78,11 @@ namespace Util::BodyCapsules
 		[[nodiscard]] size_t Select(const RE::NiPoint3& a_center, float a_radius, float a_reach, RE::FormID a_wearer,
 			std::span<Capsule> a_out, float& a_nearestGap, bool a_preferAppendages = false) const;
 
-		[[nodiscard]] size_t GetCount() const { return capsules.size(); }
 		/** @brief Every capsule of the last Update, for diagnostics; read it on the thread that calls Update. */
 		[[nodiscard]] std::span<const Capsule> GetCapsules() const { return capsules; }
 
-		/** @brief How many of the player's hand and finger skeleton nodes were found, out of 2 * HandNodeCount. */
-		[[nodiscard]] size_t GetHandNodeCount() const { return handNodesFound; }
-
-		/** @brief World position of a hand node and of its middle fingertip joint, for checking that injected controller poses move the hands; false while the nodes are not found. */
-		[[nodiscard]] bool GetHandPositions(bool a_left, float3& a_hand, float3& a_fingerJoint) const;
 		/** @brief The player's hand skeleton node, or null while the hand nodes are not found. */
 		[[nodiscard]] const RE::NiAVObject* GetHandNode(bool a_left) const { return handNodesFound ? handNodes[a_left ? 0 : 1].nodes[0].get() : nullptr; }
-
-		/** @brief One hand's skeleton and fit, for diagnostics: per finger joint a world position (valid when found) and radius, per finger the fitted tip extent. */
-		struct HandReport
-		{
-			static constexpr size_t Fingers = 5;
-			static constexpr size_t Joints = 3;
-			std::array<float3, Fingers * Joints> position;
-			std::array<bool, Fingers * Joints> found{};
-			std::array<float, Fingers * Joints> radius{};
-			std::array<float, Fingers> tipExtent{};
-			float palmRadius = 0.0f;
-		};
-		[[nodiscard]] HandReport GetHandReport(bool a_left) const;
-
-		/** @brief What HIGGS gave for one hand's weapon (slot 0), grabbed object (slot 1) or hand body (slot 2) last frame, for diagnostics. */
-		struct HeldReport
-		{
-			bool available = false;          ///< HIGGS answered the interface fetch.
-			bool body = false;               ///< HIGGS returned a rigid body.
-			bool inWorld = false;            ///< The body is in a physics world.
-			int shapeType = -1;              ///< hkpShapeType of the body's shape, -1 when there is none.
-			bool capsule = false;            ///< The body was reduced to capsules and added.
-			int children = 0;                ///< Child shapes of a list shape, 0 for any other shape.
-			int parts = 0;                   ///< Capsules the body became.
-			bool drawn = false;              ///< A weapon is drawn, which a held weapon or shield needs before it counts.
-			bool collisionDisabled = false;  ///< HIGGS has turned off collision for the weapon in this hand.
-		};
-		[[nodiscard]] HeldReport GetHeldReport(bool a_left, size_t a_slot) const { return heldReports[a_left ? 0 : 1][a_slot]; }
-
-		/** @brief How many skinned meshes the capsule radii were fitted from, 0 while the defaults are in use. */
-		[[nodiscard]] size_t GetFitMeshCount() const { return fitMeshes; }
 
 		/** @brief Mean fitted finger radius over both hands. */
 		[[nodiscard]] float GetAverageFingerRadius() const;
@@ -175,10 +130,8 @@ namespace Util::BodyCapsules
 			HandRadii() { finger.fill(DefaultFingerRadius); }
 		};
 		std::array<HandRadii, 2> handRadii;
-		size_t fitMeshes = 0;
 		uint64_t fitSignature = 0;
 		uint32_t updatesSinceFitCheck = 0;
-		std::array<std::array<HeldReport, 3>, 2> heldReports{};
 		FrameLatch updateLatch;
 		uint32_t lastUpdateFrame = 0;
 	};

@@ -9,14 +9,10 @@ namespace Util
 	class FrameLatch
 	{
 	public:
-		/**
-		 * @brief True when the caller should advance for a_frame.
-		 *        Latches only when it returns true, so a call that cannot advance (a_canAdvance false)
-		 *        leaves the frame open for a later call.
-		 */
-		bool TryAdvance(std::uint32_t a_frame, bool a_canAdvance = true)
+		/** @brief True when the caller should advance for a_frame. */
+		bool TryAdvance(std::uint32_t a_frame)
 		{
-			if (!a_canAdvance || lastFrame == a_frame)
+			if (lastFrame == a_frame)
 				return false;
 			lastFrame = a_frame;
 			return true;

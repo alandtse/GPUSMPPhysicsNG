@@ -123,27 +123,6 @@ namespace SmpPhysics
 		return (static_cast<std::size_t>(a_z) * m_dimensions[1] + a_y) * m_dimensions[0] + a_x;
 	}
 
-	bool TriangleGrid::MayTouch(const Vec3& a_point, float a_reach) const noexcept
-	{
-		if (m_triangles.empty() || !IsFiniteVector(a_point) || !std::isfinite(a_reach))
-			return false;
-		const Vec3 span{ a_reach, a_reach, a_reach };
-		int first[3];
-		int last[3];
-		if (!CellRange(a_point - span, a_point + span, first, last))
-			return false;
-		for (int z = first[2]; z <= last[2]; ++z) {
-			for (int y = first[1]; y <= last[1]; ++y) {
-				for (int x = first[0]; x <= last[0]; ++x) {
-					const std::size_t cell = CellIndex(x, y, z);
-					if (m_cellStart[cell + 1] > m_cellStart[cell])
-						return true;
-				}
-			}
-		}
-		return false;
-	}
-
 	namespace
 	{
 		/** @brief Whether a_point, a_distance from the triangle's plane along a_normal, projects onto the triangle. */
