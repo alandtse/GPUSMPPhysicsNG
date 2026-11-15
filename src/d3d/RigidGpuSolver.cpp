@@ -217,7 +217,6 @@ namespace SmpPhysics
 			const bool existing = claim.stepped;
 			claim.bodyBase = bodyTotal;
 			claim.constraintBase = constraintTotal;
-			claim.islandBase = islandTotal;
 			const auto bodiesHere = static_cast<std::uint32_t>(claim.data.bodies.size());
 			if (existing)
 				carried.push_back({ oldBase, claim.bodyBase, bodiesHere });

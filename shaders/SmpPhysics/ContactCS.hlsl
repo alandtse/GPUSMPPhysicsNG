@@ -45,8 +45,8 @@ struct HairTreeInput
 	float4 currentRotation;
 	float4 currentTranslation;
 	float4 solver;          // x = substep length, y = gravity, z = gravity scale, w = maximum angular speed
-	float4 scales;          // x = stiffness scale, y = damping scale, z = the actor's wind exposure, w = 1 when joints carry the wind load below them
-	float4 contact;         // x = contact spring stiffness, y = contact damping, z = contact skin, w = tie spring stiffness
+	float4 scales;          // x = stiffness scale, y = damping scale, z = the actor's wind exposure
+	float4 contact;         // x = contact spring stiffness, y = contact damping, z = contact skin
 	float4 wind;            // xyz = world wind vector, w = gust clock
 	uint4 control;          // x = substep count, y = 1 when a previous input exists, z = 1 when a reset is requested
 	uint4 surface;          // x = first surface record of the tree's claim this frame, y = how many

@@ -50,18 +50,13 @@ namespace SmpPhysics::GpuRig
 		Float4 upper{};        ///< xyz joint upper limits
 		Float4 wind{};         ///< xyz the strand's direction in the bone's frame, w the wind-facing area
 		Uint4 topology{};      ///< x parent bone, y parent is kinematic, z the bone's wind factor as float bits
-		Uint4 tieSlots{};      ///< x and y: a tie's other bone slot plus one shifted left by one, with bit 0 set on the parent side; 0 for no tie
-		Float4 tieOffset0{};   ///< xyz the first tie's rest offset of its child bone from its parent bone, in the parent's frame
-		Float4 tieOffset1{};   ///< xyz the second tie's rest offset
-		Float4 tieLower{};     ///< xyz lower limit of that offset's deviation from rest, shared by the bone's ties
-		Float4 tieUpper{};     ///< xyz upper limit
 	};
-	static_assert(sizeof(BoneStatic) == 272);
+	static_assert(sizeof(BoneStatic) == 192);
 
 	/** @brief One dynamic tree: its slice of the parent-first order, the kinematic bone it hangs from, and the collision range it shares with its claim. */
 	struct TreeStatic
 	{
-		Uint4 range{};    ///< x first order slot, y order count, z kinematic parent bone, w on a claim's first tree the claim's tree count when its bones carry ties, else 0
+		Uint4 range{};    ///< x first order slot, y order count, z kinematic parent bone
 		Uint4 contact{};  ///< x first collider slot, y collider count, z first driver slot, w driver count
 	};
 	static_assert(sizeof(TreeStatic) == 32);
@@ -202,10 +197,10 @@ namespace SmpPhysics::GpuRig
 		Float4 currentRotation{};
 		Float4 currentTranslation{};
 		Float4 solver{};                      ///< x substep length, y gravity, z gravity scale, w maximum angular speed
-		Float4 scales{};                      ///< x stiffness scale, y damping scale, z the actor's wind exposure, w 1 when joints carry the wind load below them
-		Float4 contact{};                     ///< x contact spring stiffness, y contact damping, z contact skin, w tie spring stiffness, so SolverCommon.h stays their only definition
+		Float4 scales{};                      ///< x stiffness scale, y damping scale, z the actor's wind exposure
+		Float4 contact{};                     ///< x contact spring stiffness, y contact damping, z contact skin
 		Float4 wind{};                        ///< xyz world wind vector, w gust clock
-		Uint4 control{};                      ///< x substep count, y a previous input exists, z a reset was requested, w 1 when joints carry the load of the bones below them
+		Uint4 control{};                      ///< x substep count, y a previous input exists, z a reset was requested
 		Uint4 surface{};                      ///< x first surface record this frame's AppendSurfaces gave the tree's claim, y how many, z 1 when the rigid solver owns the tree and the contact passes run for it every substep, w the claim's bone span
 		Uint4 grabSlots{};                    ///< per pin, the held bone's slot plus one (0 for no pin)
 		std::array<Float4, 4> grabTargets{};  ///< per pin, xyz where the hand holds the point and w the pin's stiffness

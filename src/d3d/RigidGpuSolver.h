@@ -105,7 +105,6 @@ namespace SmpPhysics
 			RigidGpu::StepData data;  ///< Packed once at claim time; indices are claim-local until the shared buffers are built.
 			std::uint32_t bodyBase{};
 			std::uint32_t constraintBase{};
-			std::uint32_t islandBase{};
 			bool stepped{};  ///< The claim has been stepped at least once, so its bodies hold live state.
 		};
 

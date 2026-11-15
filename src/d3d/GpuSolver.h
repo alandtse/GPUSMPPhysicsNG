@@ -243,9 +243,7 @@ namespace SmpPhysics
 		std::unordered_map<std::uint64_t, std::size_t> claimIndex;
 		RigidGpuSolver rigidSolver;
 
-		std::unique_ptr<Buffer> statics;
 		std::unique_ptr<Buffer> trees;
-		std::unique_ptr<Buffer> order;
 		std::unique_ptr<Buffer> spheres;
 		std::unique_ptr<Buffer> colliders;
 		std::unique_ptr<Buffer> inputs;
@@ -302,9 +300,7 @@ namespace SmpPhysics
 		winrt::com_ptr<ID3D11ShaderResourceView> worldsSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> boneTreesSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> contactsSrv;
-		winrt::com_ptr<ID3D11ShaderResourceView> staticsSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> treesSrv;
-		winrt::com_ptr<ID3D11ShaderResourceView> orderSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> spheresSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> collidersSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> inputsSrv;

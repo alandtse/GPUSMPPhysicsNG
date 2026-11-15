@@ -30,9 +30,6 @@ namespace SmpPhysics
 		Vec3 wind{};                     ///< World wind velocity in Skyrim units per second; zero switches wind off
 		float windTime{};                ///< Gust clock in seconds, advanced once per frame by the caller
 		float windFactor{ 1.0f };        ///< The actor's wind exposure, 0 fully sheltered to 1 fully exposed
-		bool windChainLoad{ true };      ///< Whether a joint also carries the wind load of every bone below it
-		bool subtreeLoading{ true };     ///< Whether a joint carries the gravity, acceleration load and inertia of the bones below it
-		bool chainTies{ true };          ///< Whether the rig's cross-chain joints hold neighbouring chains within their authored limits
 	};
 
 	/** @brief hdtSMP64's Bullet world is the Skyrim world scaled by this; its gust phases are laid out in Bullet units. */
@@ -97,11 +94,6 @@ namespace SmpPhysics
 	 * @note Mirrored by the grab term in ContactCS.hlsl, which takes it from the tree's input.
 	 */
 	inline constexpr float kGrabStiffness = 1500.0f;
-	/**
-	 * @brief Stiffness of the spring that holds a bone inside the linear limits of a joint to a neighbouring chain, in force units per unit of distance.
-	 * @note Mirrored by kTieStiffness in ContactCS.hlsl, which takes it from the tree's input.
-	 */
-	inline constexpr float kTieStiffness = 1500.0f;
 
 	/** @brief A strand held by a hand: a point on the bone is pulled toward the target like a contact that pushes it there. */
 	struct Grab

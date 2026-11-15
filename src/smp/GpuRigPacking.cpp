@@ -13,8 +13,6 @@ namespace SmpPhysics::GpuRig
 	{
 		/** @brief Mirrors TriangleGrid's own rejection threshold, so both solvers pack the same triangle set. */
 		constexpr float kMinimumTriangleArea = 1e-8f;
-		/** @brief Limit that stands for an axis a tie leaves free, far beyond any hair or cloth. */
-		constexpr float kUnlimitedTie = 1.0e6f;
 
 		Float4 PackQuat(const Quat& a_value) noexcept
 		{
@@ -24,42 +22,6 @@ namespace SmpPhysics::GpuRig
 		Float4 PackVec3(const Vec3& a_value) noexcept
 		{
 			return { a_value.x, a_value.y, a_value.z, 0.0f };
-		}
-
-		/** @brief Adds a tie between two bones to the first free tie of a_bone; the first tie a bone takes also sets the limits its ties share. */
-		void AttachTie(BoneStatic& a_bone, std::size_t a_other, bool a_parentSide, const Vec3& a_offset, const RigJoint& a_joint) noexcept
-		{
-			std::uint32_t* code = a_bone.tieSlots.x == 0u ? &a_bone.tieSlots.x : (a_bone.tieSlots.y == 0u ? &a_bone.tieSlots.y : nullptr);
-			if (!code)
-				return;
-			const bool first = code == &a_bone.tieSlots.x;
-			*code = ((static_cast<std::uint32_t>(a_other) + 1u) << 1u) | (a_parentSide ? 1u : 0u);
-			(first ? a_bone.tieOffset0 : a_bone.tieOffset1) = PackVec3(a_offset);
-			if (!first)
-				return;
-			const float lower[3]{ a_joint.linearLower.x, a_joint.linearLower.y, a_joint.linearLower.z };
-			const float upper[3]{ a_joint.linearUpper.x, a_joint.linearUpper.y, a_joint.linearUpper.z };
-			float* packedLower[3]{ &a_bone.tieLower.x, &a_bone.tieLower.y, &a_bone.tieLower.z };
-			float* packedUpper[3]{ &a_bone.tieUpper.x, &a_bone.tieUpper.y, &a_bone.tieUpper.z };
-			for (int axis = 0; axis < 3; ++axis) {
-				const bool free = lower[axis] > upper[axis];
-				*packedLower[axis] = free ? -kUnlimitedTie : lower[axis];
-				*packedUpper[axis] = free ? kUnlimitedTie : upper[axis];
-			}
-		}
-
-		/** @brief Turns the joints a bone's single pivot cannot express, between two dynamic bones, into ties both ends carry. */
-		void PackChainTies(const SmpRig& a_rig, const std::vector<Transform>& a_restWorld, std::vector<BoneStatic>& a_bones)
-		{
-			for (const RigJoint& joint : a_rig.additionalJoints) {
-				const std::size_t child = static_cast<std::size_t>(joint.child);
-				const std::size_t parent = static_cast<std::size_t>(joint.parent);
-				if (a_rig.bones[child].kinematic || a_rig.bones[parent].kinematic)
-					continue;
-				const Vec3 offset = Conjugate(a_restWorld[parent].rotation).Rotate(a_restWorld[child].translation - a_restWorld[parent].translation);
-				AttachTie(a_bones[child], parent, false, offset, joint);
-				AttachTie(a_bones[parent], child, true, offset, joint);
-			}
 		}
 
 		/** @brief The root of a dynamic bone's tree: the last dynamic ancestor before the chain reaches a kinematic bone. */
@@ -115,7 +77,6 @@ namespace SmpPhysics::GpuRig
 				a_rig.bones[static_cast<std::size_t>(joint.parent)].kinematic ? 1u : 0u,
 				std::bit_cast<std::uint32_t>(bone.windFactor), 0u };
 		}
-		PackChainTies(a_rig, a_restWorld, data.bones);
 
 		const std::vector<int> order = BuildParentFirstOrder(a_rig, jointOfBone);
 		std::vector<std::vector<std::uint32_t>> members;
@@ -140,9 +101,6 @@ namespace SmpPhysics::GpuRig
 			data.trees.push_back(packedTree);
 			data.order.insert(data.order.end(), members[tree].begin(), members[tree].end());
 		}
-		const bool hasTies = std::ranges::any_of(data.bones, [](const BoneStatic& a_bone) { return a_bone.tieSlots.x != 0u; });
-		if (hasTies && !data.trees.empty())
-			data.trees.front().range.w = static_cast<std::uint32_t>(data.trees.size());
 		return data;
 	}
 
@@ -322,13 +280,8 @@ namespace SmpPhysics::GpuRig
 	{
 		const std::uint32_t colliderBase = a_base + static_cast<std::uint32_t>(a_rig.bones.size());
 		const std::uint32_t driverBase = colliderBase + static_cast<std::uint32_t>(a_rig.collision.colliders.size());
-		for (BoneStatic& bone : a_rig.bones) {
+		for (BoneStatic& bone : a_rig.bones)
 			bone.topology.x += a_base;
-			for (std::uint32_t* code : { &bone.tieSlots.x, &bone.tieSlots.y }) {
-				if (*code != 0u)
-					*code += a_base << 1u;
-			}
-		}
 		for (ColliderPacked& collider : a_rig.collision.colliders) {
 			if (collider.kind.y != kInvalidDriverSlot)
 				collider.kind.y += driverBase;
@@ -441,11 +394,11 @@ namespace SmpPhysics::GpuRig
 		input.currentRotation = PackQuat(a_currentKinematic.rotation);
 		input.currentTranslation = PackVec3(a_currentKinematic.translation);
 		input.solver = { a_plan.step, a_params.gravity, a_params.gravityScale, a_params.maxAngularSpeed };
-		input.scales = { a_params.stiffnessScale, a_params.dampingScale, a_params.windFactor, a_params.windChainLoad ? 1.0f : 0.0f };
-		input.contact = { kContactStiffness, kContactDamping, kContactSkin, a_params.chainTies ? kTieStiffness : 0.0f };
+		input.scales = { a_params.stiffnessScale, a_params.dampingScale, a_params.windFactor, 0.0f };
+		input.contact = { kContactStiffness, kContactDamping, kContactSkin, 0.0f };
 		input.wind = { a_params.wind.x, a_params.wind.y, a_params.wind.z, a_params.windTime };
 		input.control = { static_cast<std::uint32_t>(a_plan.count),
-			a_hasPreviousInput ? 1u : 0u, a_resetRequested ? 1u : 0u, a_params.subtreeLoading ? 1u : 0u };
+			a_hasPreviousInput ? 1u : 0u, a_resetRequested ? 1u : 0u, 0u };
 		return input;
 	}
 
