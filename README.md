@@ -46,6 +46,16 @@ Plugins that register with hdtSMP64's owner API are asked for each mesh in prior
 simulates it. This plugin registers at priority 0. Open Shaders ships the same feature; run only one of the two
 (turn off its "GPU SMP Physics" in `SmpPhysics.ini`) when you use this plugin.
 
+## VR hands
+
+In VR your hands touch hair. With "React to nearby bodies and hands" on (the default), hands and held weapons or objects
+push the hair as they pass through it, so you can run a hand through a wig. With "Hold hair with a closed hand" on
+(also the default), closing a hand on a strand holds it to the hand until the hand opens, and pulling moves the rest of
+the hair with it. If HIGGS is installed the plugin tells a grip on hair apart from picking up an object, and keeps
+HIGGS from grabbing with a hand that is holding hair. Both settings are on the Settings page; the grab overlay is on the
+Developer page. These were tested in VR with scripted controllers, not a headset; reports from real controllers are
+welcome.
+
 ## Tools for mod authors
 
 With SKSE Menu Framework installed, the "GPU SMP Physics NG" menu has pages for finding and fixing physics problems
