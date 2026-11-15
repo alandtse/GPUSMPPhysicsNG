@@ -34,7 +34,7 @@ The preview build also carries hdtSMP64's Tracy profiling and trace export
 ## Install
 
 Copy `SKSE/Plugins` into `Data`. The plugin compiles its HLSL on your machine from
-`Data/SKSE/Plugins/GPUSMPPhysicsNG/Shaders` the first time a mesh is claimed, unless the shipped
+`Data/SKSE/Plugins/GPUSMPPhysicsNG/Shaders` at startup, in the background, unless the shipped
 `ShaderCache` already holds it.
 
 Settings live in `Data/SKSE/Plugins/GPUSMPPhysicsNG/Settings.json`, written with defaults on first run, and on the
