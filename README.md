@@ -118,12 +118,10 @@ DLL and shaders into a game install after a build.
 
 ## Credits
 
-- [hdtSMP64](https://github.com/DaymareOn/hdtSMP64) (HydrogensaysHDT's HDT-SMP, continued by DaymareOn and
-  contributors) defined the SMP XML rigs, constraint behaviour and plugin interface this plugin reproduces and builds on.
-  The owner API and frame events it needs are in [alandtse/hdtSMP64](https://github.com/alandtse/hdtSMP64).
-- [Bullet Physics](https://github.com/bulletphysics/bullet3) (Erwin Coumans), the model for hdtSMP64's rigid-body
-  solver, which the GPU solver follows.
-- [CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG) and the [CommonLibVR](https://github.com/alandtse/CommonLibVR) fork this builds against.
+- [hdtSMP64](https://github.com/DaymareOn/hdtSMP64): the SMP XML rigs, constraint behaviour and plugin interface this
+  plugin reproduces and builds on.
+- [Bullet Physics](https://github.com/bulletphysics/bullet3): the model for the rigid-body solver.
+- [CommonLibVR](https://github.com/alandtse/CommonLibVR/tree/ng), the CommonLibSSE-NG fork this builds against.
 
 ## License
 
