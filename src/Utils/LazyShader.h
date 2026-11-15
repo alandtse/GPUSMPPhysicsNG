@@ -36,7 +36,7 @@ namespace Util
 				failed = !shader;
 				if constexpr (!std::is_same_v<ShaderT, ID3DBlob>) {
 					if (shader && a_name)
-						Util::SetResourceName(shader.get(), a_name);
+						Util::SetResourceName(shader.get(), "%s", a_name);
 				}
 			}
 			return shader.get();

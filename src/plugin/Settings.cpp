@@ -53,6 +53,15 @@ void PluginSettings::Save(SmpPhysicsFeature& a_feature)
 	a_feature.SaveSettings(document);
 	std::error_code error;
 	std::filesystem::create_directories(PluginFolder(), error);
-	if (std::ofstream stream(File()); stream)
-		stream << document.dump(2);
+	if (error)
+		logger::warn("Could not create {} to save Settings.json: {}", PluginFolder().string(), error.message());
+	std::ofstream stream(File());
+	if (!stream) {
+		logger::warn("Could not open {} to save the settings", File().string());
+		return;
+	}
+	stream << document.dump(2);
+	stream.flush();
+	if (!stream)
+		logger::warn("Writing {} failed", File().string());
 }

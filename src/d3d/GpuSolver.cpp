@@ -592,10 +592,15 @@ namespace SmpPhysics
 		}
 		sphereCount = static_cast<std::uint32_t>(sphereListShadow.size());
 		if (!sphereHits || sphereHitCapacity < sphereListCapacity) {
-			sphereHitCapacity = sphereListCapacity;
-			sphereHits = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::SphereHit>(sphereHitCapacity, true, false), nullptr, "SmpPhysics::PoolSphereHits");
-			sphereHits->CreateUAV(StructuredUavDesc(sphereHitCapacity));
-			sphereHitsUav = sphereHits->uav;
+			try {
+				auto hits = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::SphereHit>(sphereListCapacity, true, false), nullptr, "SmpPhysics::PoolSphereHits");
+				hits->CreateUAV(StructuredUavDesc(sphereListCapacity));
+				sphereHits = std::move(hits);
+				sphereHitsUav = sphereHits->uav;
+				sphereHitCapacity = sphereListCapacity;
+			} catch (const std::exception&) {
+				Fail("the GPU solver sphere hit buffer could not be created; claimed hair stays at the engine's pose");
+			}
 		}
 	}
 

@@ -8,6 +8,7 @@
 #include <REX/REX.h>
 #include <SKSE/SKSE.h>
 
+#include <algorithm>
 #include <cctype>
 #include <string>
 #include <vector>
@@ -40,6 +41,7 @@ namespace SettingsUi
 			constexpr std::size_t kMaxRows = 300;
 			constexpr float kWidth = 420.0f;
 			constexpr float kListBoxRows = 8.0f;
+			constexpr int kMaxItemState = 3;
 			ImGuiMCP::TextUnformatted(row.label.c_str());
 			Tip(row.tooltip);
 			ImGuiMCP::SetNextItemWidth(kWidth);
@@ -66,7 +68,7 @@ namespace SettingsUi
 					constexpr const char* kStateTags[] = { "", "  [OK]", "  [REPAIRED]", "  [FAULT]" };
 					if (!filter.empty() && Util::ToLowerAscii(name).find(filter) == std::string::npos)
 						continue;
-					const int state = statusOf(index);
+					const int state = std::clamp(statusOf(index), 0, kMaxItemState);
 					if ((row.showMode == 1 && state == 0) || (row.showMode == 2 && state < 2))
 						continue;
 					if (shown >= kMaxRows) {
@@ -80,7 +82,7 @@ namespace SettingsUi
 						constexpr ImGuiMCP::ImVec4 kColours[] = { { 0.40f, 0.85f, 0.45f, 1.0f }, { 0.95f, 0.65f, 0.10f, 1.0f }, { 0.95f, 0.35f, 0.35f, 1.0f } };
 						ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kColours[state - 1]);
 					}
-					if (ImGuiMCP::Selectable((name + kStateTags[state < 3 ? state : 3] + "##gsp_item_" + std::to_string(index)).c_str(), isSelected, 0, { 0, 0 })) {
+					if (ImGuiMCP::Selectable((name + kStateTags[state] + "##gsp_item_" + std::to_string(index)).c_str(), isSelected, 0, { 0, 0 })) {
 						*row.intValue = static_cast<int>(index);
 						clicked = true;
 					}

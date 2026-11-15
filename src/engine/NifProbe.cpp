@@ -45,7 +45,18 @@ namespace NifProbe
 		};
 
 		std::mutex mutex;
-		std::thread worker;
+		/** @brief A thread that is joined when it is destroyed, so a finished scan does not call std::terminate when the DLL unloads. */
+		struct JoiningThread
+		{
+			std::thread thread;
+			~JoiningThread()
+			{
+				if (thread.joinable())
+					thread.join();
+			}
+		};
+
+		JoiningThread worker;
 		std::atomic<bool> running{ false };
 		std::atomic<std::size_t> done{ 0 };
 		std::size_t total = 0;
@@ -162,8 +173,8 @@ namespace NifProbe
 	{
 		if (running.load(std::memory_order_acquire))
 			return;
-		if (worker.joinable())
-			worker.join();
+		if (worker.thread.joinable())
+			worker.thread.join();
 		std::vector<Target> targets;
 		std::set<RE::FormID> listed;
 		const auto addArmor = [&](const RE::TESObjectARMO* a_armor) {
@@ -204,7 +215,7 @@ namespace NifProbe
 		}
 		done.store(0, std::memory_order_relaxed);
 		running.store(true, std::memory_order_release);
-		worker = std::thread([scan = std::move(targets)]() mutable {
+		worker.thread = std::thread([scan = std::move(targets)]() mutable {
 			try {
 				Run(std::move(scan));
 			} catch (const std::exception&) {
