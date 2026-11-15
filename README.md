@@ -3,19 +3,27 @@
 GPU hair and cloth physics for Skyrim SE, AE and VR, built as a companion to
 [hdtSMP64](https://github.com/alandtse/hdtSMP64). It reads the same SMP XML rigs, steps them with a
 rigid-body solver on the GPU that reproduces hdtSMP64's constraints, and skins the meshes from the
-solver's result. One DLL covers all three runtimes.
+solver's result. One DLL for **SE, AE, and VR**.
+
+**Download:** [Nexus Mods](https://www.nexusmods.com/games/skyrimspecialedition/mods/199175) ·
+**Source:** [github.com/alandtse/GPUSMPPhysicsNG](https://github.com/alandtse/GPUSMPPhysicsNG) (GPL-3.0 with modding exception)
 
 It claims only the meshes whose physics file describes a bone chain; hdtSMP64 keeps simulating
 everything else, so the two run side by side.
 
 ## Requirements
 
+- **SE/AE**: [SKSE64](https://skse.silverlock.org/), [Address Library](https://www.nexusmods.com/skyrimspecialedition/mods/32444)
+- **VR**: SKSE VR and a [VR Address Library](https://www.nexusmods.com/skyrimspecialedition/mods/58101) that carries
+  id 101335 (the plugin does not load without it)
 - hdtSMP64 with plugin interface 2.2 or newer (mesh owner API and frame events), loaded before this plugin. Until the
   upstream pull requests [#479](https://github.com/DaymareOn/hdtSMP64/pull/479) and
   [#480](https://github.com/DaymareOn/hdtSMP64/pull/480) are released, use the
   [alandtse/hdtSMP64](https://github.com/alandtse/hdtSMP64) fork.
-- [SKSE Menu Framework](https://github.com/alandtse/SKSE-Menu-Framework-3) for the in-game settings page (optional)
-- [Community Shaders / Open Shaders](https://github.com/alandtse/open-shaders) for wind (optional); without it the weather's wind is used
+- Optional: [SKSE Menu Framework](https://github.com/alandtse/SKSE-Menu-Framework-3) for the in-game settings page.
+  Without it, edit `Settings.json`.
+- Optional: [Community Shaders / Open Shaders](https://github.com/alandtse/open-shaders) for wind; without it the
+  weather's wind is used
 
 ## Install
 
@@ -71,6 +79,15 @@ DLL and shaders into a game install after a build.
 - `shaders`: HLSL
 - `tests`: Catch2 suite, including a WARP-device smoke test of the GPU solver
 
+## Credits
+
+- [hdtSMP64](https://github.com/DaymareOn/hdtSMP64) (HydrogensaysHDT's HDT-SMP, continued by DaymareOn and
+  contributors) defined the SMP XML rigs, constraint behaviour and plugin interface this plugin reproduces and builds on.
+  The owner API and frame events it needs are in [alandtse/hdtSMP64](https://github.com/alandtse/hdtSMP64).
+- [Bullet Physics](https://github.com/bulletphysics/bullet3) (Erwin Coumans), the model for hdtSMP64's rigid-body
+  solver, which the GPU solver follows.
+- [CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG) and the [CommonLibVR](https://github.com/alandtse/CommonLibVR) fork this builds against.
+
 ## License
 
-GPL-3.0-or-later with the modding exception in `EXCEPTIONS.md`.
+GPL-3.0-or-later WITH LicenseRef-Modding-Exception. See [COPYING](COPYING) and [EXCEPTIONS.md](EXCEPTIONS.md).
