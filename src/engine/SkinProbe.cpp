@@ -13,22 +13,45 @@ namespace
 	{
 		return Util::SehGuarded([&] { std::memcpy(a_destination, a_source, a_bytes); });
 	}
+
+	struct MeshSkin
+	{
+		RE::NiAVObject* root = nullptr;
+		RE::NiSkinInstance* skin = nullptr;
+		json error;  ///< Null when the actor, mesh and skin instance were found.
+	};
+
+	/** @brief Finds the skin instance of the mesh a probe request names by actorFormID and mesh. */
+	MeshSkin ResolveMeshSkin(const json& a_args)
+	{
+		MeshSkin result;
+		const RE::FormID formID = a_args.value("actorFormID", 0u);
+		const std::string meshName = a_args.value("mesh", std::string{});
+		auto* actor = formID ? RE::TESForm::LookupByID<RE::Actor>(formID) : nullptr;
+		result.root = actor ? actor->Get3D() : nullptr;
+		if (!result.root || meshName.empty()) {
+			result.error = { { "error", "actorFormID and mesh are required and the actor must be loaded" } };
+			return result;
+		}
+		RE::NiAVObject* object = result.root->GetObjectByName(RE::BSFixedString(meshName.c_str()));
+		auto* geometry = object ? object->AsGeometry() : nullptr;
+		result.skin = geometry ? geometry->GetGeometryRuntimeData().skinInstance.get() : nullptr;
+		if (!result.skin)
+			result.error = { { "error", "the mesh has no skin instance" } };
+		return result;
+	}
 }
 
 json SmpPhysicsFeature::SkinProbeJson(const json& a_args)
 {
 	constexpr int kDefaultBoneLimit = 3;
 	constexpr int kMaxBoneLimit = 8;
-	const RE::FormID formID = a_args.value("actorFormID", 0u);
-	const std::string meshName = a_args.value("mesh", std::string{});
 	const int boneLimit = std::clamp(a_args.value("bones", kDefaultBoneLimit), 1, kMaxBoneLimit);
-	auto* actor = formID ? RE::TESForm::LookupByID<RE::Actor>(formID) : nullptr;
-	RE::NiAVObject* root = actor ? actor->Get3D() : nullptr;
-	if (!root || meshName.empty())
-		return { { "error", "actorFormID and mesh are required and the actor must be loaded" } };
-	RE::NiAVObject* object = root->GetObjectByName(RE::BSFixedString(meshName.c_str()));
-	auto* geometry = object ? object->AsGeometry() : nullptr;
-	RE::NiSkinInstance* skin = geometry ? geometry->GetGeometryRuntimeData().skinInstance.get() : nullptr;
+	const MeshSkin target = ResolveMeshSkin(a_args);
+	if (!target.error.is_null())
+		return target.error;
+	RE::NiAVObject* root = target.root;
+	RE::NiSkinInstance* skin = target.skin;
 	if (!skin || !skin->skinData || !skin->bones)
 		return { { "error", "the mesh has no skin instance" } };
 
@@ -80,17 +103,10 @@ json SmpPhysicsFeature::SkinProbeJson(const json& a_args)
 
 json SmpPhysicsFeature::KinematicCheckJson(const json& a_args) const
 {
-	const RE::FormID formID = a_args.value("actorFormID", 0u);
-	const std::string meshName = a_args.value("mesh", std::string{});
-	auto* actor = formID ? RE::TESForm::LookupByID<RE::Actor>(formID) : nullptr;
-	RE::NiAVObject* root = actor ? actor->Get3D() : nullptr;
-	if (!root || meshName.empty())
-		return { { "error", "actorFormID and mesh are required and the actor must be loaded" } };
-	RE::NiAVObject* object = root->GetObjectByName(RE::BSFixedString(meshName.c_str()));
-	auto* geometry = object ? object->AsGeometry() : nullptr;
-	RE::NiSkinInstance* skin = geometry ? geometry->GetGeometryRuntimeData().skinInstance.get() : nullptr;
-	if (!skin)
-		return { { "error", "the mesh has no skin instance" } };
+	const MeshSkin target = ResolveMeshSkin(a_args);
+	if (!target.error.is_null())
+		return target.error;
+	RE::NiSkinInstance* skin = target.skin;
 	if (a_args.value("arm", false))
 		return { { "armed", gpuSkinning.ArmKinematicCheck(skin) } };
 
@@ -102,17 +118,10 @@ json SmpPhysicsFeature::KinematicCheckJson(const json& a_args) const
 
 json SmpPhysicsFeature::SkinPaletteCheckJson(const json& a_args) const
 {
-	const RE::FormID formID = a_args.value("actorFormID", 0u);
-	const std::string meshName = a_args.value("mesh", std::string{});
-	auto* actor = formID ? RE::TESForm::LookupByID<RE::Actor>(formID) : nullptr;
-	RE::NiAVObject* root = actor ? actor->Get3D() : nullptr;
-	if (!root || meshName.empty())
-		return { { "error", "actorFormID and mesh are required and the actor must be loaded" } };
-	RE::NiAVObject* object = root->GetObjectByName(RE::BSFixedString(meshName.c_str()));
-	auto* geometry = object ? object->AsGeometry() : nullptr;
-	RE::NiSkinInstance* skin = geometry ? geometry->GetGeometryRuntimeData().skinInstance.get() : nullptr;
-	if (!skin)
-		return { { "error", "the mesh has no skin instance" } };
+	const MeshSkin target = ResolveMeshSkin(a_args);
+	if (!target.error.is_null())
+		return target.error;
+	RE::NiSkinInstance* skin = target.skin;
 
 	const SmpPhysics::GpuSkinning::Capture capture = gpuSkinning.RequestCapture(skin);
 	json result = { { "registeredSkins", gpuSkinning.SkinCount() }, { "captured", capture.valid } };
