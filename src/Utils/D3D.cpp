@@ -1,4 +1,5 @@
 #include "Utils/D3D.h"
+#include "Utils/MathUtils.h"
 
 #include <algorithm>
 #include <atomic>
@@ -91,20 +92,17 @@ namespace Util
 		};
 
 		constexpr UINT kCompileFlags = D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_OPTIMIZATION_LEVEL3;
-		constexpr std::string_view kCacheTag = "v2";
+		constexpr std::string_view kCacheTag = "v4";
+		constexpr std::size_t kHashChunkBytes = 4096;
 
 		/** @brief A dependency as "path-under-shader-root<TAB>content hash", so a cache built elsewhere stays valid. */
 		std::string StampOf(const std::filesystem::path& a_path)
 		{
 			std::ifstream stream(a_path, std::ios::binary);
-			std::uint64_t hash = 1469598103934665603ull;
-			char buffer[4096];
-			while (stream.read(buffer, sizeof(buffer)) || stream.gcount() > 0) {
-				for (std::streamsize i = 0; i < stream.gcount(); ++i) {
-					hash ^= static_cast<unsigned char>(buffer[i]);
-					hash *= 1099511628211ull;
-				}
-			}
+			std::uint64_t hash = kFnv1a64Basis;
+			char buffer[kHashChunkBytes];
+			while (stream.read(buffer, sizeof(buffer)) || stream.gcount() > 0)
+				hash = Fnv1a64(std::string_view(buffer, static_cast<std::size_t>(stream.gcount())), hash);
 			std::error_code error;
 			const auto relative = std::filesystem::relative(a_path, std::filesystem::path(shaderRoot), error);
 			return std::format("{}\t{:016x}", error || relative.empty() ? a_path.generic_string() : relative.generic_string(), hash);
@@ -112,12 +110,7 @@ namespace Util
 
 		std::string CacheName(std::string_view a_key)
 		{
-			std::uint64_t hash = 1469598103934665603ull;
-			for (const char character : a_key) {
-				hash ^= static_cast<unsigned char>(character);
-				hash *= 1099511628211ull;
-			}
-			return std::format("{:016x}", hash);
+			return std::format("{:016x}", Fnv1a64(a_key));
 		}
 
 		/** @brief A cached blob is good only while the source and every include it was built from keep their size and time. */
@@ -130,6 +123,9 @@ namespace Util
 			std::string line;
 			if (!deps || !std::getline(deps, line) || line != kCacheTag)
 				return blob;
+			std::string binaryStamp;
+			if (!std::getline(deps, binaryStamp))
+				return blob;
 			while (std::getline(deps, line)) {
 				const std::filesystem::path stored = line.substr(0, line.find('\t'));
 				const std::filesystem::path file = stored.is_absolute() ? stored : std::filesystem::path(shaderRoot) / stored;
@@ -138,7 +134,7 @@ namespace Util
 			}
 			std::ifstream data(shaderCacheDir / (a_name + ".bin"), std::ios::binary);
 			const std::string bytes((std::istreambuf_iterator<char>(data)), std::istreambuf_iterator<char>());
-			if (bytes.empty() || FAILED(D3DCreateBlob(bytes.size(), blob.put())))
+			if (bytes.empty() || std::format("{:016x}", Fnv1a64(bytes)) != binaryStamp || FAILED(D3DCreateBlob(bytes.size(), blob.put())))
 				return nullptr;
 			std::memcpy(blob->GetBufferPointer(), bytes.data(), bytes.size());
 			return blob;
@@ -163,6 +159,7 @@ namespace Util
 			}
 			std::ofstream deps(stem.string() + ".dep", std::ios::trunc);
 			deps << kCacheTag << '\n'
+			     << std::format("{:016x}", Fnv1a64(std::string_view(static_cast<const char*>(a_blob->GetBufferPointer()), a_blob->GetBufferSize()))) << '\n'
 			     << StampOf(a_source) << '\n';
 			for (const auto& include : a_includes)
 				deps << StampOf(include) << '\n';

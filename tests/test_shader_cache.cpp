@@ -79,6 +79,33 @@ TEST_CASE("A compiled shader is read back from the cache until its source or an 
 	std::filesystem::remove_all(root);
 }
 
+TEST_CASE("A corrupted cached blob is recompiled rather than served", "[d3d][shader_cache]")
+{
+	const auto root = std::filesystem::temp_directory_path() / "GPUSMPPhysicsNG-shader-cache-corrupt-test";
+	std::filesystem::remove_all(root);
+	std::filesystem::create_directories(root / "shaders");
+	Util::SetShaderRoot((root / "shaders").wstring());
+	Util::SetShaderCacheDir((root / "cache").wstring());
+	Write(root / "shaders" / "Value.hlsli", "static const uint kValue = 7;\n");
+	Write(root / "shaders" / "Test.hlsl", Kernel("kValue"));
+
+	const auto first = Util::CompileShaderBlob(L"Test.hlsl", {}, "cs_5_0", "Main");
+	REQUIRE(first);
+	for (const auto& entry : std::filesystem::directory_iterator(root / "cache")) {
+		if (entry.path().extension() == ".bin") {
+			std::ofstream damaged(entry.path(), std::ios::binary | std::ios::trunc);
+			damaged << "not bytecode";
+		}
+	}
+
+	const auto recompiled = Util::CompileShaderBlob(L"Test.hlsl", {}, "cs_5_0", "Main");
+	REQUIRE(recompiled);
+	CHECK(Bytes(recompiled) == Bytes(first));
+
+	Util::SetShaderCacheDir(L"");
+	std::filesystem::remove_all(root);
+}
+
 TEST_CASE("A prewarm fills the cache on background threads and finishes even when a shader is missing", "[d3d][shader_cache]")
 {
 	const auto root = std::filesystem::temp_directory_path() / "GPUSMPPhysicsNG-shader-prewarm-test";
