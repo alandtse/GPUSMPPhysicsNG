@@ -46,6 +46,23 @@ Plugins that register with hdtSMP64's owner API are asked for each mesh in prior
 simulates it. This plugin registers at priority 0. Open Shaders ships the same feature; run only one of the two
 (turn off its "GPU SMP Physics" in `SmpPhysics.ini`) when you use this plugin.
 
+## Tools for mod authors
+
+With SKSE Menu Framework installed, the "GPU SMP Physics NG" menu has pages for finding and fixing physics problems
+without spawning a single NPC by hand:
+
+- **Armor physics**: scans every armor, cloak and head part for physics data and checks each physics file. The list is
+  coloured: green works, amber was repaired and used, red has a file fault, plain has no physics. Pick an item to see
+  its report and copy it to paste to the author, or dress the test characters in it.
+- **Physics file report**: the faults found in physics files this session and what was done about them, as text for each
+  file's author, plus physics files no model uses and files a model names that do not exist (loose files only).
+- **Claims**: every mesh the plugin simulates, per actor and file with its bone count, each switchable on and off, and
+  the meshes it declined with the reason.
+- **Test crowd**: spawns wigged characters in rows ahead of you, then cycles armor, cloaks, wig colours and idle
+  animations on all of them. Useful for checking a wig, a cloak or a whole armor list against the solver.
+- **Developer**: debug overlays for colliders, skeletons and joints (joints are coloured by who simulates them: GPU,
+  claimed but not stepped, inactive, or hdtSMP64 on the CPU; stretched joints are marked), and a shader reload.
+
 ## Performance
 
 On a crowd of 30 wigged characters on SE, this plugin plus hdtSMP64's remaining work costs about a third of what
