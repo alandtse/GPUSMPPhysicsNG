@@ -578,8 +578,8 @@ namespace TestBench
 	{
 		// A few a frame: disabling many at once has the engine's deferred release queue destroy their BipedAnims together.
 		constexpr std::size_t kBatch = 4;
-		const std::size_t count = std::min(kBatch, pendingDisable.size());
-		for (std::size_t index = 0; index < count; ++index) {
+		const std::size_t batchSize = std::min(kBatch, pendingDisable.size());
+		for (std::size_t index = 0; index < batchSize; ++index) {
 			// Disabling is enough: marking an actor deleted while the engine's job threads still update it is unsafe.
 			if (auto reference = pendingDisable[index].get()) {
 				if (auto* actor = reference->As<RE::Actor>())
@@ -587,7 +587,7 @@ namespace TestBench
 				reference->Disable();
 			}
 		}
-		pendingDisable.erase(pendingDisable.begin(), pendingDisable.begin() + static_cast<std::ptrdiff_t>(count));
+		pendingDisable.erase(pendingDisable.begin(), pendingDisable.begin() + static_cast<std::ptrdiff_t>(batchSize));
 		if (!pendingDisable.empty()) {
 			if (auto* task = SKSE::GetTaskInterface())
 				task->AddTask([this] { DisableBatchNow(); });
