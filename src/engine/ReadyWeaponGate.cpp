@@ -1,10 +1,11 @@
 #include "engine/ReadyWeaponGate.h"
 
+#include "engine/ReadyWeaponGateLogic.h"
+
 #include "Globals.h"
 
 #include <openvr.h>
 
-#include <array>
 #include <atomic>
 #include <optional>
 
@@ -15,10 +16,7 @@ namespace SmpPhysics::ReadyWeaponGate
 		std::atomic<std::uint32_t> heldHands{ 0 };
 		std::atomic<std::uint32_t> swallowed{ 0 };
 		std::atomic<bool> installed{ false };
-		constexpr std::size_t kGripAxis = 2;          ///< The controller axis that carries grip squeeze on Oculus-style controllers.
-		constexpr float kGripAxisClosedAbove = 0.6f;  ///< Squeeze past which the grip counts as closed when the button bit is not set.
-		/** Per hand: whether the grip press the game last saw from it was swallowed, so its release is too. */
-		std::array<std::atomic<bool>, 2> pressSwallowed{};
+		PressTracker pressTracker;
 
 		/** The right controller is the one the game calls primary; left-handed mode swaps the roles inside the game, not the devices. */
 		std::optional<std::size_t> HandOf(RE::INPUT_DEVICE a_device)
@@ -43,16 +41,11 @@ namespace SmpPhysics::ReadyWeaponGate
 			if (!hand)
 				return false;
 			if (a_event.IsDown()) {
-				const std::uint32_t bit = *hand == 0 ? kLeftHand : kRightHand;
-				const bool swallow = (heldHands.load(std::memory_order_relaxed) & bit) != 0;
-				pressSwallowed[*hand].store(swallow, std::memory_order_relaxed);
+				const bool swallow = pressTracker.Press(*hand, heldHands.load(std::memory_order_relaxed));
 				logger::info("[GPU SMP Physics] {} grip pressed, {}", *hand == 0 ? "left" : "right", swallow ? "kept from the weapon" : "passed to the game");
 				return swallow;
 			}
-			const bool swallow = pressSwallowed[*hand].load(std::memory_order_relaxed);
-			if (a_event.IsUp())
-				pressSwallowed[*hand].store(false, std::memory_order_relaxed);
-			return swallow;
+			return pressTracker.Follow(*hand, a_event.IsUp());
 		}
 
 		struct ProcessButtonHook
@@ -91,7 +84,7 @@ namespace SmpPhysics::ReadyWeaponGate
 		vr::VRControllerState_t state{};
 		if (device == vr::k_unTrackedDeviceIndexInvalid || !system->GetControllerState(device, &state, sizeof(state)))
 			return false;
-		return (state.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_Grip)) != 0 || state.rAxis[kGripAxis].x > kGripAxisClosedAbove;
+		return IsGripClosed((state.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_Grip)) != 0, state.rAxis[kGripAxis].x);
 	}
 
 	std::uint32_t SwallowedCount() noexcept
