@@ -45,8 +45,7 @@ and how many meshes it claimed.
 ## Sharing meshes with other plugins
 
 Plugins that register with hdtSMP64's owner API are asked for each mesh in priority order, and the first to claim it
-simulates it. This plugin registers at priority 0. Open Shaders ships the same feature; run only one of the two
-(turn off its "GPU SMP Physics" in `SmpPhysics.ini`) when you use this plugin.
+simulates it. This plugin registers at priority 0.
 
 ## Wind
 
