@@ -102,7 +102,7 @@ if has_config("tracy") then
 else
     add_includedirs("vendor/tracy-stub")
 end
-add_syslinks("d3dcompiler", "shell32")
+add_syslinks("d3dcompiler", "shell32", "version")
 set_pcxxheader("src/pch.h")
 
 -- Opt-in deploy (GPUSMP_DEPLOY=1): SkyrimVRPluginTargets / SkyrimPluginTargets
