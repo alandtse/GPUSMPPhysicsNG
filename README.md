@@ -24,7 +24,7 @@ everything else, so the two run side by side.
   [alandtse/hdtSMP64 preview build](https://github.com/alandtse/hdtSMP64/releases/tag/v3.0.0-ci-gpusmp-3354120).
 - Optional: [SKSE Menu Framework](https://github.com/alandtse/SKSE-Menu-Framework-3) for the in-game settings page.
   Without it, edit `Settings.json`.
-- Optional: [Community Shaders / Open Shaders](https://github.com/alandtse/open-shaders) for wind; without it the
+- Optional: [Open Shaders](https://github.com/alandtse/open-shaders) for wind; without it the
   weather's wind is used
 
 The preview build also carries hdtSMP64's Tracy profiling and trace export
