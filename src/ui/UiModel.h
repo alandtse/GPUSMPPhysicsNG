@@ -56,6 +56,10 @@ namespace SettingsUi
 		std::string text;
 		int enabled{};  ///< 1 when the GPU simulates the file, 0 when hdtSMP64 does, -1 for a line that is only text.
 		std::uint64_t id{};
+		/** Why the GPU is not stepping a simulated line this frame; empty while it is. */
+		std::string state;
+		/** Whether a saved rule can name this line's character type. */
+		bool canRememberBase{};
 	};
 
 	/** @brief One physics file's problems as text, for the Reports page to show and copy. */
@@ -79,6 +83,12 @@ namespace SettingsUi
 		std::function<void()> onSave;                        ///< Writes Settings.json.
 		std::function<void()> onReevaluate;                  ///< Asks hdtSMP64 to offer every actor's meshes again.
 		std::function<void()> onReset;                       ///< Puts every setting back to its default; the page then shows them and Save writes them.
+		/** Saves a rule keeping a line's file with hdtSMP64; true for its character type only, false for every character. */
+		std::function<void(std::uint64_t, bool)> onRemember;
+		/** When set, the page lists the saved rules, each with a Remove button. */
+		std::function<std::vector<std::string>()> rules;
+		/** Drops the saved rule at this index. */
+		std::function<void(std::size_t)> onRemoveRule;
 	};
 
 	/** @brief Registers one page per model, in order, with SKSE Menu Framework; a no-op when it is not installed. The models must outlive the game session. */

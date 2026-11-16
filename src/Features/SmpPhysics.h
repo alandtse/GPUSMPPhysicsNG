@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Features/SmpPhysics/ClaimOverrides.h"
 #include "Features/SmpPhysics/CrowdWigs.h"
 
 #include "Feature.h"
@@ -27,6 +28,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -129,6 +131,7 @@ struct SmpPhysicsFeature final : Feature
 		bool gpu{};
 		bool enabled{};
 		std::uint64_t token{};  ///< The live claim's token, zero for a row switched off; makes the row's widget ID unique.
+		const char* state{};    ///< Why a live claim is drawn from the engine's pose this frame, or null while it is simulated.
 	};
 
 	/** @brief Asks hdtSMP64 to re-run claiming for every loaded actor, so a newly enabled feature picks meshes up. */
@@ -145,6 +148,26 @@ struct SmpPhysicsFeature final : Feature
 	 * @param a_file The physics file as the claim lists it, compared without regard to case.
 	 */
 	void SetClaimEnabled(RE::FormID a_actorFormID, const std::string& a_file, bool a_enabled);
+
+	/** @brief How far a saved rule reaches. */
+	enum class OverrideScope
+	{
+		BaseForm,    ///< The file for characters made from the same base form.
+		PhysicsFile  ///< The file for every character.
+	};
+	/**
+	 * @brief Saves a rule that keeps one actor's physics file with hdtSMP64, and applies it to the actors that match it now.
+	 * @return false when the rule cannot be saved: no file, a duplicate, or a base form scope for an actor made in this session, which has no stable name.
+	 */
+	bool AddOverride(RE::FormID a_actorFormID, const std::string& a_file, OverrideScope a_scope);
+	/** @brief Drops a saved rule and asks hdtSMP64 to offer the meshes it had kept back again. */
+	bool RemoveOverride(std::size_t a_index);
+	/** @return Each saved rule as a line of text, in the order RemoveOverride counts them. */
+	[[nodiscard]] std::vector<std::string> GetOverrideLines() const;
+	/** @return Whether a base form rule can name this actor, which an actor made in this session cannot. */
+	[[nodiscard]] bool CanRememberBaseForm(RE::FormID a_actorFormID) const;
+	void LoadOverrides(const json& a_json);
+	void SaveOverrides(json& a_json) const;
 
 	/** @brief What the settings page shows beside the controls. */
 	struct UiStatus
@@ -584,6 +607,10 @@ private:
 	SmpPhysics::RepairLog repairLog;                                        ///< What was wrong in each physics file and what was done about it.
 	bool claimsHandedBack{};                                                ///< Set once the claims were handed back to hdtSMP64 after Enabled went off, so a disable from any path releases them. Frame-sync thread only.
 	std::map<std::pair<RE::FormID, std::string>, ClaimRow> disabledClaims;  ///< Actor and lower-case physics file pairs the user switched off, with the row the table keeps showing, guarded by stateMutex.
+	SmpPhysics::ClaimOverrides keepRules;                                   ///< Saved rules that keep a physics file with hdtSMP64, guarded by stateMutex.
+	std::set<RE::FormID> overrideBlockedActors;                             ///< Actors whose meshes a saved rule declined, so removing the rule can offer them again; guarded by stateMutex.
+	/** @brief Asks hdtSMP64 to offer these actors' meshes again; a no-op while it is not linked. */
+	void ReloadActors(const std::set<RE::FormID>& a_actorFormIDs);
 	/** @brief A triangle shape from a rig that is not a hair rig, such as the body collision mesh, which hair rigs on the same actor collide with. */
 	struct BodyShape
 	{
