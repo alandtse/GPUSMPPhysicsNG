@@ -2858,6 +2858,7 @@ void SmpPhysicsFeature::StepClaims()
 	const float frameDelta = std::clamp(globals::game::deltaTime ? *globals::game::deltaTime : RE::GetSecondsSinceLastFrame(),
 		kMinFrameDelta, kMaxFrameDelta);
 
+	gpuSolver.CheckDeviceRemoved();
 	const bool useGpu = gpuSolver.Available();
 	std::vector<RE::FormID> refitActors;
 	std::vector<std::uint64_t> failedTokens;

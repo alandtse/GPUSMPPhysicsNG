@@ -88,6 +88,8 @@ namespace SmpPhysics
 		[[nodiscard]] bool Available() const noexcept { return available; }
 		[[nodiscard]] const std::string& UnavailableReason() const noexcept { return unavailableReason; }
 		[[nodiscard]] std::size_t ClaimCount() const noexcept { return claims.size(); }
+		/** @brief Marks the solver unavailable and logs the reason when the Direct3D device has been removed; true once it has. */
+		bool CheckDeviceRemoved();
 		/** @brief The collision-surface path's current state and the sizes it was last packed to. */
 		[[nodiscard]] SurfacePrepInfo SurfacePrep() const noexcept;
 
