@@ -1,4 +1,5 @@
 #include "Features/SmpPhysics.h"
+#include "Features/SmpPhysics/ClaimHandBack.h"
 #include "engine/NifProbe.h"
 
 #include "Features/Wind/Wind.h"
@@ -2859,6 +2860,8 @@ void SmpPhysicsFeature::StepClaims()
 
 	const bool useGpu = gpuSolver.Available();
 	std::vector<RE::FormID> refitActors;
+	std::vector<std::uint64_t> failedTokens;
+	hdt::PluginInterface* smpInterface = nullptr;
 
 	double totalMicroseconds = 0.0;
 	{
@@ -2905,6 +2908,20 @@ void SmpPhysicsFeature::StepClaims()
 			claim = claims.erase(claim);
 		}
 
+		for (auto claim = claims.begin(); claim != claims.end();) {
+			if (!SmpPhysics::ShouldHandBack(useGpu, claim->second.gpuRegistrationFailed)) {
+				++claim;
+				continue;
+			}
+			logger::warn("{} Handing '{}' (token {}) back to hdtSMP64: {}", kLogPrefix, claim->second.physicsFile, claim->first,
+				useGpu ? "the GPU solver could not take its rig" : gpuSolver.UnavailableReason());
+			failedTokens.push_back(claim->first);
+			gpuSolver.RemoveClaim(claim->first);
+			gpuSkinning.RemoveClaim(claim->first);
+			claim = claims.erase(claim);
+		}
+		smpInterface = linkedInterface;
+
 		for (const RE::FormID formID : bodyShapeActors) {
 			if (std::find(refitActors.begin(), refitActors.end(), formID) == refitActors.end())
 				refitActors.push_back(formID);
@@ -2926,6 +2943,11 @@ void SmpPhysicsFeature::StepClaims()
 		}
 		gpuSkinning.BuildBatch();
 		totalStepMicroseconds = totalMicroseconds;
+	}
+
+	if (smpInterface) {
+		for (const std::uint64_t token : failedTokens)
+			smpInterface->relinquishMesh(&meshOwner, token);
 	}
 
 	// Asking hdtSMP64 to re-run claiming is what rebuilds the proxies from what the actor now wears, and it
