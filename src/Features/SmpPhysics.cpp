@@ -337,6 +337,12 @@ void SmpPhysicsFeature::ReloadSolverShaders()
 	gpuSolver.InvalidateShaders();
 }
 
+void SmpPhysicsFeature::SimulateGpuFailure()
+{
+	const std::scoped_lock lock(stateMutex);
+	gpuSolver.SimulateFailure();
+}
+
 void SmpPhysicsFeature::RegisterUxActions()
 {
 	FEATURE_QUERY("settings", "The plugin's settings as Settings.json holds them, with the values in force now.",
@@ -383,6 +389,8 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->ReloadVisualShaders(); });
 	FEATURE_COMMAND("reloadSolverShaders", "Drop the solver's compute shaders so they recompile from Data/Shaders on the next step, for comparing two versions of a kernel in one session.",
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->ReloadSolverShaders(); });
+	FEATURE_COMMAND("simulateGpuFailure", "Fail the GPU solver as an unrecoverable buffer or device error would, so every claim goes back to hdtSMP64 on the next frame. The solver stays unavailable until the game restarts.",
+		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->SimulateGpuFailure(); });
 	FEATURE_COMMAND("recordBones", "Capture, once per frame right after hair is stepped, the head-frame pose of an actor's nodes whose names start with a prefix. Args: actorFormID (number), prefix (string), frames (number, default 300), world (bool, also record each node's world position and rotation matrix, for the tuning bench), extraNodes (array of exact node names to record as well, e.g. the head), joints (bool, also record each simulated joint's angles, Euler XYZ in radians in the joint frame the solver limits, of the claim whose physics file contains jointFilter, a string, default the first claim of the actor).",
 		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->StartBoneRecording(a_args); });
 	FEATURE_QUERY("recordedBones", "Return the frames captured by recordBones: active flag, node names, and per frame the time, head world position and node head-frame positions; with joints, jointInfo (the claim's file, each joint's child and parent bone and its lower and upper limits) and per frame the joint angles in the same order.",

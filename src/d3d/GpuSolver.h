@@ -143,6 +143,8 @@ namespace SmpPhysics
 		[[nodiscard]] std::uint64_t Frame() const noexcept { return frameCounter; }
 		/** @brief Drops the cached compute shaders so the next SubmitFrame recompiles them. */
 		void InvalidateShaders();
+		/** @brief Takes the solver down as a failed buffer creation would, so the fallback to hdtSMP64 can be tested without breaking the GPU. */
+		void SimulateFailure() { Fail("simulated GPU solver failure"); }
 		/** @brief The rigid-body solver that steps every claim. */
 		[[nodiscard]] const RigidGpuSolver& Rigid() const noexcept { return rigidSolver; }
 		/** @brief The view over every slot's world pose, which the skinning pass reads; null until the pool exists. The solver's world poses carry no scale. */

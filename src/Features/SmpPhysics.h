@@ -112,6 +112,8 @@ struct SmpPhysicsFeature final : Feature
 	void ReloadVisualShaders();
 	/** @brief Drops the solver's compute shaders so edited files compile on the next step; claims keep their state. */
 	void ReloadSolverShaders();
+	/** @brief Fails the GPU solver on purpose so every claim goes back to hdtSMP64, for testing the fallback. */
+	void SimulateGpuFailure();
 	virtual void RegisterUxActions() override;
 	/** @brief Draws the debug overlay's lines into the deferred G-buffer. */
 	virtual void OnDeferredGeometryEnd() override;
