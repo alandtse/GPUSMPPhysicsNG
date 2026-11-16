@@ -1,7 +1,7 @@
 # GPUSMPPhysicsNG
 
 GPU hair and cloth physics for Skyrim SE, AE and VR, built as a companion to
-[hdtSMP64](https://github.com/alandtse/hdtSMP64). It reads the same SMP XML rigs, steps them with a
+[Faster SMP (hdtSMP64)](https://www.nexusmods.com/skyrimspecialedition/mods/57339). It reads the same SMP XML rigs, steps them with a
 rigid-body solver on the GPU that reproduces hdtSMP64's constraints, and skins the meshes from the
 solver's result. One DLL for **SE, AE, and VR**.
 
@@ -22,9 +22,9 @@ everything else, so the two run side by side.
   upstream pull requests [#479](https://github.com/DaymareOn/hdtSMP64/pull/479) and
   [#480](https://github.com/DaymareOn/hdtSMP64/pull/480) are released, use the
   [alandtse/hdtSMP64 preview build](https://github.com/alandtse/hdtSMP64/releases/tag/v3.0.0-ci-gpusmp-3354120).
-- Optional: [SKSE Menu Framework](https://github.com/alandtse/SKSE-Menu-Framework-3) for the in-game settings page.
+- Optional: [SKSE Menu Framework](https://www.nexusmods.com/skyrimspecialedition/mods/120352) for the in-game settings page.
   Without it, edit `Settings.json`.
-- Optional: [Open Shaders](https://github.com/alandtse/open-shaders) for wind; without it the
+- Optional: [Open Shaders](https://www.nexusmods.com/skyrimspecialedition/mods/180419) for wind; without it the
   weather's wind is used
 
 The preview build also carries hdtSMP64's Tracy profiling and trace export
@@ -47,6 +47,13 @@ and how many meshes it claimed.
 Plugins that register with hdtSMP64's owner API are asked for each mesh in priority order, and the first to claim it
 simulates it. This plugin registers at priority 0. Open Shaders ships the same feature; run only one of the two
 (turn off its "GPU SMP Physics" in `SmpPhysics.ini`) when you use this plugin.
+
+## Wind
+
+Outdoors, wind pushes hair and cloth. With Open Shaders installed the plugin samples the wind field Open Shaders
+publishes, so the push follows the scene; without it, the weather's wind is used. One "Wind strength" setting scales it
+for hair and cloth together (default 6, 0 switches wind off), and hair is sheltered from it indoors and by the
+character's own body. The scale is not hdtSMP64's, so wind will not match hdtSMP64 exactly.
 
 ## VR hands
 
@@ -82,7 +89,7 @@ without spawning a single NPC by hand:
 ## Performance
 
 On a crowd of 30 wigged characters on SE, this plugin plus hdtSMP64's remaining work costs about a third of what
-hdtSMP64 alone spends on the same characters (about 5 ms against 15 ms per frame). At its default throttles hdtSMP64
+hdtSMP64 alone spends on the same characters (about 5 ms against 15 ms per frame), and about a third at 60 (11.7 ms against 32.0 ms). At its default throttles hdtSMP64
 simulates fewer characters, so it can cost less in absolute terms. Method, caveats and per-pass figures are in
 [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
