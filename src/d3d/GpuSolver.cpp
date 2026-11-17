@@ -109,7 +109,9 @@ namespace SmpPhysics
 			RigidGpuSolver::ClaimSetup setup;
 			setup.token = a_token;
 			setup.boneOffset = a_boneOffset;
-			setup.world = BuildRigidWorld(a_rig, a_restWorld, a_params.bodyScale, a_params);
+			const std::vector<Transform> bodyRest = BodyFrames(a_rig, a_restWorld, a_params.bodyScale);
+			setup.world = BuildRigidWorld(a_rig, bodyRest, a_params.bodyScale, a_params);
+			setup.nodeFromBody = NodeFromBody(a_rig, a_params.bodyScale);
 			const std::size_t bones = a_rig.bones.size();
 			std::vector<int> parent(bones, -1);
 			for (const RigJoint& joint : a_rig.joints)
@@ -126,7 +128,7 @@ namespace SmpPhysics
 				if (root < 0 || !a_rig.bones[static_cast<std::size_t>(root)].kinematic)
 					continue;
 				setup.rootBody[bone] = root;
-				setup.restRelative[bone] = a_restWorld[static_cast<std::size_t>(root)].Inverse() * a_restWorld[bone];
+				setup.restRelative[bone] = bodyRest[static_cast<std::size_t>(root)].Inverse() * bodyRest[bone];
 			}
 			return setup;
 		}
@@ -498,8 +500,12 @@ namespace SmpPhysics
 
 		RigidGpuSolver::ClaimSetup rigidSetup = BuildRigidSetup(a_token, *offset, a_rig, a_restWorld, a_params);
 		rigidSetup.wind.reserve(claims.back().rig.bones.size());
-		for (const GpuRig::BoneStatic& bone : claims.back().rig.bones)
-			rigidSetup.wind.push_back({ { bone.wind.x, bone.wind.y, bone.wind.z }, bone.wind.w, std::bit_cast<float>(bone.topology.z) });
+		for (const GpuRig::BoneStatic& bone : claims.back().rig.bones) {
+			Vec3 axis{ bone.wind.x, bone.wind.y, bone.wind.z };
+			if (rigidSetup.wind.size() < rigidSetup.nodeFromBody.size())
+				axis = rigidSetup.nodeFromBody[rigidSetup.wind.size()].rotation.Rotate(axis);
+			rigidSetup.wind.push_back({ axis, bone.wind.w, std::bit_cast<float>(bone.topology.z) });
+		}
 		if (!rigidSolver.AddClaim(std::move(rigidSetup), a_reason)) {
 			RemoveClaim(a_token);
 			return false;

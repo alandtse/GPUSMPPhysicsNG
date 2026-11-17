@@ -1275,14 +1275,16 @@ bool SmpPhysicsFeature::ResolveRigNodes(const hdt::IMeshClaimContext& a_context,
 		const RE::NiAVObject* sceneParent = SmpPhysics::NearestBoneAncestor(
 			childNode, [](const RE::NiAVObject* a_node) -> const RE::NiAVObject* { return a_node->parent; },
 			[&a_nodes](const RE::NiAVObject* a_node) { return std::any_of(a_nodes.begin(), a_nodes.end(), [a_node](const auto& a_bone) { return a_bone.get() == a_node; }); });
-		if (!parentNode || sceneParent != parentNode) {
+		if (!parentNode || !sceneParent) {
 			const std::string parentName = a_rig.bones[static_cast<std::size_t>(joint.parent)].name;
 			const std::string childName = a_rig.bones[static_cast<std::size_t>(joint.child)].name;
-			RecordDecline(a_path, std::format("the nearest rig bone above '{}' is '{}', not the physics parent '{}'", childName,
-									  sceneParent ? sceneParent->name.c_str() : "nothing", parentName));
+			RecordDecline(a_path, std::format("no rig bone sits above '{}' to take the physics parent '{}'", childName, parentName));
 			return false;
 		}
-		if (childNode->parent != parentNode) {
+		if (sceneParent != parentNode) {
+			repairLog.Record(a_path, std::format("'{}' hangs under '{}' in the skeleton but its joint is to '{}'", a_rig.bones[static_cast<std::size_t>(joint.child)].name, sceneParent->name.c_str(), a_rig.bones[static_cast<std::size_t>(joint.parent)].name),
+				"accepted it; the rest pose comes from the scene graph and the joint still binds the physics parent");
+		} else if (childNode->parent != parentNode) {
 			repairLog.Record(a_path, std::format("'{}' hangs under '{}', a node hdtSMP64 added when it merged the armor, not directly under '{}' as the file says", a_rig.bones[static_cast<std::size_t>(joint.child)].name, childNode->parent ? childNode->parent->name.c_str() : "nothing", a_rig.bones[static_cast<std::size_t>(joint.parent)].name),
 				"accepted it and simulated the bone from where the scene graph puts it");
 		}

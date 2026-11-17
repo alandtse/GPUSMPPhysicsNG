@@ -1,5 +1,6 @@
 #include "smp/RigidRigBuilder.h"
 
+#include <algorithm>
 #include <cmath>
 #include <utility>
 
@@ -132,5 +133,47 @@ namespace SmpPhysics
 		for (const RigJoint& joint : a_rig.additionalJoints)
 			world.constraints.push_back(BuildConstraint(joint, a_restWorld, a_scale));
 		return world;
+	}
+
+	namespace
+	{
+		Transform ScaledComTransform(const RigBone& a_bone, float a_scale) noexcept
+		{
+			Transform scaled = a_bone.comTransform;
+			scaled.translation = scaled.translation * a_scale;
+			return scaled;
+		}
+	}
+
+	std::vector<Transform> BodyFrames(const SmpRig& a_rig, const std::vector<Transform>& a_nodeWorld, float a_scale)
+	{
+		std::vector<Transform> frames = a_nodeWorld;
+		for (std::size_t index = 0; index < a_rig.bones.size() && index < frames.size(); ++index) {
+			if (!a_rig.bones[index].kinematic)
+				frames[index] = a_nodeWorld[index] * ScaledComTransform(a_rig.bones[index], a_scale);
+		}
+		return frames;
+	}
+
+	std::vector<Transform> NodeFromBody(const SmpRig& a_rig, float a_scale)
+	{
+		const auto isIdentity = [](const Transform& a_transform) {
+			return std::abs(a_transform.rotation.x) + std::abs(a_transform.rotation.y) + std::abs(a_transform.rotation.z) <= 1e-6f &&
+			       Length(a_transform.translation) <= 1e-6f;
+		};
+		if (std::all_of(a_rig.bones.begin(), a_rig.bones.end(), [&](const RigBone& a_bone) { return isIdentity(a_bone.comTransform); }))
+			return {};
+		std::vector<Transform> inverses;
+		inverses.reserve(a_rig.bones.size());
+		for (const RigBone& bone : a_rig.bones)
+			inverses.push_back(ScaledComTransform(bone, a_scale).Inverse());
+		return inverses;
+	}
+
+	Vec3 NodePointToBody(const std::vector<Transform>& a_nodeFromBody, int a_body, const Vec3& a_point)
+	{
+		if (a_body < 0 || static_cast<std::size_t>(a_body) >= a_nodeFromBody.size())
+			return a_point;
+		return a_nodeFromBody[static_cast<std::size_t>(a_body)].TransformPoint(a_point);
 	}
 }

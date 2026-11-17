@@ -4,6 +4,7 @@
 #include "GpuPass.h"
 #include "Utils/D3D.h"
 #include "smp/GpuViews.h"
+#include "smp/RigidRigBuilder.h"
 
 #include <algorithm>
 #include <cstring>
@@ -240,6 +241,11 @@ namespace SmpPhysics
 				const Transform& rest = claim.setup.restRelative[body];
 				meta.restRotation = Quat4(rest.rotation);
 				meta.restTranslation = { rest.translation.x, rest.translation.y, rest.translation.z, 0.0f };
+				if (body < claim.setup.nodeFromBody.size()) {
+					const Transform& node = claim.setup.nodeFromBody[body];
+					meta.nodeRotation = Quat4(node.rotation);
+					meta.nodeTranslation = { node.translation.x, node.translation.y, node.translation.z, 0.0f };
+				}
 				if (body < claim.setup.wind.size()) {
 					const ClaimSetup::WindBody& wind = claim.setup.wind[body];
 					meta.windAxis = { wind.axis.x, wind.axis.y, wind.axis.z, wind.area };
@@ -331,7 +337,8 @@ namespace SmpPhysics
 				FrameInput& input = frameScratch[claim.bodyBase + static_cast<std::size_t>(pin.body)];
 				if (input.grabTarget.w != 0.0f)
 					continue;
-				input.grabLocal = { pin.local.x, pin.local.y, pin.local.z, pin.stiffness };
+				const Vec3 local = NodePointToBody(claim.setup.nodeFromBody, pin.body, pin.local);
+				input.grabLocal = { local.x, local.y, local.z, pin.stiffness };
 				input.grabTarget = { pin.target.x, pin.target.y, pin.target.z, 1.0f };
 				const std::vector<int>& parents = claim.setup.parentBody;
 				for (int held = pin.body, hops = 0; held >= 0 && static_cast<std::size_t>(held) < kinematic.size() && hops < static_cast<int>(kinematic.size());

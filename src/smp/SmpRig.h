@@ -29,6 +29,7 @@ namespace SmpPhysics
 		float windFactor{ 1.0f };        ///< SMP's <wind-factor>: scales the weather wind force on this bone
 		float friction{ 0.5f };          ///< SMP's <friction>: this body's share of a contact's combined friction; Bullet's default when unset
 		float marginMultiplier{ 1.0f };  ///< SMP's <margin-multiplier>: scales the contact radius of this bone's hair spheres
+		Transform comTransform{};        ///< SMP's <centerOfMassTransform>: the body frame relative to the node; identity for a kinematic bone
 	};
 
 	struct RigJoint

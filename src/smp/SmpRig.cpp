@@ -489,6 +489,7 @@ namespace SmpPhysics
 			float windFactor{ 1.0f };
 			float friction{ 0.5f };
 			float marginMultiplier{ 1.0f };
+			Transform comTransform{};
 		};
 
 		struct JointTemplate
@@ -604,12 +605,9 @@ namespace SmpPhysics
 					if (!ReadVec3(child, a_template.inertia, reason))
 						return a_builder.Malformed(reason);
 				} else if (name == "centerOfMassTransform") {
-					Transform value;
-					const ReadStatus readStatus = ReadTransform(child, value, reason);
+					const ReadStatus readStatus = ReadTransform(child, a_template.comTransform, reason);
 					if (!a_builder.Record(readStatus, reason))
 						return false;
-					if (!IsIdentity(value))
-						return a_builder.Unsupported("non-identity centerOfMassTransform in " + a_context);
 				} else if (name == "linearDamping") {
 					if (!ReadFloat(child, a_template.linearDamping, reason))
 						return a_builder.Malformed(reason);
@@ -832,8 +830,11 @@ namespace SmpPhysics
 					BoneTemplate working = GetBoneTemplate(a_builder, AttributeText(element, "template"));
 					if (!ApplyBoneChildren(a_builder, working, element, "bone '" + nameAttribute->value + "'"))
 						return false;
+					if (working.mass == 0.0f && !IsIdentity(working.comTransform))
+						return a_builder.Unsupported("non-identity centerOfMassTransform on kinematic bone '" + nameAttribute->value + "'");
 					RigBone bone;
 					bone.name = nameAttribute->value;
+					bone.comTransform = working.comTransform;
 					bone.kinematic = working.mass == 0.0f;
 					bone.mass = working.mass;
 					bone.inertia = working.inertia;
