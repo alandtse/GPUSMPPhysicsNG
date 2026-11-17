@@ -2939,6 +2939,21 @@ bool SmpPhysicsFeature::RegisterClaimForGpu(Claim& a_claim)
 	ZoneScopedN("SmpPhysics::RegisterClaim");
 	if (!a_claim.parsed)
 		return false;
+	std::vector<SmpPhysics::Transform> freshRest;
+	std::size_t freshDynamic = 0;
+	float freshScale = 1.0f;
+	if (ResolveRestPose(a_claim.parsed->rig, a_claim.nodes, a_claim.physicsFile, freshRest, freshDynamic, freshScale) &&
+		freshRest.size() == a_claim.restPose.size()) {
+		float worstGap = 0.0f;
+		for (std::size_t index = 0; index < freshRest.size(); ++index)
+			worstGap = std::max(worstGap, SmpPhysics::Length(freshRest[index].translation - a_claim.restPose[index].translation));
+		logger::info("{} '{}' rest pose refreshed at registration: worst bone moved {:.2f}, body scale {:.4f} was {:.4f}", kLogPrefix,
+			a_claim.physicsFile, worstGap, freshScale, a_claim.solverParams.bodyScale);
+		a_claim.restPose = std::move(freshRest);
+		if (std::isfinite(freshScale) && freshScale > 0.0f)
+			a_claim.solverParams.bodyScale = freshScale;
+		a_claim.boneReach = SmpPhysics::GpuRig::BuildBoneReach(a_claim.parsed->rig, a_claim.restPose, kBoneReachSlack, kBoneReachMargin, a_claim.solverParams.bodyScale);
+	}
 	std::string reason;
 	if (!gpuSolver.AddClaim(a_claim.token, a_claim.parsed->rig, a_claim.restPose, a_claim.solverParams,
 			a_claim.gpuCollision, a_claim.surfaces, a_claim.windAreas, reason)) {
