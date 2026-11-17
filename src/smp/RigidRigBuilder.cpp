@@ -158,7 +158,8 @@ namespace SmpPhysics
 	std::vector<Transform> NodeFromBody(const SmpRig& a_rig, float a_scale)
 	{
 		const auto isIdentity = [](const Transform& a_transform) {
-			return std::abs(a_transform.rotation.w) >= 1.0f - 1e-6f && Length(a_transform.translation) <= 1e-6f;
+			return std::abs(a_transform.rotation.x) + std::abs(a_transform.rotation.y) + std::abs(a_transform.rotation.z) <= 1e-6f &&
+			       Length(a_transform.translation) <= 1e-6f;
 		};
 		if (std::all_of(a_rig.bones.begin(), a_rig.bones.end(), [&](const RigBone& a_bone) { return isIdentity(a_bone.comTransform); }))
 			return {};
@@ -167,5 +168,12 @@ namespace SmpPhysics
 		for (const RigBone& bone : a_rig.bones)
 			inverses.push_back(ScaledComTransform(bone, a_scale).Inverse());
 		return inverses;
+	}
+
+	Vec3 NodePointToBody(const std::vector<Transform>& a_nodeFromBody, int a_body, const Vec3& a_point)
+	{
+		if (a_body < 0 || static_cast<std::size_t>(a_body) >= a_nodeFromBody.size())
+			return a_point;
+		return a_nodeFromBody[static_cast<std::size_t>(a_body)].TransformPoint(a_point);
 	}
 }

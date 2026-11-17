@@ -361,3 +361,27 @@ TEST_CASE("The actor's scale scales the centerOfMassTransform origin as SMP scal
 	CHECK(round.translation.z == Approx(0.0f).margin(1e-5f));
 	CHECK(frames[0].translation.z == 0.0f);
 }
+
+TEST_CASE("A grab point in the node frame lands on the same world point through the body frame", "[smpphysics][rigid_rig]")
+{
+	const ParseResult parsed = ParseSmpXml(kComRigXml);
+	REQUIRE(parsed.status == ParseStatus::Ok);
+	const std::vector<Transform> nodes(parsed.rig.bones.size());
+	const std::vector<Transform> frames = BodyFrames(parsed.rig, nodes, 1.0f);
+	const std::vector<Transform> inverses = NodeFromBody(parsed.rig, 1.0f);
+	const Vec3 point{ 3.0f, -2.0f, 5.0f };
+	const Vec3 viaBody = frames[1].TransformPoint(NodePointToBody(inverses, 1, point));
+	CHECK(viaBody.x == Approx(point.x).margin(1e-4f));
+	CHECK(viaBody.y == Approx(point.y).margin(1e-4f));
+	CHECK(viaBody.z == Approx(point.z).margin(1e-4f));
+	CHECK(NodePointToBody({}, 1, point).z == point.z);
+}
+
+TEST_CASE("A centerOfMassTransform rotation too small for the old check still keeps its inverse", "[smpphysics][rigid_rig]")
+{
+	ParseResult parsed = ParseSmpXml(kRigXml);
+	REQUIRE(parsed.status == ParseStatus::Ok);
+	REQUIRE(NodeFromBody(parsed.rig, 1.0f).empty());
+	parsed.rig.bones.back().comTransform.rotation = Quat{ 0.9999995f, 0.001f, 0.0f, 0.0f };
+	CHECK_FALSE(NodeFromBody(parsed.rig, 1.0f).empty());
+}

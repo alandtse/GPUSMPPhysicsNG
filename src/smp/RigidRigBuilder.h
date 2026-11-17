@@ -37,4 +37,7 @@ namespace SmpPhysics
 
 	/** @brief Each bone's node frame relative to its body frame (the inverse of its centerOfMassTransform); empty when every bone is identity. */
 	[[nodiscard]] std::vector<Transform> NodeFromBody(const SmpRig& a_rig, float a_scale);
+
+	/** @brief A point given in a body's node frame, expressed in the body's own frame; unchanged when no body has a centerOfMassTransform. */
+	[[nodiscard]] Vec3 NodePointToBody(const std::vector<Transform>& a_nodeFromBody, int a_body, const Vec3& a_point);
 }

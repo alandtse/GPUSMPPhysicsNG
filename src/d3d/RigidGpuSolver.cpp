@@ -4,6 +4,7 @@
 #include "GpuPass.h"
 #include "Utils/D3D.h"
 #include "smp/GpuViews.h"
+#include "smp/RigidRigBuilder.h"
 
 #include <algorithm>
 #include <cstring>
@@ -336,7 +337,8 @@ namespace SmpPhysics
 				FrameInput& input = frameScratch[claim.bodyBase + static_cast<std::size_t>(pin.body)];
 				if (input.grabTarget.w != 0.0f)
 					continue;
-				input.grabLocal = { pin.local.x, pin.local.y, pin.local.z, pin.stiffness };
+				const Vec3 local = NodePointToBody(claim.setup.nodeFromBody, pin.body, pin.local);
+				input.grabLocal = { local.x, local.y, local.z, pin.stiffness };
 				input.grabTarget = { pin.target.x, pin.target.y, pin.target.z, 1.0f };
 				const std::vector<int>& parents = claim.setup.parentBody;
 				for (int held = pin.body, hops = 0; held >= 0 && static_cast<std::size_t>(held) < kinematic.size() && hops < static_cast<int>(kinematic.size());
