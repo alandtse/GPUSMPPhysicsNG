@@ -193,6 +193,7 @@ add_files(
     "src/Utils/TestBench/CrowdFilter.cpp",
     "src/Utils/TestBench/TestCrowdLayout.cpp",
     "src/Features/SmpPhysics/CrowdStyles.cpp",
+    "src/Features/SmpPhysics/ClaimOverrides.cpp",
     "src/Features/Wind/WindShelter.cpp"
 )
 add_includedirs("tests")

@@ -15,6 +15,28 @@ std::filesystem::path PluginSettings::File()
 	return PluginFolder() / "Settings.json";
 }
 
+std::filesystem::path PluginSettings::OverridesFile()
+{
+	return PluginFolder() / "Overrides.json";
+}
+
+void PluginSettings::SaveOverrides(SmpPhysicsFeature& a_feature)
+{
+	json document = json::object();
+	a_feature.SaveOverrides(document);
+	std::error_code error;
+	std::filesystem::create_directories(PluginFolder(), error);
+	std::ofstream stream(OverridesFile());
+	if (!stream) {
+		logger::warn("Could not open {} to save the rules", OverridesFile().string());
+		return;
+	}
+	stream << document.dump(2);
+	stream.flush();
+	if (!stream)
+		logger::warn("Writing {} failed", OverridesFile().string());
+}
+
 std::filesystem::path PluginSettings::ShaderRoot()
 {
 	return PluginFolder() / "Shaders";
@@ -45,6 +67,16 @@ void PluginSettings::Load(SmpPhysicsFeature& a_feature)
 	}
 	if (!std::filesystem::exists(File()))
 		Save(a_feature);
+
+	if (std::ifstream stream(OverridesFile()); stream) {
+		try {
+			json rules;
+			stream >> rules;
+			a_feature.LoadOverrides(rules);
+		} catch (const std::exception& error) {
+			logger::warn("Overrides.json could not be read ({}); no rules applied", error.what());
+		}
+	}
 }
 
 void PluginSettings::Save(SmpPhysicsFeature& a_feature)
