@@ -240,6 +240,11 @@ namespace SmpPhysics
 				const Transform& rest = claim.setup.restRelative[body];
 				meta.restRotation = Quat4(rest.rotation);
 				meta.restTranslation = { rest.translation.x, rest.translation.y, rest.translation.z, 0.0f };
+				if (body < claim.setup.nodeFromBody.size()) {
+					const Transform& node = claim.setup.nodeFromBody[body];
+					meta.nodeRotation = Quat4(node.rotation);
+					meta.nodeTranslation = { node.translation.x, node.translation.y, node.translation.z, 0.0f };
+				}
 				if (body < claim.setup.wind.size()) {
 					const ClaimSetup::WindBody& wind = claim.setup.wind[body];
 					meta.windAxis = { wind.axis.x, wind.axis.y, wind.axis.z, wind.area };

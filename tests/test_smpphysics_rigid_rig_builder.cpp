@@ -6,6 +6,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
 #include <string_view>
 
 using namespace SmpPhysics;
@@ -260,4 +261,103 @@ TEST_CASE("A joint the topology pass turned around still steps with its authored
 		CHECK_FALSE(constraint.bodyA == root);
 	}
 	CHECK(found);
+}
+
+namespace
+{
+	constexpr std::string_view kComRigXml = R"XML(<?xml version="1.0" encoding="utf-8"?>
+<system xmlns="http://www.example.com/hdt">
+	<bone name="NPC Pelvis [Pelv]">
+		<mass>0</mass>
+	</bone>
+	<bone name="NPC Belly">
+		<mass>5</mass>
+		<inertia x="2" y="2" z="2"/>
+		<centerOfMassTransform>
+			<basis x="0" y="0" z="0" w="1"/>
+			<origin x="0" y="0" z="-1"/>
+		</centerOfMassTransform>
+	</bone>
+	<bone name="NPC L FrontThigh">
+		<mass>2</mass>
+		<inertia x="2" y="2" z="2"/>
+		<centerOfMassTransform>
+			<basis x="2" y="0" z="0" w="1"/>
+			<origin x="0" y="0" z="0"/>
+		</centerOfMassTransform>
+	</bone>
+	<bone name="NPC Plain">
+		<mass>1</mass>
+		<inertia x="1" y="1" z="1"/>
+	</bone>
+	<generic-constraint bodyA="NPC Belly" bodyB="NPC Pelvis [Pelv]"/>
+</system>
+)XML";
+}
+
+TEST_CASE("A dynamic bone keeps its centerOfMassTransform", "[smpphysics][rigid_rig]")
+{
+	const ParseResult parsed = ParseSmpXml(kComRigXml);
+	REQUIRE(parsed.status == ParseStatus::Ok);
+	REQUIRE(parsed.rig.bones.size() == 4);
+	CHECK(parsed.rig.bones[1].comTransform.translation.z == Approx(-1.0f));
+	CHECK(parsed.rig.bones[2].comTransform.rotation.x == Approx(2.0f / std::sqrt(5.0f)));
+	CHECK(parsed.rig.bones[2].comTransform.rotation.w == Approx(1.0f / std::sqrt(5.0f)));
+	CHECK(parsed.rig.bones[3].comTransform.translation.z == 0.0f);
+}
+
+TEST_CASE("A kinematic bone with a centerOfMassTransform is declined", "[smpphysics][rigid_rig]")
+{
+	const ParseResult parsed = ParseSmpXml(R"XML(<?xml version="1.0" encoding="utf-8"?>
+<system xmlns="http://www.example.com/hdt">
+	<bone name="Root">
+		<mass>0</mass>
+		<centerOfMassTransform>
+			<basis x="0" y="0" z="0" w="1"/>
+			<origin x="0" y="0" z="2"/>
+		</centerOfMassTransform>
+	</bone>
+</system>
+)XML");
+	CHECK(parsed.status == ParseStatus::Unsupported);
+	CHECK(parsed.reason.find("Root") != std::string::npos);
+}
+
+TEST_CASE("A dynamic body sits on its node composed with the centerOfMassTransform, a kinematic one on its node", "[smpphysics][rigid_rig]")
+{
+	const ParseResult parsed = ParseSmpXml(kComRigXml);
+	REQUIRE(parsed.status == ParseStatus::Ok);
+	std::vector<Transform> nodes(parsed.rig.bones.size());
+	for (Transform& node : nodes)
+		node.translation = { 10.0f, 20.0f, 30.0f };
+	const std::vector<Transform> frames = BodyFrames(parsed.rig, nodes, 1.0f);
+	CHECK(frames[0].translation.z == Approx(30.0f));
+	CHECK(frames[1].translation.z == Approx(29.0f));
+	CHECK(frames[3].translation.z == Approx(30.0f));
+	const Transform back = frames[2] * NodeFromBody(parsed.rig, 1.0f)[2];
+	CHECK(back.translation.x == Approx(10.0f));
+	CHECK(back.rotation.w == Approx(1.0f));
+}
+
+TEST_CASE("NodeFromBody inverts each centerOfMassTransform and is empty when none is set", "[smpphysics][rigid_rig]")
+{
+	const ParseResult parsed = ParseSmpXml(kComRigXml);
+	REQUIRE(parsed.status == ParseStatus::Ok);
+	const std::vector<Transform> inverses = NodeFromBody(parsed.rig, 1.0f);
+	REQUIRE(inverses.size() == 4);
+	const Transform identity = parsed.rig.bones[1].comTransform * inverses[1];
+	CHECK(identity.translation.z == Approx(0.0f).margin(1e-5f));
+	CHECK(NodeFromBody(ParseSmpXml(kRigXml).rig, 1.0f).empty());
+}
+
+TEST_CASE("The actor's scale scales the centerOfMassTransform origin as SMP scales it", "[smpphysics][rigid_rig]")
+{
+	const ParseResult parsed = ParseSmpXml(kComRigXml);
+	REQUIRE(parsed.status == ParseStatus::Ok);
+	const std::vector<Transform> nodes(parsed.rig.bones.size());
+	const std::vector<Transform> frames = BodyFrames(parsed.rig, nodes, 2.0f);
+	CHECK(frames[1].translation.z == Approx(-2.0f));
+	const Transform round = frames[1] * NodeFromBody(parsed.rig, 2.0f)[1];
+	CHECK(round.translation.z == Approx(0.0f).margin(1e-5f));
+	CHECK(frames[0].translation.z == 0.0f);
 }

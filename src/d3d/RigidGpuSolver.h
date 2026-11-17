@@ -38,6 +38,7 @@ namespace SmpPhysics
 			std::vector<int> rootBody;            ///< Per body, the kinematic body its pose is exported relative to, or -1.
 			std::vector<Transform> restRelative;  ///< Per body, its rest pose relative to its root body's rest pose.
 			std::vector<int> parentBody;          ///< Per body, the body its joint hangs from, or -1; a pin frees the joints on that path.
+			std::vector<Transform> nodeFromBody;  ///< Per body, its node's frame in the body's frame; empty when every body sits on its node.
 			/** @brief What wind drag needs of a body: its strand direction in its own frame, the area it presents and its wind factor. */
 			struct WindBody
 			{
@@ -125,10 +126,12 @@ namespace SmpPhysics
 			RigidGpu::Uint4 slots{};
 			RigidGpu::Float4 restRotation{};
 			RigidGpu::Float4 restTranslation{};
-			RigidGpu::Float4 windAxis{};    ///< xyz the strand's direction in the body's frame, w the wind-facing area
-			RigidGpu::Float4 windParams{};  ///< x the bone's own wind factor
+			RigidGpu::Float4 windAxis{};                              ///< xyz the strand's direction in the body's frame, w the wind-facing area
+			RigidGpu::Float4 windParams{};                            ///< x the bone's own wind factor
+			RigidGpu::Float4 nodeRotation{ 0.0f, 0.0f, 0.0f, 1.0f };  ///< xyzw, the node's frame in the body's frame
+			RigidGpu::Float4 nodeTranslation{};                       ///< xyz
 		};
-		static_assert(sizeof(BodyMeta) == 80);
+		static_assert(sizeof(BodyMeta) == 112);
 
 		struct RuntimeConstants
 		{

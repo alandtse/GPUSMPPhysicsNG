@@ -27,4 +27,14 @@ namespace SmpPhysics
 	 */
 	[[nodiscard]] RigidReference::World BuildRigidWorld(const SmpRig& a_rig, const std::vector<Transform>& a_restWorld,
 		float a_scale, const SolverParams& a_params);
+
+	/**
+	 * @brief Each bone's rigid-body frame given its node's world transform: a dynamic bone's node composed with its
+	 *        centerOfMassTransform, which is how hdtSMP64 places the body; a kinematic bone keeps its node's frame.
+	 * @param a_scale The actor's node scale; hdtSMP64 scales the transform's origin by it.
+	 */
+	[[nodiscard]] std::vector<Transform> BodyFrames(const SmpRig& a_rig, const std::vector<Transform>& a_nodeWorld, float a_scale);
+
+	/** @brief Each bone's node frame relative to its body frame (the inverse of its centerOfMassTransform); empty when every bone is identity. */
+	[[nodiscard]] std::vector<Transform> NodeFromBody(const SmpRig& a_rig, float a_scale);
 }

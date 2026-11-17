@@ -54,6 +54,8 @@ struct HairRigidBodyMeta
 	float4 restTranslation;  // xyz
 	float4 windAxis;         // xyz = the strand's direction in the body frame, w = the wind-facing area
 	float4 windParams;       // x = the bone's own wind factor
+	float4 nodeRotation;     // xyzw, the node's frame in the body's frame (a bone's inverse centerOfMassTransform)
+	float4 nodeTranslation;  // xyz
 };
 
 struct HairBoneWorld
@@ -223,6 +225,7 @@ void CalculateVelocity(in HairRigidSolver::Transform a_from, in HairRigidSolver:
 		record.angularVelocity = 0.0f;
 		HairRigidBodies[index] = record;
 	}
+	world = HairRigidSolver::Compose(world, LoadPose(meta.nodeRotation, meta.nodeTranslation));
 	const HairRigidSolver::Transform relative = HairRigidSolver::Compose(InversePose(root), world);
 	HairBoneWorld worldOut;
 	worldOut.rotation = StoreChainRotation(HairRigidSolver::QuatSafeNormalize(HairRigidSolver::RotationFromBasis(world.basis)));
@@ -246,7 +249,7 @@ void CalculateVelocity(in HairRigidSolver::Transform a_from, in HairRigidSolver:
 	const HairRigidBodyMeta meta = HairRigidMeta[index];
 	if (meta.slots.y == kNoBody)
 		return;
-	const HairRigidSolver::Transform world = LoadBodyPose(record);
+	const HairRigidSolver::Transform world = HairRigidSolver::Compose(LoadBodyPose(record), LoadPose(meta.nodeRotation, meta.nodeTranslation));
 	HairBoneWorld worldOut;
 	worldOut.rotation = StoreChainRotation(HairRigidSolver::QuatSafeNormalize(HairRigidSolver::RotationFromBasis(world.basis)));
 	worldOut.translation = float4(world.origin, 0.0f);
