@@ -1,5 +1,6 @@
 #include "GpuSolver.h"
 
+#include "DeviceRemoval.h"
 #include "Globals.h"
 #include "GpuPass.h"
 #include "Utils/D3D.h"
@@ -140,6 +141,21 @@ namespace SmpPhysics
 		available = false;
 		unavailableReason = a_reason;
 		logger::warn("{} {}", kLogPrefix, a_reason);
+	}
+
+	bool GpuSolver::CheckDeviceRemoved()
+	{
+		if (!globals::d3d::device)
+			return false;
+		const HRESULT reason = globals::d3d::device->GetDeviceRemovedReason();
+		if (reason == S_OK)
+			return false;
+		if (available) {
+			logger::error("{} The Direct3D device was removed ({} 0x{:08X}) with {} claims, {} spheres, {} bone slots and frame {}; claims go back to hdtSMP64",
+				kLogPrefix, DeviceRemovedName(reason), static_cast<std::uint32_t>(reason), claims.size(), sphereCount, slotCapacity, frameCounter);
+			Fail("the Direct3D device was removed");
+		}
+		return true;
 	}
 
 	void GpuSolver::InvalidateShaders()
