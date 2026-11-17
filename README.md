@@ -21,7 +21,7 @@ everything else, so the two run side by side.
 - hdtSMP64 with plugin interface 2.2 or newer (mesh owner API and frame events), loaded before this plugin. Until the
   upstream pull requests [#479](https://github.com/DaymareOn/hdtSMP64/pull/479) and
   [#480](https://github.com/DaymareOn/hdtSMP64/pull/480) are released, use the
-  [alandtse/hdtSMP64 preview build](https://github.com/alandtse/hdtSMP64/releases/tag/v3.0.0-ci-gpusmp-3354120).
+  [alandtse/hdtSMP64 4.1.1 preview build](https://github.com/alandtse/hdtSMP64/releases/tag/v4.1.1-ci-gpusmp-4bda2cc).
 - Optional: [SKSE Menu Framework](https://www.nexusmods.com/skyrimspecialedition/mods/120352) for the in-game settings page.
   Without it, edit `Settings.json`.
 - Optional: [Open Shaders](https://www.nexusmods.com/skyrimspecialedition/mods/180419) for wind; without it the
