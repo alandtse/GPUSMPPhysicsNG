@@ -369,11 +369,25 @@ void PluginUi::Register()
 		for (const auto& row : rows) {
 			const auto* actor = RE::TESForm::LookupByID<RE::Actor>(row.actorFormID);
 			const char* name = actor ? actor->GetName() : nullptr;
-			lines.push_back({ std::format("{} ({:08X})  {}  {} bones", name && *name ? name : "?", row.actorFormID, row.file, row.boneCount), row.enabled ? 1 : 0, ClaimLineId(row) });
+			lines.push_back({ std::format("{} ({:08X})  {}  {} bones", name && *name ? name : "?", row.actorFormID, row.file, row.boneCount), row.enabled ? 1 : 0, ClaimLineId(row), row.state ? row.state : "", feature.CanRememberBaseForm(row.actorFormID) });
 		}
 		for (const std::string& declined : feature.GetDeclinedLines())
 			lines.push_back({ "Declined: " + declined, -1, 0 });
 		return lines;
+	};
+	claimsModel.onRemember = [&feature](std::uint64_t a_id, bool a_baseForm) {
+		for (const auto& row : feature.GetClaimRows()) {
+			if (ClaimLineId(row) == a_id) {
+				feature.AddOverride(row.actorFormID, row.file, a_baseForm ? SmpPhysicsFeature::OverrideScope::BaseForm : SmpPhysicsFeature::OverrideScope::PhysicsFile);
+				PluginSettings::SaveOverrides(feature);
+				return;
+			}
+		}
+	};
+	claimsModel.rules = [&feature] { return feature.GetOverrideLines(); };
+	claimsModel.onRemoveRule = [&feature](std::size_t a_index) {
+		if (feature.RemoveOverride(a_index))
+			PluginSettings::SaveOverrides(feature);
 	};
 	claimsModel.onEnabled = [&feature](std::uint64_t a_id, bool a_enabled) {
 		for (const auto& row : feature.GetClaimRows()) {

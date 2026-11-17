@@ -70,6 +70,7 @@ Suites (all need a game running with the plugin and `GPUSMP_STANDALONE=1`):
 | `tools/hair-tune/contact_e2e.py`                  | probe and hand capsules as colliders                                               |
 | `tools/hair-tune/pose_e2e.py`                     | outfits, idles, overlay, pull                                                      |
 | `tools/hair-tune/smp_parity_e2e.py`               | comparison against hdtSMP64 (needs its baseline)                                   |
+| `tools/hair-tune/armor_collision_e2e.py`          | a worn armor's claim: steady at rest, probes push it, collision off declines it    |
 | `tools/hair-tune/limit_probe.py`                  | measures joint angles against their limits through a hold and release on real hair |
 | `tools/hair-tune/wind_probe.py`                   | measures how far the wind moves real hair, in the head frame, per wind strength    |
 | `tools/game/check_actions.py`, `check_overlay.py` | quick devbench and overlay sanity (`GSP_PORT`)                                     |

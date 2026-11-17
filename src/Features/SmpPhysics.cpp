@@ -1,5 +1,6 @@
 #include "Features/SmpPhysics.h"
 #include "Features/SmpPhysics/ClaimHandBack.h"
+#include "Features/SmpPhysics/ClaimPriority.h"
 #include "engine/NifProbe.h"
 
 #include "Features/Wind/Wind.h"
@@ -18,6 +19,7 @@
 #include "Utils/TestBench/TestCrowd.h"
 #include "d3d/TracyGpu.h"
 #include "engine/ReadyWeaponGate.h"
+#include "plugin/Settings.h"
 #include "smp/CardVertices.h"
 #include "smp/GpuViews.h"
 #include "smp/SceneParent.h"
@@ -469,6 +471,25 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->ReevaluateAllActors(); });
 	FEATURE_COMMAND("setClaimEnabled", "Switch one actor's physics file off or on for testing: off, this feature declines the file for that actor and hdtSMP64 is asked to simulate it, so the same hair can be compared in both solvers; the settings menu lists the same switches. Args: actorFormID (number), file (string, the physics file as status lists it, compared without regard to case), enabled (bool, default true).",
 		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->SetClaimEnabled(a_args.value("actorFormID", 0u), a_args.value("file", std::string{}), a_args.value("enabled", true)); });
+	FEATURE_COMMAND("addClaimOverride", "Save a rule that keeps one physics file with hdtSMP64, as the settings menu's Always CPU buttons do, and write Overrides.json. Args: actorFormID (number, the actor whose file it is), file (string, as status lists it), scope (string, \"baseForm\" for that actor's character type or \"physicsFile\" for every character; default physicsFile).",
+		[](Feature* a_self, const json& a_args) {
+			auto* self = static_cast<SmpPhysicsFeature*>(a_self);
+			const bool baseForm = a_args.value("scope", std::string("physicsFile")) == "baseForm";
+			if (self->AddOverride(a_args.value("actorFormID", 0u), a_args.value("file", std::string{}), baseForm ? OverrideScope::BaseForm : OverrideScope::PhysicsFile))
+				PluginSettings::SaveOverrides(*self);
+		});
+	FEATURE_COMMAND("removeClaimOverride", "Drop the saved rule at this index of the claimOverrides query and write Overrides.json. Args: index (number).",
+		[](Feature* a_self, const json& a_args) {
+			auto* self = static_cast<SmpPhysicsFeature*>(a_self);
+			if (self->RemoveOverride(a_args.value("index", std::size_t{ 0 })))
+				PluginSettings::SaveOverrides(*self);
+		});
+	FEATURE_QUERY("claimOverrides", "The saved rules that keep physics files with hdtSMP64, in the order removeClaimOverride counts them.",
+		[](const Feature* a_self, const json&) -> json {
+			json result = json::object();
+			result["rules"] = static_cast<const SmpPhysicsFeature*>(a_self)->GetOverrideLines();
+			return result;
+		});
 	FEATURE_COMMAND("reevaluatePlayer", "Ask hdtSMP64 to re-run claiming for the player only.",
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->ReevaluatePlayer(); });
 	FEATURE_QUERY("kinematicCheck", "Measure, for a claimed mesh, how far the engine's skinning matrices for the bones the solver does not simulate are from matrices rebuilt from the world poses recorded when the solver stepped: engineVsStepPoseMax near float rounding means those bones could be built once per frame after the solver step. Call with arm true, move the actor or camera for a few seconds, then call with arm false to read samples, staticBones, engineVsBindPoseMax, engineVsStepPoseMax and stepVsBindTranslationMax. Args: actorFormID (number), mesh (string), arm (boolean).",
@@ -795,8 +816,17 @@ std::vector<SmpPhysicsFeature::ClaimRow> SmpPhysicsFeature::GetClaimRows() const
 {
 	const std::scoped_lock lock(stateMutex);
 	std::vector<ClaimRow> rows;
-	for (const auto& entry : claims)
-		rows.push_back({ entry.second.actorFormID, entry.second.physicsFile, entry.second.boneCount, entry.second.gpuRegistered, true, entry.first });
+	for (const auto& entry : claims) {
+		const Claim& claim = entry.second;
+		const char* state = nullptr;
+		if (claim.culledByBudget)
+			state = "over the simulation budget";
+		else if (claim.culledSmall)
+			state = "too small on screen";
+		else if (claim.culledOffscreen)
+			state = "out of view";
+		rows.push_back({ claim.actorFormID, claim.physicsFile, claim.boneCount, claim.gpuRegistered, true, entry.first, state });
+	}
 	for (const auto& entry : disabledClaims)
 		rows.push_back(entry.second);
 	return rows;
@@ -1011,6 +1041,25 @@ void SmpPhysicsFeature::ReevaluateClaimedActors()
 	});
 }
 
+namespace
+{
+	/** @return "plugin|0xLOCALID" of the actor's base form, empty for one made in this session. */
+	std::string ActorBaseKey(const RE::Actor& a_actor)
+	{
+		const auto* base = a_actor.GetActorBase();
+		const auto* file = base ? base->GetFile(0) : nullptr;
+		return file ? std::format("{}|0x{:06X}", file->GetFilename(), base->GetLocalFormID()) : std::string();
+	}
+
+	SmpPhysics::ClaimTier ClaimTierOf(RE::FormID a_actorFormID)
+	{
+		if (a_actorFormID == kPlayerFormID)
+			return SmpPhysics::ClaimTier::Player;
+		const auto* actor = a_actorFormID ? RE::TESForm::LookupByID<RE::Actor>(a_actorFormID) : nullptr;
+		return actor && actor->IsPlayerTeammate() ? SmpPhysics::ClaimTier::Follower : SmpPhysics::ClaimTier::Other;
+	}
+}
+
 void SmpPhysicsFeature::SetClaimEnabled(RE::FormID a_actorFormID, const std::string& a_file, bool a_enabled)
 {
 	hdt::PluginInterface* smpInterface = nullptr;
@@ -1033,6 +1082,88 @@ void SmpPhysicsFeature::SetClaimEnabled(RE::FormID a_actorFormID, const std::str
 		return;
 	if (auto* actor = RE::TESForm::LookupByID<RE::Actor>(a_actorFormID))
 		smpInterface->reloadActorPhysics(actor);
+}
+
+void SmpPhysicsFeature::ReloadActors(const std::set<RE::FormID>& a_actorFormIDs)
+{
+	hdt::PluginInterface* smpInterface = nullptr;
+	{
+		const std::scoped_lock lock(stateMutex);
+		smpInterface = linkedInterface;
+	}
+	if (!smpInterface)
+		return;
+	for (const RE::FormID formID : a_actorFormIDs) {
+		if (auto* actor = RE::TESForm::LookupByID<RE::Actor>(formID))
+			smpInterface->reloadActorPhysics(actor);
+	}
+}
+
+bool SmpPhysicsFeature::CanRememberBaseForm(RE::FormID a_actorFormID) const
+{
+	const auto* actor = RE::TESForm::LookupByID<RE::Actor>(a_actorFormID);
+	return actor && !ActorBaseKey(*actor).empty();
+}
+
+bool SmpPhysicsFeature::AddOverride(RE::FormID a_actorFormID, const std::string& a_file, OverrideScope a_scope)
+{
+	SmpPhysics::OverrideRule rule{ {}, SmpPhysics::ClaimOverrides::NormalizeFile(a_file) };
+	if (a_scope == OverrideScope::BaseForm) {
+		const auto* actor = RE::TESForm::LookupByID<RE::Actor>(a_actorFormID);
+		rule.base = SmpPhysics::ClaimOverrides::NormalizeBase(actor ? ActorBaseKey(*actor) : std::string());
+		if (rule.base.empty())
+			return false;
+	}
+	std::vector<std::pair<RE::FormID, std::string>> held;
+	{
+		const std::scoped_lock lock(stateMutex);
+		if (!keepRules.Add(rule))
+			return false;
+		for (const auto& entry : claims)
+			held.emplace_back(entry.second.actorFormID, entry.second.physicsFile);
+	}
+	std::set<RE::FormID> affected;
+	for (const auto& [formID, file] : held) {
+		const auto* actor = RE::TESForm::LookupByID<RE::Actor>(formID);
+		if (actor && SmpPhysics::ClaimOverrides::Matches(rule, ActorBaseKey(*actor), file))
+			affected.insert(formID);
+	}
+	ReloadActors(affected);
+	return true;
+}
+
+bool SmpPhysicsFeature::RemoveOverride(std::size_t a_index)
+{
+	std::set<RE::FormID> blocked;
+	{
+		const std::scoped_lock lock(stateMutex);
+		if (!keepRules.Remove(a_index))
+			return false;
+		blocked.swap(overrideBlockedActors);
+	}
+	ReloadActors(blocked);
+	return true;
+}
+
+std::vector<std::string> SmpPhysicsFeature::GetOverrideLines() const
+{
+	const std::scoped_lock lock(stateMutex);
+	std::vector<std::string> lines;
+	for (const auto& rule : keepRules.Rules())
+		lines.push_back(rule.base.empty() ? std::format("Every character: {}", rule.file) : std::format("{}: {}", rule.base, rule.file));
+	return lines;
+}
+
+void SmpPhysicsFeature::LoadOverrides(const json& a_json)
+{
+	const std::scoped_lock lock(stateMutex);
+	keepRules.FromJson(a_json);
+}
+
+void SmpPhysicsFeature::SaveOverrides(json& a_json) const
+{
+	const std::scoped_lock lock(stateMutex);
+	a_json = keepRules.ToJson();
 }
 
 bool SmpPhysicsFeature::MeshOwner::claim(const hdt::IMeshClaimContext& a_context, std::uint64_t a_token)
@@ -1270,10 +1401,17 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 		RecordDecline("<no physics file>", "the mesh has no physics file");
 		return false;
 	}
-	if (const RE::Actor* claimActor = a_context.getActor()) {
+	const RE::Actor* claimActor = a_context.getActor();
+	const std::string baseKey = claimActor ? ActorBaseKey(*claimActor) : std::string();
+	{
 		const std::scoped_lock lock(stateMutex);
-		if (disabledClaims.contains({ claimActor->GetFormID(), Util::ToLowerAscii(path) }))
+		if (claimActor && disabledClaims.contains({ claimActor->GetFormID(), Util::ToLowerAscii(path) }))
 			return false;
+		if (keepRules.Blocks(baseKey, path)) {
+			if (claimActor)
+				overrideBlockedActors.insert(claimActor->GetFormID());
+			return false;
+		}
 	}
 	if (!PassesClaimGate(a_context, path))
 		return false;
@@ -1699,6 +1837,7 @@ void SmpPhysicsFeature::ApplyCulling()
 	{
 		Claim* claim;
 		float key;
+		SmpPhysics::ClaimTier tier{ SmpPhysics::ClaimTier::Other };
 	};
 	std::vector<Ranked> live;
 	live.reserve(claims.size());
@@ -1732,7 +1871,11 @@ void SmpPhysicsFeature::ApplyCulling()
 	const auto budget = static_cast<std::size_t>(settings.MaxSimulatedClaims);
 	if (live.size() <= budget)
 		return;
-	std::sort(live.begin(), live.end(), [](const Ranked& a_left, const Ranked& a_right) { return a_left.key < a_right.key; });
+	for (Ranked& ranked : live)
+		ranked.tier = ClaimTierOf(ranked.claim->actorFormID);
+	std::sort(live.begin(), live.end(), [](const Ranked& a_left, const Ranked& a_right) {
+		return SmpPhysics::RanksBefore({ a_left.tier, a_left.key }, { a_right.tier, a_right.key });
+	});
 	for (std::size_t index = budget; index < live.size(); ++index)
 		live[index].claim->culledByBudget = true;
 }
@@ -2970,6 +3113,21 @@ bool SmpPhysicsFeature::RegisterClaimForGpu(Claim& a_claim)
 	ZoneScopedN("SmpPhysics::RegisterClaim");
 	if (!a_claim.parsed)
 		return false;
+	std::vector<SmpPhysics::Transform> freshRest;
+	std::size_t freshDynamic = 0;
+	float freshScale = 1.0f;
+	if (ResolveRestPose(a_claim.parsed->rig, a_claim.nodes, a_claim.physicsFile, freshRest, freshDynamic, freshScale) &&
+		freshRest.size() == a_claim.restPose.size()) {
+		float worstGap = 0.0f;
+		for (std::size_t index = 0; index < freshRest.size(); ++index)
+			worstGap = std::max(worstGap, SmpPhysics::Length(freshRest[index].translation - a_claim.restPose[index].translation));
+		logger::info("{} '{}' rest pose refreshed at registration: worst bone moved {:.2f}, body scale {:.4f} was {:.4f}", kLogPrefix,
+			a_claim.physicsFile, worstGap, freshScale, a_claim.solverParams.bodyScale);
+		a_claim.restPose = std::move(freshRest);
+		if (std::isfinite(freshScale) && freshScale > 0.0f)
+			a_claim.solverParams.bodyScale = freshScale;
+		a_claim.boneReach = SmpPhysics::GpuRig::BuildBoneReach(a_claim.parsed->rig, a_claim.restPose, kBoneReachSlack, kBoneReachMargin, a_claim.solverParams.bodyScale);
+	}
 	std::string reason;
 	if (!gpuSolver.AddClaim(a_claim.token, a_claim.parsed->rig, a_claim.restPose, a_claim.solverParams,
 			a_claim.gpuCollision, a_claim.surfaces, a_claim.windAreas, reason)) {

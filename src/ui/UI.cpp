@@ -212,7 +212,33 @@ namespace SettingsUi
 					if (ImGuiMCP::Checkbox("##gpu", &enabled) && model->onEnabled)
 						model->onEnabled(line.id, enabled);
 					ImGuiMCP::SameLine(0.0f, -1.0f);
-					ImGuiMCP::TextUnformatted(line.text.c_str());
+					ImGuiMCP::TextUnformatted((line.state.empty() ? line.text : line.text + "  [drawn from the game's pose: " + line.state + "]").c_str());
+					if (model->onRemember) {
+						ImGuiMCP::SameLine(0.0f, -1.0f);
+						if (line.canRememberBase) {
+							if (ImGuiMCP::SmallButton("Always CPU: type##gsp_keep_base"))
+								model->onRemember(line.id, true);
+							Tip("Keep this file with hdtSMP64 for every character made from this character's base form, across saves.");
+							ImGuiMCP::SameLine(0.0f, -1.0f);
+						}
+						if (ImGuiMCP::SmallButton("Always CPU: file##gsp_keep_file"))
+							model->onRemember(line.id, false);
+						Tip("Keep this physics file with hdtSMP64 for every character, across saves.");
+					}
+					ImGuiMCP::PopID();
+				}
+			}
+			if (model->rules) {
+				const std::vector<std::string> saved = model->rules();
+				ImGuiMCP::SeparatorText("Saved rules: kept with hdtSMP64");
+				if (saved.empty())
+					ImGuiMCP::TextDisabled("None. Use the Always CPU buttons on a line above.");
+				for (std::size_t index = 0; index < saved.size(); ++index) {
+					ImGuiMCP::PushID(static_cast<int>(index));
+					if (ImGuiMCP::SmallButton("Remove##gsp_rule_remove") && model->onRemoveRule)
+						model->onRemoveRule(index);
+					ImGuiMCP::SameLine(0.0f, -1.0f);
+					ImGuiMCP::TextUnformatted(saved[index].c_str());
 					ImGuiMCP::PopID();
 				}
 			}
