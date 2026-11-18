@@ -804,7 +804,7 @@ namespace SmpPhysics
 					a_shape.weights.push_back(std::move(weight));
 				} else if (name == "disable-tag") {
 				} else if (name == "wind-effect") {
-					const std::string ignored = "element 'wind-effect' is not one hdtSMP64 reads in a shape and is ignored";
+					const std::string ignored = "element 'wind-effect' is read by hdtSMP64 but never used there, so it is ignored";
 					if (g_parseWarnings != nullptr && std::find(g_parseWarnings->begin(), g_parseWarnings->end(), ignored) == g_parseWarnings->end())
 						g_parseWarnings->push_back(ignored);
 				} else {
