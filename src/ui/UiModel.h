@@ -42,6 +42,7 @@ namespace SettingsUi
 		std::function<void()> onShowFiltered;               ///< Runs when a List's Show filter is switched away from All, so the data it filters by can be gathered.
 		int showMode{};                                     ///< Which items a List with itemStatusFn shows: 0 all, 1 with physics, 2 needing attention.
 		std::array<char, 64> filterText{};                  ///< What a List's filter box holds.
+		int pickedIndex{ -1 };                              ///< The item the user last clicked in a List, so the list does not scroll under the cursor.
 		int lastSelected{ -2 };                             ///< The item a List last scrolled to.
 		bool sameLine{};
 		float minimum{};

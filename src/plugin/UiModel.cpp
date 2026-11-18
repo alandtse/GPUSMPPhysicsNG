@@ -258,6 +258,25 @@ namespace
 		return kind;
 	}
 
+	/** @brief What the test characters wear: armor, cloak and wig by name, for the readout and for copying a combination. */
+	std::string WornCombo()
+	{
+		const auto part = [](const ItemKind& a_kind) {
+			const int worn = a_kind.worn();
+			const std::vector<std::string> names = a_kind.names();
+			return worn >= 0 && worn < static_cast<int>(names.size()) ? names[static_cast<std::size_t>(worn)] : std::string("none");
+		};
+		return std::format("Wearing: {} / {} / {}", part(ArmorKind()), part(CloakKind()), part(WigKind()));
+	}
+
+	/** @brief A button that copies WornCombo, so a combination can be written down or sent. */
+	Row CopyCombo()
+	{
+		Row copy = Button("Copy combo", "Copies the armor, cloak and wig the test characters wear.", [] {}, true);
+		copy.clipboardFn = WornCombo;
+		return copy;
+	}
+
 	/** @brief A line about the selected item's physics. */
 	Row ItemNote(std::function<std::vector<RE::TESObjectARMO*>()> a_forms, const int* a_index, int a_skip)
 	{
@@ -503,10 +522,8 @@ void PluginUi::Register()
 		Check("Strip armor and weapons", "Takes armor and weapons off, except the wigs; later spawns start stripped while this is on.", &choices.stripped, [&choices] { RunCrowdCommand("stripTestCrowd", { { "enabled", choices.stripped } }); }),
 		Button("Previous armor", "Dresses everyone in the previous body armor.", [] { RunCrowdCommand("cycleTestCrowdArmor", { { "step", -1 } }); }),
 		Button("Next armor", "Dresses everyone in the next body armor.", [] { RunCrowdCommand("cycleTestCrowdArmor", { { "step", 1 } }); }, true),
-		Text([] {
-			const int worn = TestBench::GetCrowd().WornArmorIndex();
-			const auto& names = TestBench::TestCrowd::ArmorNames();
-			return "Wearing: " + (worn >= 0 && worn < static_cast<int>(names.size()) ? names[static_cast<std::size_t>(worn)] : std::string("none")); }),
+		Text(WornCombo),
+		CopyCombo(),
 		ItemList(ArmorKind(), "Armor list", "Every playable body armor; click one to dress the test characters in it. Coloured by the scan on the Armor physics page.", &choices.armor, true),
 		ItemList(CloakKind(), "Cloak", "A cloak or cape every test character wears, on top of armor or bare body.", &choices.cloak, true),
 		ItemList(WigKind(), "Wig", "A wig every test character wears, in place of the one it spawned with.", &choices.wig, true),
