@@ -38,6 +38,7 @@ namespace SettingsUi
 		std::function<int()> selectedFn;                    ///< A List's highlighted item, read every frame so changes made elsewhere show; intValue when empty.
 		std::function<std::string()> clipboardFn;           ///< A Button copies this text to the clipboard when pressed, and is greyed out while it is empty.
 		std::function<std::vector<int>()> itemStatusFn;     ///< A List's per-item state read every frame: 0 unknown, 1 working (green), 2 repaired (amber), 3 broken (red). Adds a Show filter.
+		std::function<void()> onActivated;                  ///< Runs when a List item is double-clicked, after that click has selected it.
 		std::function<void()> onShowFiltered;               ///< Runs when a List's Show filter is switched away from All, so the data it filters by can be gathered.
 		int showMode{};                                     ///< Which items a List with itemStatusFn shows: 0 all, 1 with physics, 2 needing attention.
 		std::array<char, 64> filterText{};                  ///< What a List's filter box holds.

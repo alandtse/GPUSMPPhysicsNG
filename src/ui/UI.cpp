@@ -82,9 +82,14 @@ namespace SettingsUi
 						constexpr ImGuiMCP::ImVec4 kColours[] = { { 0.40f, 0.85f, 0.45f, 1.0f }, { 0.95f, 0.65f, 0.10f, 1.0f }, { 0.95f, 0.35f, 0.35f, 1.0f } };
 						ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kColours[state - 1]);
 					}
-					if (ImGuiMCP::Selectable((name + kStateTags[state] + "##gsp_item_" + std::to_string(index)).c_str(), isSelected, 0, { 0, 0 })) {
+					if (ImGuiMCP::Selectable((name + kStateTags[state] + "##gsp_item_" + std::to_string(index)).c_str(), isSelected,
+							row.onActivated ? ImGuiMCP::ImGuiSelectableFlags_AllowDoubleClick : 0, { 0, 0 })) {
 						*row.intValue = static_cast<int>(index);
 						clicked = true;
+					}
+					if (row.onActivated && ImGuiMCP::IsItemHovered() && ImGuiMCP::IsMouseDoubleClicked(0)) {
+						*row.intValue = static_cast<int>(index);
+						row.onActivated();
 					}
 					if (coloured)
 						ImGuiMCP::PopStyleColor(1);

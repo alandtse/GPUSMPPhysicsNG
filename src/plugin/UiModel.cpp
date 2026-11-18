@@ -263,7 +263,14 @@ namespace
 	{
 		Row dress = Button(a_dressLabel, "Dresses the test characters in the selected item, and you while Include the player is on. Spawn them on the Test crowd page first, or include the player.", std::move(a_dress), true);
 		dress.enabled = [a_index] { return *a_index >= 0; };
-		return { WithHealth(Browse(a_label, a_tooltip, a_index, std::move(a_names), {}, {}), a_forms, static_cast<std::size_t>(a_skip)), ItemNote(a_forms, a_index, a_skip), ItemCopy(a_copyLabel, a_forms, a_index, a_skip), NeedsDeveloperMode(std::move(dress)) };
+		dress = NeedsDeveloperMode(std::move(dress));
+		Row list = WithHealth(Browse(a_label, a_tooltip, a_index, std::move(a_names), {}, {}), a_forms, static_cast<std::size_t>(a_skip));
+		list.tooltip += " Double-click an item to dress as the button below does.";
+		list.onActivated = [enabled = dress.enabled, dressNow = dress.onChanged] {
+			if (enabled())
+				dressNow();
+		};
+		return { std::move(list), ItemNote(a_forms, a_index, a_skip), ItemCopy(a_copyLabel, a_forms, a_index, a_skip), std::move(dress) };
 	}
 
 	std::vector<Row> Join(std::vector<Row> a_first, std::vector<Row> a_second)
