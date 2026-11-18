@@ -320,7 +320,7 @@ namespace
 		wear.enabled = [a_index] { return *a_index >= 0; };
 		wear = NeedsDeveloperMode(std::move(wear));
 		Row list = ItemList(a_kind, a_label, a_tooltip, a_index, false);
-		list.tooltip += " Double-click an item to put it on, as the button below does.";
+		list.tooltip += " Double-click an item, or step with Previous and Next, to put it on as the button below does.";
 		list.onActivated = [enabled = wear.enabled, wearNow = wear.onChanged] {
 			if (enabled())
 				wearNow();

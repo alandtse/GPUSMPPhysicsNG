@@ -76,6 +76,8 @@ namespace SettingsUi
 					if (target != selected) {
 						*row.intValue = target;
 						clicked = true;
+						if (row.onActivated)
+							row.onActivated();
 					}
 				}
 			}
