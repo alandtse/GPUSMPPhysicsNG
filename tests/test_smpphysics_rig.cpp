@@ -946,7 +946,7 @@ TEST_CASE("A bone's surface mask follows the collide tags of its shape and spare
 	CHECK(AllowedSurfaceMask(nullptr, surfaces) == 0xFFFFFFFFu);
 }
 
-TEST_CASE("wind-effect in a collision shape is ignored and reported once", "[SmpPhysics]")
+TEST_CASE("wind-effect in a collision shape is accepted without a warning", "[SmpPhysics]")
 {
 	const ParseResult result = ParseSmpXml(WrapSystem(R"XML(
 		<bone name="Head"><mass>0</mass></bone>
@@ -962,8 +962,7 @@ TEST_CASE("wind-effect in a collision shape is ignored and reported once", "[Smp
 	REQUIRE(result.status == ParseStatus::Ok);
 	REQUIRE(result.rig.collision.triangleShapes.size() == 2);
 	CHECK(result.rig.collision.triangleShapes[0].margin == Approx(0.5f));
-	REQUIRE(result.warnings.size() == 1);
-	CHECK(result.warnings[0].find("wind-effect") != std::string::npos);
+	CHECK(result.warnings.empty());
 }
 
 TEST_CASE("A shape element hdtSMP64 reads but this plugin does not model still declines the file", "[SmpPhysics]")
