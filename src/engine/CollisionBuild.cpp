@@ -1110,8 +1110,10 @@ bool SmpPhysicsFeature::ResolveCollisionInputs(CollisionBuildState& s, std::stri
 	}
 	if (hairShape == nullptr) {
 		a_reason = std::format("none of the hair meshes {} is below the actor", triedShapes);
-		if (shapes.vertexShapes.empty())
+		if (shapes.vertexShapes.empty()) {
 			a_collision.bodyShapes = shapes.triangleShapes;
+			a_collision.meshesAbsent = true;
+		}
 		return false;
 	}
 

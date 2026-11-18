@@ -291,6 +291,7 @@ private:
 		std::vector<RE::NiPointer<RE::NiAVObject>> drivers;  ///< the nodes the colliders are expressed in
 		std::vector<std::string> hairMeshNames;              ///< the meshes the rig's own shapes name, which are never body
 		std::uint64_t bodySignature{};                       ///< hashes the worn meshes the colliders were measured from
+		bool meshesAbsent{};                                 ///< a rig of only triangle shapes found none of its meshes on the actor
 		int sphereCount{};
 		int exemptSpheres{};  ///< of sphereCount, the ones that start inside a collider
 		int fitted{};

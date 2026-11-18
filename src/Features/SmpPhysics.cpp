@@ -21,6 +21,7 @@
 #include "engine/ReadyWeaponGate.h"
 #include "plugin/Settings.h"
 #include "smp/CardVertices.h"
+#include "smp/ClaimPolicy.h"
 #include "smp/GpuViews.h"
 #include "smp/SceneParent.h"
 
@@ -1457,12 +1458,18 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 	}
 
 	ClaimCollision collision;
+	bool collides = hasCollisionShapes;
 	if (hasCollisionShapes) {
 		std::string collisionReason;
 		if (!BuildClaimCollision(a_context, rig, nodes, restPose, collision, collisionReason)) {
 			RegisterBodyShapes(a_context, path, collision.bodyShapes);
-			RecordDecline(path, collisionReason);
-			return false;
+			if (!SmpPhysics::MayClaimWithoutCollision(collision.meshesAbsent, IsClothClaim(a_context), static_cast<int>(dynamicCount))) {
+				RecordDecline(path, collisionReason);
+				return false;
+			}
+			logger::info("{} '{}': {}, so it runs without collision", kLogPrefix, path, collisionReason);
+			collision = ClaimCollision{};
+			collides = false;
 		}
 	}
 
@@ -1532,7 +1539,7 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 	claim.sphereCount = collision.sphereCount;
 	claim.exemptSphereCount = collision.exemptSpheres;
 	claim.colliderCount = static_cast<int>(collision.colliders.size());
-	if (hasCollisionShapes)
+	if (collides)
 		InstallClaimCollision(claim, collision);
 
 	const int additionalJoints = claim.additionalJointCount;
