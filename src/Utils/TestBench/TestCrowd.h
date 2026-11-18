@@ -98,6 +98,8 @@ namespace TestBench
 		[[nodiscard]] static const std::vector<std::string>& CloakNames();
 		/** @brief The entry of CloakNames() the crowd wears now, or -1 while it wears none. */
 		[[nodiscard]] int WornCloakIndex() const noexcept { return cloakIndex.load(std::memory_order_relaxed); }
+		/** @brief The spawned characters with 3D loaded, then the player when included. Game thread only. */
+		[[nodiscard]] std::vector<RE::Actor*> OutfitTargets();
 		/** @brief Rebuilds the 3D of every character standing now, then lets the hooks redo what the rebuild undoes. */
 		void Refresh();
 		/** @brief Registers hooks a feature wants run for this crowd; they live as long as the feature. Call from the game thread at load. */
@@ -150,8 +152,6 @@ namespace TestBench
 		void RestoreActor(RE::Actor& a_actor);
 		void SetStrippedNow(bool a_stripped);
 		void SetIncludePlayerNow(bool a_include);
-		/** @brief The spawned characters with 3D loaded, then the player when included. Game thread only. */
-		[[nodiscard]] std::vector<RE::Actor*> OutfitTargets();
 		void CycleArmorNow(int a_step);
 		void SelectCloakNow(int a_index);
 		/** @brief Puts the chosen cloak on a character that does not wear it; does nothing while none is chosen. */

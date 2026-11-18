@@ -208,24 +208,54 @@ namespace
 		};
 	}
 
-	std::vector<std::string> ArmorNames()
+	/**
+	 * @brief A kind of wearable item the pickers list: its names and forms, what the crowd wears now, and how to put one on.
+	 * @details Indexes are the list's, which has skip leading entries (a "None") before the first form. Devbench reaches the same lists through
+	 *          testCrowdArmors, testCrowdCloaks and testCrowdWigs, and the same wearing through setTestCrowdArmor, setTestCrowdCloak and setTestCrowdWig.
+	 */
+	struct ItemKind
 	{
-		return TestBench::TestCrowd::ArmorNames();
+		std::function<std::vector<std::string>()> names;
+		std::function<std::vector<RE::TESObjectARMO*>()> forms;
+		std::function<int()> worn;
+		std::function<void(int)> wear;
+		int skip{};
+	};
+
+	const ItemKind& ArmorKind()
+	{
+		static const ItemKind kind{
+			[] { return TestBench::TestCrowd::ArmorNames(); },
+			[] { return TestBench::TestCrowd::ArmorForms(); },
+			[] { return TestBench::GetCrowd().WornArmorIndex(); },
+			[](int a_index) { TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(a_index)); },
+			0
+		};
+		return kind;
 	}
 
-	std::vector<std::string> CloakNames()
+	const ItemKind& CloakKind()
 	{
-		return WithFirst("None", TestBench::TestCrowd::CloakNames());
+		static const ItemKind kind{
+			[] { return WithFirst("None", TestBench::TestCrowd::CloakNames()); },
+			[] { return TestBench::TestCrowd::CloakForms(); },
+			[] { return TestBench::GetCrowd().WornCloakIndex() + 1; },
+			[](int a_index) { RunCrowdCommand("setTestCrowdCloak", { { "index", a_index - 1 } }); },
+			1
+		};
+		return kind;
 	}
 
-	std::vector<RE::TESObjectARMO*> ArmorForms()
+	const ItemKind& WigKind()
 	{
-		return TestBench::TestCrowd::ArmorForms();
-	}
-
-	std::vector<RE::TESObjectARMO*> CloakForms()
-	{
-		return TestBench::TestCrowd::CloakForms();
+		static const ItemKind kind{
+			[] { return SmpPhysics::CrowdWigs::WigNames(); },
+			[] { return SmpPhysics::CrowdWigs::WigForms(); },
+			[] { return Instance().WornWigIndex(); },
+			[](int a_index) { Instance().WearWig(a_index); },
+			0
+		};
+		return kind;
 	}
 
 	/** @brief A line about the selected item's physics. */
@@ -258,19 +288,25 @@ namespace
 		return a_row;
 	}
 
-	/** @brief A coloured list of items with the selected one's physics state and a button to copy its report; picking only selects. */
-	std::vector<Row> ItemBrowser(const char* a_label, const char* a_copyLabel, const char* a_dressLabel, std::function<void()> a_dress, const char* a_tooltip, int* a_index, std::function<std::vector<std::string>()> a_names, std::function<std::vector<RE::TESObjectARMO*>()> a_forms, int a_skip)
+	/** @brief A coloured list of one kind of item; picking selects it and, with a_wearOnPick, puts it on the test characters at once. */
+	Row ItemList(const ItemKind& a_kind, const char* a_label, const char* a_tooltip, int* a_index, bool a_wearOnPick)
 	{
-		Row dress = Button(a_dressLabel, "Dresses the test characters in the selected item, and you while Include the player is on. Spawn them on the Test crowd page first, or include the player.", std::move(a_dress), true);
-		dress.enabled = [a_index] { return *a_index >= 0; };
-		dress = NeedsDeveloperMode(std::move(dress));
-		Row list = WithHealth(Browse(a_label, a_tooltip, a_index, std::move(a_names), {}, {}), a_forms, static_cast<std::size_t>(a_skip));
-		list.tooltip += " Double-click an item to dress as the button below does.";
-		list.onActivated = [enabled = dress.enabled, dressNow = dress.onChanged] {
+		return WithHealth(Browse(a_label, a_tooltip, a_index, a_kind.names, a_wearOnPick ? a_kind.worn : std::function<int()>{}, a_wearOnPick ? [&a_kind, a_index] { a_kind.wear(*a_index); } : std::function<void()>{}), a_kind.forms, static_cast<std::size_t>(a_kind.skip));
+	}
+
+	/** @brief A list of one kind of item with the selected one's physics state, a button to copy its report and one to put it on; picking only selects. */
+	std::vector<Row> ItemBrowser(const ItemKind& a_kind, const char* a_label, const char* a_copyLabel, const char* a_wearLabel, const char* a_tooltip, int* a_index)
+	{
+		Row wear = Button(a_wearLabel, "Puts the selected item on the test characters, and on you while Include the player is on. Spawn them on the Test crowd page first, or include the player.", [&a_kind, a_index] { a_kind.wear(*a_index); }, true);
+		wear.enabled = [a_index] { return *a_index >= 0; };
+		wear = NeedsDeveloperMode(std::move(wear));
+		Row list = ItemList(a_kind, a_label, a_tooltip, a_index, false);
+		list.tooltip += " Double-click an item to put it on, as the button below does.";
+		list.onActivated = [enabled = wear.enabled, wearNow = wear.onChanged] {
 			if (enabled())
-				dressNow();
+				wearNow();
 		};
-		return { std::move(list), ItemNote(a_forms, a_index, a_skip), ItemCopy(a_copyLabel, a_forms, a_index, a_skip), std::move(dress) };
+		return { std::move(list), ItemNote(a_kind.forms, a_index, a_kind.skip), ItemCopy(a_copyLabel, a_kind.forms, a_index, a_kind.skip), std::move(wear) };
 	}
 
 	std::vector<Row> Join(std::vector<Row> a_first, std::vector<Row> a_second)
@@ -303,6 +339,7 @@ namespace
 		bool loopAnimation = false;
 		int armor = -1;
 		int cloak = 0;
+		int wig = -1;
 		int idle = 0;
 		int hairColor = 0;
 	} crowdChoices;
@@ -312,6 +349,7 @@ namespace
 	{
 		int armor = -1;
 		int cloak = 0;
+		int wig = -1;
 	} browseChoices;
 
 	/** @brief The crowd's switch for dressing the player with it; the Armor physics and Test crowd pages share it. */
@@ -442,7 +480,9 @@ void PluginUi::Register()
 					return std::format("Scanning: {} of {}", done, total);
 				return NifProbe::Generation() ? std::string("Green [OK]: no file problems detected. Amber [REPAIRED]: repaired and used. Red [FAULT]: file fault. Plain: no physics found.") : std::string("Not scanned yet."); }),
 			NeedsDeveloperMode(IncludePlayerCheck()) },
-		Join(ItemBrowser("Armors", "Copy report for the selected armor", "Dress test characters in it", [] { TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(browseChoices.armor)); }, "Every playable body armor. Click one to see its physics and copy a report for its mod author.", &browseChoices.armor, ArmorNames, ArmorForms, 0), ItemBrowser("Cloaks", "Copy report for the selected cloak", "Put it on test characters", [] { RunCrowdCommand("setTestCrowdCloak", { { "index", browseChoices.cloak - 1 } }); }, "Every cloak and cape. Click one to see its physics and copy a report for its mod author.", &browseChoices.cloak, CloakNames, CloakForms, 1)));
+		Join(ItemBrowser(ArmorKind(), "Armors", "Copy report for the selected armor", "Dress test characters in it", "Every playable body armor. Click one to see its physics and copy a report for its mod author.", &browseChoices.armor),
+			Join(ItemBrowser(CloakKind(), "Cloaks", "Copy report for the selected cloak", "Put it on test characters", "Every cloak and cape. Click one to see its physics and copy a report for its mod author.", &browseChoices.cloak),
+				ItemBrowser(WigKind(), "Wigs", "Copy report for the selected wig", "Put it on test characters", "Every wig, the hair-slot armors hair mods add. Click one to see its physics and copy a report for its mod author.", &browseChoices.wig))));
 
 	auto& choices = crowdChoices;
 	crowdModel.title = "Test crowd";
@@ -467,8 +507,9 @@ void PluginUi::Register()
 			const int worn = TestBench::GetCrowd().WornArmorIndex();
 			const auto& names = TestBench::TestCrowd::ArmorNames();
 			return "Wearing: " + (worn >= 0 && worn < static_cast<int>(names.size()) ? names[static_cast<std::size_t>(worn)] : std::string("none")); }),
-		WithHealth(Browse("Armor list", "Every playable body armor; click one to dress the test characters in it. Coloured by the scan on the Armor physics page.", &choices.armor, ArmorNames, [] { return TestBench::GetCrowd().WornArmorIndex(); }, [&choices] { TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(choices.armor)); }), ArmorForms, 0),
-		WithHealth(Browse("Cloak", "A cloak or cape every test character wears, on top of armor or bare body.", &choices.cloak, CloakNames, [] { return TestBench::GetCrowd().WornCloakIndex() + 1; }, [&choices] { RunCrowdCommand("setTestCrowdCloak", { { "index", choices.cloak - 1 } }); }), CloakForms, 1),
+		ItemList(ArmorKind(), "Armor list", "Every playable body armor; click one to dress the test characters in it. Coloured by the scan on the Armor physics page.", &choices.armor, true),
+		ItemList(CloakKind(), "Cloak", "A cloak or cape every test character wears, on top of armor or bare body.", &choices.cloak, true),
+		ItemList(WigKind(), "Wig", "A wig every test character wears, in place of the one it spawned with.", &choices.wig, true),
 		Header("Animation"),
 		Check("Animate on spawn (characters' AI runs)", "Off, test characters spawn frozen.", &choices.animateOnSpawn, [&choices] { TestBench::GetCrowd().SetAnimateOnSpawn(choices.animateOnSpawn); }),
 		Check("Loop the animation", "Plays the animation again each time it ends.", &choices.loopAnimation, [&choices] { RunCrowdCommand("setTestCrowdLoop", { { "enabled", choices.loopAnimation } }); }),

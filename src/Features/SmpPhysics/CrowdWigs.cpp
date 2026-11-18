@@ -1,9 +1,12 @@
 #include "CrowdWigs.h"
 
+#include "Utils/ArmorNames.h"
 #include "Utils/StringUtils.h"
 
 #include <algorithm>
+#include <cstring>
 #include <format>
+#include <mutex>
 #include <optional>
 #include <span>
 
@@ -152,16 +155,63 @@ namespace SmpPhysics
 	{
 		if (chosen.empty())
 			return;
-		auto* armor = chosen[a_index % chosen.size()];
-		a_actor.AddObjectToContainer(armor, nullptr, 1, nullptr);
-		RE::ActorEquipManager::GetSingleton()->EquipObject(&a_actor, armor, nullptr, 1, nullptr, false, true, false, true);
+		Wear(a_actor, *chosen[a_index % chosen.size()]);
+	}
+
+	void CrowdWigs::Wear(RE::Actor& a_actor, RE::TESObjectARMO& a_wig)
+	{
+		a_actor.AddObjectToContainer(&a_wig, nullptr, 1, nullptr);
+		RE::ActorEquipManager::GetSingleton()->EquipObject(&a_actor, &a_wig, nullptr, 1, nullptr, false, true, false, true);
 		const char* actorName = a_actor.GetName();
-		const char* wigName = armor->GetName();
-		logger::info("[Test Crowd] {} ({:08X}) wears {} ({:08X})", actorName && *actorName ? actorName : "unnamed", a_actor.GetFormID(), wigName && *wigName ? wigName : "unnamed", armor->GetFormID());
+		const char* wigName = a_wig.GetName();
+		logger::info("[Test Crowd] {} ({:08X}) wears {} ({:08X})", actorName && *actorName ? actorName : "unnamed", a_actor.GetFormID(), wigName && *wigName ? wigName : "unnamed", a_wig.GetFormID());
 		HideBakedHair(a_actor);
 		const RE::ObjectRefHandle handle = a_actor.GetHandle();
 		std::erase_if(watches, [&](const BakedHairWatch& a_watch) { return a_watch.handle == handle; });
 		watches.push_back({ handle, kBakedHairWatchFrames, false });
+	}
+
+	const std::vector<RE::TESObjectARMO*>& CrowdWigs::WigForms()
+	{
+		static std::vector<RE::TESObjectARMO*> forms;
+		static std::mutex mutex;
+		const std::scoped_lock lock(mutex);
+		if (forms.empty()) {
+			for (const Wig& wig : CollectWigs())
+				forms.push_back(wig.armor);
+			std::ranges::sort(forms, [](const RE::TESObjectARMO* a_left, const RE::TESObjectARMO* a_right) {
+				const int byName = std::strcmp(a_left->GetName(), a_right->GetName());
+				return byName != 0 ? byName < 0 : a_left->GetFormID() < a_right->GetFormID();
+			});
+		}
+		return forms;
+	}
+
+	const std::vector<std::string>& CrowdWigs::WigNames()
+	{
+		static std::vector<std::string> names;
+		static std::mutex mutex;
+		const std::vector<RE::TESObjectARMO*>& forms = WigForms();
+		const std::scoped_lock lock(mutex);
+		if (names.size() != forms.size())
+			names = Util::ItemNamesOf(forms);
+		return names;
+	}
+
+	void CrowdWigs::WearNow(TestBench::TestCrowd& a_crowd, int a_index)
+	{
+		const std::vector<RE::TESObjectARMO*>& wigs = WigForms();
+		if (a_index < 0 || static_cast<std::size_t>(a_index) >= wigs.size()) {
+			a_crowd.SetReport(wigs.empty() ? "No wig is loaded." : std::format("There is no wig {}; pick one of 0 to {}.", a_index, wigs.size() - 1));
+			return;
+		}
+		RE::TESObjectARMO* wig = wigs[static_cast<std::size_t>(a_index)];
+		wornIndex.store(a_index, std::memory_order_relaxed);
+		chosen.assign(1, wig);
+		const std::vector<RE::Actor*> targets = a_crowd.OutfitTargets();
+		for (RE::Actor* actor : targets)
+			Wear(*actor, *wig);
+		a_crowd.SetReport(std::format("{} characters wear the wig {} ({} of {}).", targets.size(), wig->GetName(), a_index + 1, wigs.size()));
 	}
 
 	void CrowdWigs::Tick()

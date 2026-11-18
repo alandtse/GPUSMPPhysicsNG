@@ -5,6 +5,7 @@
 
 #include "Globals.h"
 #include "Utils/ActorUtils.h"
+#include "Utils/ArmorNames.h"
 #include "Utils/MathUtils.h"
 
 #include <algorithm>
@@ -471,11 +472,7 @@ namespace TestBench
 		const std::scoped_lock lock(mutex);
 		if (names.size() != armors.size()) {
 			names.clear();
-			std::unordered_map<std::string, std::size_t> uses;
-			for (const RE::TESObjectARMO* armor : armors)
-				++uses[armor->GetName()];
-			for (const RE::TESObjectARMO* armor : armors)
-				names.emplace_back(uses[armor->GetName()] > 1 ? std::format("{} [{:08X}]", armor->GetName(), armor->GetFormID()) : std::string(armor->GetName()));
+			names = Util::ItemNamesOf(armors);
 		}
 		return names;
 	}
@@ -498,11 +495,7 @@ namespace TestBench
 		const std::scoped_lock lock(mutex);
 		if (names.size() != cloaks.size()) {
 			names.clear();
-			std::unordered_map<std::string, std::size_t> uses;
-			for (const RE::TESObjectARMO* armor : cloaks)
-				++uses[armor->GetName()];
-			for (const RE::TESObjectARMO* armor : cloaks)
-				names.emplace_back(uses[armor->GetName()] > 1 ? std::format("{} [{:08X}]", armor->GetName(), armor->GetFormID()) : std::string(armor->GetName()));
+			names = Util::ItemNamesOf(cloaks);
 		}
 		return names;
 	}
