@@ -945,3 +945,11 @@ TEST_CASE("A bone's surface mask follows the collide tags of its shape and spare
 	CHECK(AllowedSurfaceMask(&skirt2, surfaces) == 0b1101u);
 	CHECK(AllowedSurfaceMask(nullptr, surfaces) == 0xFFFFFFFFu);
 }
+
+TEST_CASE("A UTF-8 byte order mark before the XML prolog is skipped", "[SmpPhysics]")
+{
+	const std::string bare = WrapSystem(R"XML(<bone name="Head"><mass>0</mass></bone>)XML");
+	const ParseResult withMark = ParseSmpXml("\xEF\xBB\xBF" + bare);
+	CHECK(withMark.status == ParseStatus::Ok);
+	CHECK(withMark.rig.bones.size() == ParseSmpXml(bare).rig.bones.size());
+}
