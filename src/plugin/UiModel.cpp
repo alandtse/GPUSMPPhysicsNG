@@ -591,5 +591,5 @@ void PluginUi::Register()
 	crowdModel.lockedReason = [] { return globals::state->IsDeveloperMode() ? std::string() : std::string("Developer tool. Turn on Developer mode on the Developer page to use the test crowd."); };
 	physicsModel.lockedReason = [] { return globals::state->IsDeveloperMode() ? std::string() : std::string("Developer tool. Turn on Developer mode on the Developer page to browse armor physics and try items on."); };
 
-	SettingsUi::Register({ &model, &claimsModel, &physicsModel, &reportModel, &developerModel, &crowdModel });
+	SettingsUi::Register({ &model, &claimsModel, &reportModel, &developerModel, &physicsModel, &crowdModel });
 }
