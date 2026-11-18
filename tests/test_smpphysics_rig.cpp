@@ -945,3 +945,45 @@ TEST_CASE("A bone's surface mask follows the collide tags of its shape and spare
 	CHECK(AllowedSurfaceMask(&skirt2, surfaces) == 0b1101u);
 	CHECK(AllowedSurfaceMask(nullptr, surfaces) == 0xFFFFFFFFu);
 }
+
+TEST_CASE("A joint between two kinematic bones is dropped and reported", "[smpphysics][rig]")
+{
+	const ParseResult result = ParseSmpXml(WrapSystem(R"XML(
+		<bone name="Spine"><mass>0</mass></bone>
+		<bone name="Gravity00"/>
+		<bone name="Gravity01"><mass>5</mass><inertia x="8" y="8" z="8"/></bone>
+		<generic-constraint bodyA="Gravity00" bodyB="Spine"/>
+		<generic-constraint bodyA="Gravity01" bodyB="Gravity00"/>
+	)XML"));
+
+	REQUIRE(result.status == ParseStatus::Ok);
+	REQUIRE(result.rig.joints.size() == 1);
+	CHECK(result.rig.bones[static_cast<std::size_t>(result.rig.joints[0].child)].name == "Gravity01");
+	REQUIRE(result.warnings.size() == 1);
+	CHECK(result.warnings[0].find("kinematic") != std::string::npos);
+}
+
+TEST_CASE("A kinematic bone written as a joint's child anchors the dynamic bone it is joined to", "[smpphysics][rig]")
+{
+	const ParseResult result = ParseSmpXml(WrapSystem(R"XML(
+		<bone name="Spine"><mass>0</mass></bone>
+		<bone name="Hair01"><mass>1</mass><inertia x="1" y="1" z="1"/></bone>
+		<bone name="Pinned"><mass>0</mass></bone>
+		<bone name="Breast"><mass>1</mass><inertia x="1" y="1" z="1"/></bone>
+		<generic-constraint bodyA="Hair01" bodyB="Spine"/>
+		<generic-constraint bodyA="Pinned" bodyB="Hair01"/>
+		<generic-constraint bodyA="Pinned" bodyB="Breast"/>
+	)XML"));
+
+	REQUIRE(result.status == ParseStatus::Ok);
+	const auto name = [&result](int a_bone) { return result.rig.bones[static_cast<std::size_t>(a_bone)].name; };
+	REQUIRE(result.rig.joints.size() == 2);
+	CHECK(name(result.rig.joints[0].child) == "Hair01");
+	CHECK_FALSE(result.rig.joints[0].reversed);
+	CHECK(name(result.rig.joints[1].child) == "Breast");
+	CHECK(name(result.rig.joints[1].parent) == "Pinned");
+	CHECK(result.rig.joints[1].reversed);
+	REQUIRE(result.rig.additionalJoints.size() == 1);
+	CHECK(name(result.rig.additionalJoints[0].child) == "Hair01");
+	CHECK(result.rig.additionalJoints[0].reversed);
+}

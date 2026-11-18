@@ -960,6 +960,20 @@ namespace SmpPhysics
 		return frames;
 	}
 
+	std::size_t DropInertJoints(SmpRig& a_rig)
+	{
+		const auto inert = [&a_rig](const RigJoint& a_joint) {
+			const auto kinematic = [&a_rig](int a_bone) {
+				return a_bone >= 0 && static_cast<std::size_t>(a_bone) < a_rig.bones.size() && a_rig.bones[static_cast<std::size_t>(a_bone)].kinematic;
+			};
+			return kinematic(a_joint.child) && kinematic(a_joint.parent);
+		};
+		const std::size_t before = a_rig.joints.size() + a_rig.additionalJoints.size();
+		std::erase_if(a_rig.joints, inert);
+		std::erase_if(a_rig.additionalJoints, inert);
+		return before - a_rig.joints.size() - a_rig.additionalJoints.size();
+	}
+
 	bool ValidateRig(const SmpRig& a_rig, std::string& a_reason, bool a_requireForest)
 	{
 		if (a_rig.bones.size() > kMaxBones) {
@@ -1069,6 +1083,10 @@ namespace SmpPhysics
 			result.reason = builder.error.empty() ? std::string("unsupported content") : builder.error;
 			return result;
 		}
+		const std::size_t inertJoints = DropInertJoints(builder.rig);
+		if (inertJoints > 0)
+			warnings.push_back(std::to_string(inertJoints) + " joint(s) between two kinematic bones constrain nothing and are dropped");
+		ReorientAnchoredJoints(builder.rig);
 		std::string reason;
 		if (!ValidateRig(builder.rig, reason, false)) {
 			result.status = ParseStatus::Unsupported;
@@ -1233,6 +1251,42 @@ namespace SmpPhysics
 		}
 		a_reason = "the joints could not be rooted at a kinematic bone";
 		return false;
+	}
+
+	std::size_t ReorientAnchoredJoints(SmpRig& a_rig)
+	{
+		const auto kinematic = [&a_rig](int a_bone) { return a_rig.bones[static_cast<std::size_t>(a_bone)].kinematic; };
+		std::vector<RigJoint> joints;
+		std::vector<RigJoint> additional;
+		std::vector<RigJoint> turned;
+		const auto sort = [&](const std::vector<RigJoint>& a_from, std::vector<RigJoint>& a_kept) {
+			for (RigJoint joint : a_from) {
+				if (kinematic(joint.child) && !kinematic(joint.parent)) {
+					ReverseJoint(joint);
+					turned.push_back(joint);
+				} else {
+					a_kept.push_back(joint);
+				}
+			}
+		};
+		sort(a_rig.joints, joints);
+		sort(a_rig.additionalJoints, additional);
+		if (turned.empty())
+			return 0;
+		std::vector<bool> joined(a_rig.bones.size(), false);
+		for (const RigJoint& joint : joints)
+			joined[static_cast<std::size_t>(joint.child)] = true;
+		for (const RigJoint& joint : turned) {
+			if (joined[static_cast<std::size_t>(joint.child)]) {
+				additional.push_back(joint);
+			} else {
+				joined[static_cast<std::size_t>(joint.child)] = true;
+				joints.push_back(joint);
+			}
+		}
+		a_rig.joints = std::move(joints);
+		a_rig.additionalJoints = std::move(additional);
+		return turned.size();
 	}
 
 	void ApplySpringLimits(SmpRig& a_rig, float a_step, float a_minimumDampingRatio) noexcept
