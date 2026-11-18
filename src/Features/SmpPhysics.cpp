@@ -1283,10 +1283,10 @@ bool SmpPhysicsFeature::ResolveRigNodes(const hdt::IMeshClaimContext& a_context,
 		}
 		if (sceneParent != parentNode) {
 			repairLog.Record(a_path, std::format("'{}' hangs under '{}' in the skeleton but its joint is to '{}'", a_rig.bones[static_cast<std::size_t>(joint.child)].name, sceneParent->name.c_str(), a_rig.bones[static_cast<std::size_t>(joint.parent)].name),
-				"accepted it; the rest pose comes from the scene graph and the joint still binds the physics parent");
+				"used the skeleton's pose and kept the joint to the file's parent");
 		} else if (childNode->parent != parentNode) {
 			repairLog.Record(a_path, std::format("'{}' hangs under '{}', a node hdtSMP64 added when it merged the armor, not directly under '{}' as the file says", a_rig.bones[static_cast<std::size_t>(joint.child)].name, childNode->parent ? childNode->parent->name.c_str() : "nothing", a_rig.bones[static_cast<std::size_t>(joint.parent)].name),
-				"accepted it and simulated the bone from where the scene graph puts it");
+				"simulated the bone from where the skeleton puts it");
 		}
 	}
 	return true;
@@ -1571,7 +1571,7 @@ std::shared_ptr<const SmpPhysics::ParseResult> SmpPhysicsFeature::GetParsedRig(c
 	auto parsed = std::make_shared<SmpPhysics::ParseResult>(ReadPhysicsFile(a_path));
 	for (const std::string& warning : parsed->warnings) {
 		logger::warn("{} '{}': {}", kLogPrefix, a_path, warning);
-		repairLog.Record(a_path, warning, "repaired it and used the file");
+		repairLog.Record(a_path, warning, {});
 	}
 
 	const std::scoped_lock lock(stateMutex);
@@ -1662,7 +1662,7 @@ void SmpPhysicsFeature::RecordDecline(const std::string& a_file, const std::stri
 	if (shouldLog)
 		logger::info("{} Declined '{}': {}", kLogPrefix, a_file, a_reason);
 	if (SmpPhysics::RepairLog::IsFileFault(a_reason))
-		repairLog.Record(a_file, a_reason, "declined the file, so hdtSMP64 simulates it");
+		repairLog.Record(a_file, a_reason, "not simulated here; hdtSMP64 simulates it instead");
 }
 
 void SmpPhysicsFeature::ReleaseMesh(std::uint64_t a_token)
