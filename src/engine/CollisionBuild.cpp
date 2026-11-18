@@ -1,5 +1,6 @@
 #include "Features/SmpPhysics.h"
 #include "smp/CardVertices.h"
+#include "smp/ClaimPolicy.h"
 #include "smp/RestRetarget.h"
 
 #include "RE/A/Actor.h"
@@ -1112,7 +1113,7 @@ bool SmpPhysicsFeature::ResolveCollisionInputs(CollisionBuildState& s, std::stri
 		a_reason = std::format("none of the hair meshes {} is below the actor", triedShapes);
 		if (shapes.vertexShapes.empty()) {
 			a_collision.bodyShapes = shapes.triangleShapes;
-			a_collision.meshesAbsent = true;
+			a_collision.noCollisionGeometry = true;
 		}
 		return false;
 	}
@@ -1331,6 +1332,7 @@ bool SmpPhysicsFeature::BuildHairSpheres(CollisionBuildState& s, std::string& a_
 	if (a_collision.sphereCount == 0) {
 		a_reason = std::format("no hair spheres could be built for '{}' ({} of {} skin bones matched a rig bone)", hairShape->name,
 			mappedSkinBones, totalSkinBones);
+		a_collision.noCollisionGeometry = SmpPhysics::HasNoCollisionGeometry(mappedSkinBones, a_collision.sphereCount);
 		return false;
 	}
 

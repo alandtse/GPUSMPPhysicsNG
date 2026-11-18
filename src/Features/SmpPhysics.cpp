@@ -1463,7 +1463,7 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 		std::string collisionReason;
 		if (!BuildClaimCollision(a_context, rig, nodes, restPose, collision, collisionReason)) {
 			RegisterBodyShapes(a_context, path, collision.bodyShapes);
-			if (!SmpPhysics::MayClaimWithoutCollision(collision.meshesAbsent, static_cast<int>(dynamicCount))) {
+			if (!SmpPhysics::MayClaimWithoutCollision(collision.noCollisionGeometry, static_cast<int>(dynamicCount))) {
 				RecordDecline(path, collisionReason);
 				return false;
 			}
