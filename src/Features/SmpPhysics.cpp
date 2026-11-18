@@ -1548,7 +1548,7 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 			RegisterClothMeshes(claim.actorFormID, claim.cardGeometries);
 		claims.insert_or_assign(a_token, std::move(claim));
 	}
-	logger::info("{} Claimed '{}' for token {} ({} bones, {} dynamic, {} joints dropped, {} collision spheres, {} of {} start inside a collider and are exempt, {} colliders, {} fitted, {} defaulted) in {} ms",
+	logger::info("{} Claimed '{}' for token {} ({} bones, {} dynamic, {} additional joints, {} collision spheres, {} of {} start inside a collider and are exempt, {} colliders, {} fitted, {} defaulted) in {} ms",
 		kLogPrefix, path, a_token, boneCount, dynamicCount, additionalJoints, sphereCount,
 		exemptSpheres, sphereCount, colliderCount, collision.fitted, collision.defaulted,
 		std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - claimStart).count());
