@@ -87,10 +87,8 @@ namespace SettingsUi
 						*row.intValue = static_cast<int>(index);
 						clicked = true;
 					}
-					if (row.onActivated && ImGuiMCP::IsItemHovered() && ImGuiMCP::IsMouseDoubleClicked(0)) {
-						*row.intValue = static_cast<int>(index);
+					if (row.onActivated && ImGuiMCP::IsItemHovered() && ImGuiMCP::IsMouseDoubleClicked(0))
 						row.onActivated();
-					}
 					if (coloured)
 						ImGuiMCP::PopStyleColor(1);
 					if (isSelected && scroll)
