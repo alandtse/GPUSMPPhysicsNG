@@ -261,7 +261,7 @@ namespace
 	/** @brief A coloured list of items with the selected one's physics state and a button to copy its report; picking only selects. */
 	std::vector<Row> ItemBrowser(const char* a_label, const char* a_copyLabel, const char* a_dressLabel, std::function<void()> a_dress, const char* a_tooltip, int* a_index, std::function<std::vector<std::string>()> a_names, std::function<std::vector<RE::TESObjectARMO*>()> a_forms, int a_skip)
 	{
-		Row dress = Button(a_dressLabel, "Dresses every test character in the selected item. Spawn them on the Test crowd page first, which needs developer mode.", std::move(a_dress), true);
+		Row dress = Button(a_dressLabel, "Dresses the test characters in the selected item, and you while Include the player is on. Spawn them on the Test crowd page first, or include the player.", std::move(a_dress), true);
 		dress.enabled = [a_index] { return *a_index >= 0; };
 		return { WithHealth(Browse(a_label, a_tooltip, a_index, std::move(a_names), {}, {}), a_forms, static_cast<std::size_t>(a_skip)), ItemNote(a_forms, a_index, a_skip), ItemCopy(a_copyLabel, a_forms, a_index, a_skip), NeedsDeveloperMode(std::move(dress)) };
 	}
@@ -306,6 +306,12 @@ namespace
 		int armor = -1;
 		int cloak = 0;
 	} browseChoices;
+
+	/** @brief The crowd's switch for dressing the player with it; the Armor physics and Test crowd pages share it. */
+	Row IncludePlayerCheck()
+	{
+		return Check("Include the player", "Strip, armor and cloak choices also apply to you; off, your own outfit is put back and the cloak comes off.", &crowdChoices.includePlayer, [] { RunCrowdCommand("setTestCrowdIncludePlayer", { { "enabled", crowdChoices.includePlayer } }); });
+	}
 }
 
 void PluginUi::Register()
@@ -427,7 +433,8 @@ void PluginUi::Register()
 				const auto [done, total] = NifProbe::Progress();
 				if (NifProbe::Running())
 					return std::format("Scanning: {} of {}", done, total);
-				return NifProbe::Generation() ? std::string("Green [OK]: no file problems detected. Amber [REPAIRED]: repaired and used. Red [FAULT]: file fault. Plain: no physics found.") : std::string("Not scanned yet."); }) },
+				return NifProbe::Generation() ? std::string("Green [OK]: no file problems detected. Amber [REPAIRED]: repaired and used. Red [FAULT]: file fault. Plain: no physics found.") : std::string("Not scanned yet."); }),
+			NeedsDeveloperMode(IncludePlayerCheck()) },
 		Join(ItemBrowser("Armors", "Copy report for the selected armor", "Dress test characters in it", [] { TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(browseChoices.armor)); }, "Every playable body armor. Click one to see its physics and copy a report for its mod author.", &browseChoices.armor, ArmorNames, ArmorForms, 0), ItemBrowser("Cloaks", "Copy report for the selected cloak", "Put it on test characters", [] { RunCrowdCommand("setTestCrowdCloak", { { "index", browseChoices.cloak - 1 } }); }, "Every cloak and cape. Click one to see its physics and copy a report for its mod author.", &browseChoices.cloak, CloakNames, CloakForms, 1)));
 
 	auto& choices = crowdChoices;
@@ -445,7 +452,7 @@ void PluginUi::Register()
 		Button("Refresh", "Rebuilds their 3D and redoes what a rebuild undoes.", [] { RunCrowdCommand("refreshTestCrowd"); }, true),
 		Text([] { return std::format("{}  ({} standing)", TestBench::GetCrowd().Report(), TestBench::GetCrowd().Count()); }),
 		Header("Outfit"),
-		Check("Include the player", "Strip, armor and cloak choices below also apply to you; off, your own outfit is put back and the cloak comes off.", &choices.includePlayer, [&choices] { RunCrowdCommand("setTestCrowdIncludePlayer", { { "enabled", choices.includePlayer } }); }),
+		IncludePlayerCheck(),
 		Check("Strip armor and weapons", "Takes armor and weapons off, except the wigs; later spawns start stripped while this is on.", &choices.stripped, [&choices] { RunCrowdCommand("stripTestCrowd", { { "enabled", choices.stripped } }); }),
 		Button("Previous armor", "Dresses everyone in the previous body armor.", [] { RunCrowdCommand("cycleTestCrowdArmor", { { "step", -1 } }); }),
 		Button("Next armor", "Dresses everyone in the next body armor.", [] { RunCrowdCommand("cycleTestCrowdArmor", { { "step", 1 } }); }, true),
