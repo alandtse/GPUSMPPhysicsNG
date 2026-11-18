@@ -1083,9 +1083,7 @@ namespace SmpPhysics
 			result.reason = builder.error.empty() ? std::string("unsupported content") : builder.error;
 			return result;
 		}
-		const std::size_t inertJoints = DropInertJoints(builder.rig);
-		if (inertJoints > 0)
-			warnings.push_back(std::to_string(inertJoints) + " joint(s) between two kinematic bones constrain nothing and are dropped");
+		DropInertJoints(builder.rig);
 		ReorientAnchoredJoints(builder.rig);
 		std::string reason;
 		if (!ValidateRig(builder.rig, reason, false)) {

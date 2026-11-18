@@ -946,7 +946,7 @@ TEST_CASE("A bone's surface mask follows the collide tags of its shape and spare
 	CHECK(AllowedSurfaceMask(nullptr, surfaces) == 0xFFFFFFFFu);
 }
 
-TEST_CASE("A joint between two kinematic bones is dropped and reported", "[smpphysics][rig]")
+TEST_CASE("A joint between two kinematic bones is dropped", "[smpphysics][rig]")
 {
 	const ParseResult result = ParseSmpXml(WrapSystem(R"XML(
 		<bone name="Spine"><mass>0</mass></bone>
@@ -959,8 +959,7 @@ TEST_CASE("A joint between two kinematic bones is dropped and reported", "[smpph
 	REQUIRE(result.status == ParseStatus::Ok);
 	REQUIRE(result.rig.joints.size() == 1);
 	CHECK(result.rig.bones[static_cast<std::size_t>(result.rig.joints[0].child)].name == "Gravity01");
-	REQUIRE(result.warnings.size() == 1);
-	CHECK(result.warnings[0].find("kinematic") != std::string::npos);
+	CHECK(result.warnings.empty());
 }
 
 TEST_CASE("A kinematic bone written as a joint's child anchors the dynamic bone it is joined to", "[smpphysics][rig]")
