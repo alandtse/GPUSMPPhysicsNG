@@ -160,6 +160,12 @@ namespace SmpPhysics
 
 	void CrowdWigs::Wear(RE::Actor& a_actor, RE::TESObjectARMO& a_wig)
 	{
+		// The engine does not take a worn wig off for another whose slots only overlap, so wigs would pile up on the character.
+		const auto worn = a_actor.GetInventory([&a_wig](RE::TESBoundObject& a_object) { return &a_object != &a_wig && IsWig(a_object); });
+		for (const auto& [object, entry] : worn) {
+			if (object && entry.second && entry.second->IsWorn())
+				RE::ActorEquipManager::GetSingleton()->UnequipObject(&a_actor, object, nullptr, 1, nullptr, false, true, false, true);
+		}
 		a_actor.AddObjectToContainer(&a_wig, nullptr, 1, nullptr);
 		RE::ActorEquipManager::GetSingleton()->EquipObject(&a_actor, &a_wig, nullptr, 1, nullptr, false, true, false, true);
 		const char* actorName = a_actor.GetName();
