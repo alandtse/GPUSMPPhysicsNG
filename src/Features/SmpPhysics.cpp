@@ -1458,18 +1458,18 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 	}
 
 	ClaimCollision collision;
-	bool collides = hasCollisionShapes;
+	bool collisionDropped = false;
 	if (hasCollisionShapes) {
 		std::string collisionReason;
 		if (!BuildClaimCollision(a_context, rig, nodes, restPose, collision, collisionReason)) {
 			RegisterBodyShapes(a_context, path, collision.bodyShapes);
-			if (!SmpPhysics::MayClaimWithoutCollision(collision.meshesAbsent, IsClothClaim(a_context), static_cast<int>(dynamicCount))) {
+			if (!SmpPhysics::MayClaimWithoutCollision(collision.meshesAbsent, static_cast<int>(dynamicCount))) {
 				RecordDecline(path, collisionReason);
 				return false;
 			}
 			logger::info("{} '{}': {}, so it runs without collision", kLogPrefix, path, collisionReason);
 			collision = ClaimCollision{};
-			collides = false;
+			collisionDropped = true;
 		}
 	}
 
@@ -1511,7 +1511,7 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 	auto* actor = a_context.getActor();
 	claim.token = a_token;
 	claim.headPart = a_context.getKind() == hdt::MeshKind::HeadPart;
-	claim.cloth = IsClothClaim(a_context);
+	claim.cloth = !collisionDropped && IsClothClaim(a_context);
 	ReadViewRules(claim);
 	claim.actorFormID = actor ? actor->GetFormID() : 0;
 	claim.physicsFile = path;
@@ -1539,7 +1539,7 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 	claim.sphereCount = collision.sphereCount;
 	claim.exemptSphereCount = collision.exemptSpheres;
 	claim.colliderCount = static_cast<int>(collision.colliders.size());
-	if (collides)
+	if (hasCollisionShapes && !collisionDropped)
 		InstallClaimCollision(claim, collision);
 
 	const int additionalJoints = claim.additionalJointCount;
