@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "AddedItems.h"
 #include "IdleCache.h"
 
 #include "RE/Skyrim.h"
@@ -40,6 +41,8 @@ namespace TestBench
 		}
 		/** @brief A character's 3D was just rebuilt; redo anything that rebuild undoes. */
 		virtual void AfterRefresh(RE::Actor& a_actor) { (void)a_actor; }
+		/** @brief The outfit controls leave this character alone again; undo what Dress and later changes did to it. */
+		virtual void Restore(RE::Actor& a_actor) { (void)a_actor; }
 		/** @return A sentence about what this feature did in the last spawn, added to the report, or empty. */
 		[[nodiscard]] virtual std::string DescribeSpawn() const { return {}; }
 	};
@@ -100,6 +103,13 @@ namespace TestBench
 		[[nodiscard]] int WornCloakIndex() const noexcept { return cloakIndex.load(std::memory_order_relaxed); }
 		/** @brief The spawned characters with 3D loaded, then the player when included. Game thread only. */
 		[[nodiscard]] std::vector<RE::Actor*> OutfitTargets();
+		/**
+		 * @brief Puts a_object in a_actor's inventory unless it is there already, and equips it.
+		 * @details An object put there is remembered, so TakeBack removes it again; one the actor already had is only equipped and unequipped.
+		 */
+		void Give(RE::Actor& a_actor, RE::TESBoundObject& a_object);
+		/** @brief Unequips a_object, and removes it when Give put it in the inventory. */
+		void TakeBack(RE::Actor& a_actor, RE::TESBoundObject& a_object);
 		/** @brief Rebuilds the 3D of every character standing now, then lets the hooks redo what the rebuild undoes. */
 		void Refresh();
 		/** @brief Registers hooks a feature wants run for this crowd; they live as long as the feature. Call from the game thread at load. */
@@ -176,6 +186,8 @@ namespace TestBench
 		std::atomic<std::size_t> count{ 0 };
 		std::atomic<bool> stripped{ false };
 		std::atomic<bool> includePlayer{ false };
+		AddedItems added;                    ///< What Give put into inventories. Game thread only.
+		std::vector<RE::FormID> playerWorn;  ///< What the player wore when it was included, put back when it is not. Game thread only.
 		std::atomic<bool> animateOnSpawn{ false };
 		std::atomic<bool> loopAnimation{ false };
 		std::unique_ptr<IdleEndSink> idleEndSink;

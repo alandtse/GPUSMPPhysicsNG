@@ -34,6 +34,7 @@ namespace SmpPhysics
 		void Dress(RE::Actor& a_actor, std::size_t a_index) override;
 		[[nodiscard]] bool KeepWhenStripped(const RE::TESBoundObject& a_object) const override;
 		void AfterRefresh(RE::Actor& a_actor) override;
+		void Restore(RE::Actor& a_actor) override;
 		/**
 		 * @brief Hides the baked hair of every character still being watched after Dress, once per frame.
 		 * @details A new character has no 3D yet and a wig rebuilds it a few frames later, so hiding at Dress is not enough. Game thread only.

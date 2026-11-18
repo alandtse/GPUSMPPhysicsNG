@@ -374,7 +374,7 @@ namespace
 	/** @brief The crowd's switch for dressing the player with it; the Armor physics and Test crowd pages share it. */
 	Row IncludePlayerCheck()
 	{
-		return Check("Include the player", "Strip, armor and cloak choices also apply to you; off, your own outfit is put back and the cloak comes off.", &crowdChoices.includePlayer, [] { RunCrowdCommand("setTestCrowdIncludePlayer", { { "enabled", crowdChoices.includePlayer } }); });
+		return Check("Include the player", "Strip, armor and cloak choices also apply to you; off, your own outfit is put back and what was added to your inventory is removed.", &crowdChoices.includePlayer, [] { RunCrowdCommand("setTestCrowdIncludePlayer", { { "enabled", crowdChoices.includePlayer } }); });
 	}
 }
 
@@ -520,8 +520,6 @@ void PluginUi::Register()
 		Header("Outfit"),
 		IncludePlayerCheck(),
 		Check("Strip armor and weapons", "Takes armor and weapons off, except the wigs; later spawns start stripped while this is on.", &choices.stripped, [&choices] { RunCrowdCommand("stripTestCrowd", { { "enabled", choices.stripped } }); }),
-		Button("Previous armor", "Dresses everyone in the previous body armor.", [] { RunCrowdCommand("cycleTestCrowdArmor", { { "step", -1 } }); }),
-		Button("Next armor", "Dresses everyone in the next body armor.", [] { RunCrowdCommand("cycleTestCrowdArmor", { { "step", 1 } }); }, true),
 		Text(WornCombo),
 		CopyCombo(),
 		ItemList(ArmorKind(), "Armor list", "Every playable body armor; click one to dress the test characters in it. Coloured by the scan on the Armor physics page.", &choices.armor, true),
@@ -561,7 +559,12 @@ void PluginUi::Register()
 	developerModel.onReset = model.onReset;
 	developerModel.rows = {
 		Header("Debug overlay"),
-		Check("Developer mode", "Allows the debug overlay to draw.", &globals::state->developerMode),
+		Check("Developer mode", "Allows the debug overlay to draw. Turning it off also takes back what the test crowd put on you.", &globals::state->developerMode, [] {
+			if (!globals::state->developerMode) {
+				crowdChoices.includePlayer = false;
+				RunCrowdCommand("setTestCrowdIncludePlayer", { { "enabled", false } });
+			}
+		}),
 		NeedsDeveloperMode(VrOnly(Check("Show grab debug", "Draws the strands hands hold, those in reach, and the hair hands push.", &settings.ShowGrabDebug))),
 		NeedsDeveloperMode(Check("Show collider debug", "Outlines the head, body and armor proxies and other bodies' capsules that hair collides with.", &settings.ShowColliderDebug)),
 		NeedsDeveloperMode(Check("Show joint debug", "Draws each simulated bone from its parent, coloured by who simulates it: lime is the GPU, amber is claimed but not stepped, grey is inactive, purple is hdtSMP64 on the CPU. Orange marks stretched or squeezed joints.", &settings.ShowJointDebug)),

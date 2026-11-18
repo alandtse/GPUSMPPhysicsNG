@@ -164,10 +164,9 @@ namespace SmpPhysics
 		const auto worn = a_actor.GetInventory([&a_wig](RE::TESBoundObject& a_object) { return &a_object != &a_wig && IsWig(a_object); });
 		for (const auto& [object, entry] : worn) {
 			if (object && entry.second && entry.second->IsWorn())
-				RE::ActorEquipManager::GetSingleton()->UnequipObject(&a_actor, object, nullptr, 1, nullptr, false, true, false, true);
+				TestBench::GetCrowd().TakeBack(a_actor, *object);
 		}
-		a_actor.AddObjectToContainer(&a_wig, nullptr, 1, nullptr);
-		RE::ActorEquipManager::GetSingleton()->EquipObject(&a_actor, &a_wig, nullptr, 1, nullptr, false, true, false, true);
+		TestBench::GetCrowd().Give(a_actor, a_wig);
 		const char* actorName = a_actor.GetName();
 		const char* wigName = a_wig.GetName();
 		logger::info("[Test Crowd] {} ({:08X}) wears {} ({:08X})", actorName && *actorName ? actorName : "unnamed", a_actor.GetFormID(), wigName && *wigName ? wigName : "unnamed", a_wig.GetFormID());
@@ -175,6 +174,22 @@ namespace SmpPhysics
 		const RE::ObjectRefHandle handle = a_actor.GetHandle();
 		std::erase_if(watches, [&](const BakedHairWatch& a_watch) { return a_watch.handle == handle; });
 		watches.push_back({ handle, kBakedHairWatchFrames, false });
+	}
+
+	void CrowdWigs::Restore(RE::Actor& a_actor)
+	{
+		const RE::ObjectRefHandle handle = a_actor.GetHandle();
+		std::erase_if(watches, [&](const BakedHairWatch& a_watch) { return a_watch.handle == handle; });
+		wornIndex.store(-1, std::memory_order_relaxed);
+		auto* root = a_actor.Get3D();
+		if (!root)
+			return;
+		for (const BakedHairNode& node : BakedHairNodes(a_actor)) {
+			if (node.found && node.hidden) {
+				if (auto* object = root->GetObjectByName(node.editorId))
+					object->GetFlags().reset(RE::NiAVObject::Flag::kHidden);
+			}
+		}
 	}
 
 	const std::vector<RE::TESObjectARMO*>& CrowdWigs::WigForms()

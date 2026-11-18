@@ -356,8 +356,11 @@ void SmpPhysicsFeature::RegisterUxActions()
 			const auto before = self->settings;
 			json merged = self->settings;
 			merged.update(a_args, true);
-			if (a_args.contains("developerMode") && a_args["developerMode"].is_boolean())
+			if (a_args.contains("developerMode") && a_args["developerMode"].is_boolean()) {
 				globals::state->developerMode = a_args["developerMode"].get<bool>();
+				if (!globals::state->developerMode)
+					TestBench::GetCrowd().SetIncludePlayer(false);
+			}
 			self->LoadSettings(merged);
 			if (before.Enabled != self->settings.Enabled || before.ClaimHeadParts != self->settings.ClaimHeadParts || before.ClaimArmor != self->settings.ClaimArmor || before.CollisionEnabled != self->settings.CollisionEnabled)
 				self->ReevaluateAllActors();
