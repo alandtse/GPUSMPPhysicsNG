@@ -122,11 +122,11 @@ namespace SmpPhysics
 		bool ParseBoolText(std::string_view a_text, bool& a_value) noexcept
 		{
 			const std::string_view text = Trimmed(a_text);
-			if (text == "true") {
+			if (text == "true" || text == "1") {
 				a_value = true;
 				return true;
 			}
-			if (text == "false") {
+			if (text == "false" || text == "0") {
 				a_value = false;
 				return true;
 			}
