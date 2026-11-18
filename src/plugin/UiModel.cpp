@@ -313,12 +313,16 @@ namespace
 		return WithHealth(Browse(a_label, a_tooltip, a_index, a_kind.names, a_wearOnPick ? a_kind.worn : std::function<int()>{}, a_wearOnPick ? [&a_kind, a_index] { a_kind.wear(*a_index); } : std::function<void()>{}), a_kind.forms, static_cast<std::size_t>(a_kind.skip));
 	}
 
+	/** @brief Includes the player in the outfit controls, so wearing from the Armor physics page shows on you; defined with the crowd's choices. */
+	void EnsurePlayerIncluded();
+
 	/** @brief A list of one kind of item with the selected one's physics state, a button to copy its report and one to put it on; picking only selects. */
 	std::vector<Row> ItemBrowser(const ItemKind& a_kind, const char* a_label, const char* a_copyLabel, const char* a_wearLabel, const char* a_tooltip, int* a_index)
 	{
-		Row wear = Button(a_wearLabel, "Puts the selected item on the test characters, and on you while Include the player is on. Spawn them on the Test crowd page first, or include the player.", [&a_kind, a_index] { a_kind.wear(*a_index); }, true);
+		Row wear = Button(a_wearLabel, "Puts the selected item on you, and on the test characters if any are spawned. Developer mode off, or Include the player off on the Test crowd page, takes it off again.", [&a_kind, a_index] {
+			EnsurePlayerIncluded();
+			a_kind.wear(*a_index); }, true);
 		wear.enabled = [a_index] { return *a_index >= 0; };
-		wear = NeedsDeveloperMode(std::move(wear));
 		Row list = ItemList(a_kind, a_label, a_tooltip, a_index, false);
 		list.tooltip += " Double-click an item, or step with Previous and Next, to put it on as the button below does.";
 		list.onActivated = [enabled = wear.enabled, wearNow = wear.onChanged] {
@@ -371,7 +375,15 @@ namespace
 		int wig = -1;
 	} browseChoices;
 
-	/** @brief The crowd's switch for dressing the player with it; the Armor physics and Test crowd pages share it. */
+	void EnsurePlayerIncluded()
+	{
+		if (crowdChoices.includePlayer)
+			return;
+		crowdChoices.includePlayer = true;
+		RunCrowdCommand("setTestCrowdIncludePlayer", { { "enabled", true } });
+	}
+
+	/** @brief The crowd's switch for dressing the player with it, on the Test crowd page. */
 	Row IncludePlayerCheck()
 	{
 		return Check("Include the player", "Strip, armor and cloak choices also apply to you; off, your own outfit is put back and what was added to your inventory is removed.", &crowdChoices.includePlayer, [] { RunCrowdCommand("setTestCrowdIncludePlayer", { { "enabled", crowdChoices.includePlayer } }); });
@@ -497,8 +509,7 @@ void PluginUi::Register()
 				const auto [done, total] = NifProbe::Progress();
 				if (NifProbe::Running())
 					return std::format("Scanning: {} of {}", done, total);
-				return NifProbe::Generation() ? std::string("Green [OK]: no file problems detected. Amber [REPAIRED]: repaired and used. Red [FAULT]: file fault. Plain: no physics found.") : std::string("Not scanned yet."); }),
-			NeedsDeveloperMode(IncludePlayerCheck()) },
+				return NifProbe::Generation() ? std::string("Green [OK]: no file problems detected. Amber [REPAIRED]: repaired and used. Red [FAULT]: file fault. Plain: no physics found.") : std::string("Not scanned yet."); }) },
 		Join(ItemBrowser(ArmorKind(), "Armors", "Copy report for the selected armor", "Dress test characters in it", "Every playable body armor. Click one to see its physics and copy a report for its mod author.", &browseChoices.armor),
 			Join(ItemBrowser(CloakKind(), "Cloaks", "Copy report for the selected cloak", "Put it on test characters", "Every cloak and cape. Click one to see its physics and copy a report for its mod author.", &browseChoices.cloak),
 				ItemBrowser(WigKind(), "Wigs", "Copy report for the selected wig", "Put it on test characters", "Every wig, the hair-slot armors hair mods add. Click one to see its physics and copy a report for its mod author.", &browseChoices.wig))));
@@ -578,6 +589,7 @@ void PluginUi::Register()
 	for (SettingsUi::Model* page : { &model, &claimsModel, &physicsModel, &reportModel, &crowdModel, &developerModel })
 		page->alerts = shaderAlerts;
 	crowdModel.lockedReason = [] { return globals::state->IsDeveloperMode() ? std::string() : std::string("Developer tool. Turn on Developer mode on the Developer page to use the test crowd."); };
+	physicsModel.lockedReason = [] { return globals::state->IsDeveloperMode() ? std::string() : std::string("Developer tool. Turn on Developer mode on the Developer page to browse armor physics and try items on."); };
 
 	SettingsUi::Register({ &model, &claimsModel, &physicsModel, &reportModel, &developerModel, &crowdModel });
 }
