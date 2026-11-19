@@ -565,7 +565,7 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](const Feature*, const json&) -> json { return HairLook::Result(); });
 	FEATURE_QUERY("islandSizes", "How the rigid solver's islands split by constraint count in the last buffer build: islands and constraints per size bucket (1, 2-4, 5-8, 9-16, 17-32, 33-64, 65 or more), the island total, the largest island's constraints and the most colour classes one takes. Shows which solve kernel suits the islands.",
 		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->IslandSizesJson(); });
-	FEATURE_QUERY("physicsHealth", "After nifPhysicsProbe has finished: each armor and cloak the scan found physics files for, with the worst health among them (working, repaired or broken) and the files; what colours the Test crowd lists.",
+	FEATURE_QUERY("physicsHealth", "After nifPhysicsProbe has finished: each armor, cloak and wig the scan found physics files for, with the worst health among them (working, repaired or broken), the files and, for those not working, the report a mod author would be sent; what colours the Test crowd lists.",
 		[](const Feature* a_self, const json&) -> json { return const_cast<SmpPhysicsFeature*>(static_cast<const SmpPhysicsFeature*>(a_self))->PhysicsHealthJson(); });
 	FEATURE_COMMAND("claimTallyReset", "Clear the claim tally, then run reevaluate to count every actor's meshes again.",
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->ResetClaimTally(); });
@@ -1009,6 +1009,8 @@ std::string SmpPhysicsFeature::ItemReportText(RE::FormID a_armor)
 	const std::vector<SmpPhysics::RepairLog::FileReport> reports = repairLog.Take();
 	for (const std::string& path : files) {
 		text += "File: " + path + '\n';
+		if (const auto parsed = GetParsedRig(path); parsed->status != SmpPhysics::ParseStatus::Ok)
+			text += "Not read: " + parsed->reason + '\n';
 		for (const SmpPhysics::RepairLog::FileReport& report : reports) {
 			if (key(report.file) == key(path))
 				text += SmpPhysics::RepairLog::Format(report) + '\n';
@@ -1033,14 +1035,18 @@ json SmpPhysicsFeature::PhysicsHealthJson()
 {
 	static constexpr std::array<const char*, 4> kNames = { "none", "working", "repaired", "broken" };
 	json rows = json::array();
-	for (const auto& list : { TestBench::TestCrowd::ArmorForms(), TestBench::TestCrowd::CloakForms() }) {
+	for (const auto& list : { TestBench::TestCrowd::ArmorForms(), TestBench::TestCrowd::CloakForms(), SmpPhysics::CrowdWigs::WigForms() }) {
 		std::vector<std::vector<std::string>> files;
 		for (const RE::TESObjectARMO* armor : list)
 			files.push_back(NifProbe::XmlPaths(armor->GetFormID()));
 		const std::vector<SmpPhysics::Health> health = ItemHealths(files);
 		for (std::size_t index = 0; index < list.size(); ++index) {
-			if (health[index] != SmpPhysics::Health::None)
-				rows.push_back({ { "name", list[index]->GetName() }, { "formId", list[index]->GetFormID() }, { "health", kNames[static_cast<std::size_t>(health[index])] }, { "files", files[index] } });
+			if (health[index] == SmpPhysics::Health::None)
+				continue;
+			json row = { { "name", list[index]->GetName() }, { "formId", list[index]->GetFormID() }, { "health", kNames[static_cast<std::size_t>(health[index])] }, { "files", files[index] } };
+			if (health[index] != SmpPhysics::Health::Working)
+				row["report"] = ItemReportText(list[index]->GetFormID());
+			rows.push_back(std::move(row));
 		}
 	}
 	return { { "items", std::move(rows) } };
