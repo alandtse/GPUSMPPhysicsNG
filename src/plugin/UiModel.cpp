@@ -178,22 +178,22 @@ namespace
 		struct Cache
 		{
 			std::uint32_t generation{};
-			std::chrono::steady_clock::time_point at{};
+			std::uint32_t revision{};
 			std::vector<int> values;
 		};
 		return [scanned = std::move(a_files), a_skip, cache = std::make_shared<Cache>()] {
 			const std::uint32_t generation = NifProbe::Generation();
 			if (!generation)
 				return std::vector<int>{};
-			const auto now = std::chrono::steady_clock::now();
-			if (cache->generation == generation && now - cache->at < std::chrono::seconds(1))
+			const std::uint32_t revision = Instance().HealthRevision();
+			if (cache->generation == generation && cache->revision == revision)
 				return cache->values;
 			const std::vector<SmpPhysics::Health> health = Instance().ItemHealths(scanned->Get());
 			cache->values.assign(a_skip, 0);
 			for (const SmpPhysics::Health state : health)
 				cache->values.push_back(static_cast<int>(state));
 			cache->generation = generation;
-			cache->at = now;
+			cache->revision = revision;
 			return cache->values;
 		};
 	}
@@ -305,7 +305,7 @@ namespace
 	/** @brief Shows a list closest to the hair target's hair first, with each item's distance after its name. */
 	Row WithHairMatch(Row a_row)
 	{
-		a_row.sorts.push_back({ "Closest to hair target", [] { return Instance().HairTargetState().order; }, [] { return Instance().HairTargetState().badges; } });
+		a_row.sorts.push_back({ "Closest to hair target", [] { return Instance().HairTargetState(true).order; }, [] { return Instance().HairTargetState(true).badges; } });
 		return a_row;
 	}
 

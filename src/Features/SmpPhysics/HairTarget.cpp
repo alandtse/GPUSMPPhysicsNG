@@ -76,11 +76,13 @@ namespace SmpPhysics
 	void HairTarget::Tick(const CrowdWigs& a_wigs)
 	{
 		const auto now = std::chrono::steady_clock::now();
-		if (now.time_since_epoch().count() - viewedAt.load(std::memory_order_relaxed) >= std::chrono::duration_cast<std::chrono::steady_clock::duration>(kViewedWindow).count())
+		const auto window = std::chrono::duration_cast<std::chrono::steady_clock::duration>(kViewedWindow).count();
+		if (now.time_since_epoch().count() - viewedAt.load(std::memory_order_relaxed) >= window)
 			return;
+		const bool asked = now.time_since_epoch().count() - rankAskedAt.load(std::memory_order_relaxed) < window;
 		{
 			const std::scoped_lock lock(mutex);
-			if (!ranking && rankedFor == pick.formID && now - sampledAt < kSamplePeriod)
+			if (now - sampledAt < kSamplePeriod && (!asked || (!ranking && rankedFor == pick.formID)))
 				return;
 		}
 		sampledAt = now;
@@ -106,7 +108,7 @@ namespace SmpPhysics
 			const auto* base = actor ? actor->GetActorBase() : nullptr;
 			const auto* hairPart = base ? const_cast<RE::TESNPC*>(base)->GetCurrentHeadPartByType(RE::BGSHeadPart::HeadPartType::kHair) : nullptr;
 			const RE::FormID hair = hairPart ? hairPart->GetFormID() : 0;
-			if (rankedFor != target || rankedWig != wig || rankedHair != hair) {
+			if (asked && (rankedFor != target || rankedWig != wig || rankedHair != hair)) {
 				rankedFor = target;
 				rankedWig = wig;
 				rankedHair = hair;
@@ -117,7 +119,7 @@ namespace SmpPhysics
 				view.status = "Ranking hair shapes";
 				view.text = std::format("Target: {} ({})", NameOf(target), SourceName(pick.source));
 			}
-			rank = ranking;
+			rank = ranking && asked;
 			if (now - detailAt >= kSamplePeriod || detailFor != target) {
 				detailAt = now;
 				detailFor = target;
@@ -197,9 +199,12 @@ namespace SmpPhysics
 		UnpinPick(pick);
 	}
 
-	HairTargetView HairTarget::View() const
+	HairTargetView HairTarget::View(bool a_ranking) const
 	{
-		viewedAt.store(std::chrono::steady_clock::now().time_since_epoch().count(), std::memory_order_relaxed);
+		const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+		viewedAt.store(now, std::memory_order_relaxed);
+		if (a_ranking)
+			rankAskedAt.store(now, std::memory_order_relaxed);
 		const std::scoped_lock lock(mutex);
 		HairTargetView copy = view;
 		if (copy.text.empty())

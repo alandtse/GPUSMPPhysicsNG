@@ -53,10 +53,6 @@ namespace SettingsUi
 			if (row.hideLabel)
 				Tip(row.tooltip);
 			const std::string filter = Util::SearchKey(row.filterText.data());
-			if (!row.scanAsked && row.onShowFiltered) {
-				row.scanAsked = true;
-				row.onShowFiltered();
-			}
 			if (row.progressFn) {
 				const auto [done, total] = row.progressFn();
 				if (total) {
@@ -90,9 +86,18 @@ namespace SettingsUi
 			std::string joinedSorts;
 			for (const std::string& label : sortLabels)
 				joinedSorts += label + '\0';
+			if (!row.sortStarted) {
+				row.sortStarted = true;
+				row.sortIndex = static_cast<int>(row.sorts.size()) + 1;
+			}
 			row.sortIndex = std::clamp(row.sortIndex, 0, static_cast<int>(sortLabels.size()) - 1);
 			ImGuiMCP::SetNextItemWidth(kWidth);
 			ImGuiMCP::Combo(("##gsp_sort_" + row.label).c_str(), &row.sortIndex, joinedSorts.c_str(), -1);
+			constexpr std::size_t kSortsWithoutScan = 3;
+			if (!row.scanAsked && row.onShowFiltered && static_cast<std::size_t>(row.sortIndex) >= row.sorts.size() + kSortsWithoutScan) {
+				row.scanAsked = true;
+				row.onShowFiltered();
+			}
 			std::vector<int> order;
 			std::vector<std::string> badges;
 			if (static_cast<std::size_t>(row.sortIndex) < row.sorts.size()) {

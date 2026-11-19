@@ -24,8 +24,10 @@ namespace SmpPhysics
 		if (report->entries.size() >= kMaxEntriesPerFile)
 			return;
 		const bool known = std::ranges::any_of(report->entries, [&](const Entry& a_entry) { return a_entry.problem == a_problem; });
-		if (!known)
-			report->entries.push_back({ std::string(a_problem), std::string(a_action) });
+		if (known)
+			return;
+		report->entries.push_back({ std::string(a_problem), std::string(a_action) });
+		revision.fetch_add(1, std::memory_order_relaxed);
 	}
 
 	std::vector<RepairLog::FileReport> RepairLog::Take() const
@@ -40,6 +42,7 @@ namespace SmpPhysics
 	{
 		const std::scoped_lock lock(mutex);
 		reports.clear();
+		revision.fetch_add(1, std::memory_order_relaxed);
 	}
 
 	std::string RepairLog::Format(const FileReport& a_report)
