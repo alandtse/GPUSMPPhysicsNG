@@ -982,3 +982,34 @@ TEST_CASE("A UTF-8 byte order mark before the XML prolog is skipped", "[SmpPhysi
 	CHECK(withMark.status == ParseStatus::Ok);
 	CHECK(withMark.rig.bones.size() == ParseSmpXml(bare).rig.bones.size());
 }
+
+TEST_CASE("wind-effect in a collision shape is accepted without a warning", "[SmpPhysics]")
+{
+	const ParseResult result = ParseSmpXml(WrapSystem(R"XML(
+		<bone name="Head"><mass>0</mass></bone>
+		<per-triangle-shape name="Body">
+			<wind-effect>0</wind-effect>
+			<margin>0.5</margin>
+		</per-triangle-shape>
+		<per-triangle-shape name="Head">
+			<wind-effect>0</wind-effect>
+		</per-triangle-shape>
+	)XML"));
+
+	REQUIRE(result.status == ParseStatus::Ok);
+	REQUIRE(result.rig.collision.triangleShapes.size() == 2);
+	CHECK(result.rig.collision.triangleShapes[0].margin == Approx(0.5f));
+	CHECK(result.warnings.empty());
+}
+
+TEST_CASE("A shape element hdtSMP64 reads but this plugin does not model still declines the file", "[SmpPhysics]")
+{
+	const ParseResult result = ParseSmpXml(WrapSystem(R"XML(
+		<bone name="Head"><mass>0</mass></bone>
+		<per-triangle-shape name="Body">
+			<can-collide-with-bone>Head</can-collide-with-bone>
+		</per-triangle-shape>
+	)XML"));
+
+	CHECK(result.status == ParseStatus::Unsupported);
+}

@@ -805,6 +805,7 @@ namespace SmpPhysics
 						return a_builder.Malformed(reason);
 					a_shape.weights.push_back(std::move(weight));
 				} else if (name == "disable-tag") {
+				} else if (name == "wind-effect") {
 				} else {
 					return a_builder.Unsupported(
 						"unsupported element '" + name + "' in " + (a_perVertex ? "a per-vertex-shape" : "a per-triangle-shape"));
