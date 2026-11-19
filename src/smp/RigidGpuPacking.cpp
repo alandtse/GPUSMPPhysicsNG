@@ -110,7 +110,7 @@ namespace SmpPhysics::RigidGpu
 			a_data.colorOffsets.assign(a_data.islands.size() * kMaxColors, 0u);
 
 			// Islands are disjoint in dynamic bodies, so one mask per body serves every island.
-			std::vector<std::uint32_t> bodyColors(a_world.bodies.size(), 0u);
+			std::vector<std::uint64_t> bodyColors(a_world.bodies.size(), 0u);
 			std::vector<std::uint32_t> colors;
 
 			for (std::size_t island = 0; island < a_data.islands.size(); ++island) {
@@ -125,16 +125,16 @@ namespace SmpPhysics::RigidGpu
 					const auto bodyB = static_cast<std::size_t>(constraint.bodyB);
 					const bool dynamicA = !a_world.bodies[bodyA].kinematic;
 					const bool dynamicB = !a_world.bodies[bodyB].kinematic;
-					const std::uint32_t forbidden = (dynamicA ? bodyColors[bodyA] : 0u) | (dynamicB ? bodyColors[bodyB] : 0u);
+					const std::uint64_t forbidden = (dynamicA ? bodyColors[bodyA] : 0u) | (dynamicB ? bodyColors[bodyB] : 0u);
 					std::uint32_t color = 0;
-					while (color < kMaxColors && (forbidden & (1u << color)) != 0u)
+					while (color < kMaxColors && (forbidden & (std::uint64_t{ 1 } << color)) != 0u)
 						++color;
 					if (color == kMaxColors)
 						return false;
 					if (dynamicA)
-						bodyColors[bodyA] |= 1u << color;
+						bodyColors[bodyA] |= std::uint64_t{ 1 } << color;
 					if (dynamicB)
-						bodyColors[bodyB] |= 1u << color;
+						bodyColors[bodyB] |= std::uint64_t{ 1 } << color;
 					colors[entry] = color;
 					colorCount = std::max(colorCount, color + 1u);
 				}
