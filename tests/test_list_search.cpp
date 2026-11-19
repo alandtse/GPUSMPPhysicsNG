@@ -12,6 +12,7 @@ TEST_CASE("A list item is searched by its name and its physics file", "[ui][list
 	CHECK(SearchText("[BDOR Hair] - Stacy", "meshes\\armor\\[d] bdor\\hair\\com\\phw205andpkow25\\phw205andpkow25.xml").find("stacy") != std::string::npos);
 	CHECK(SearchText("[BDOR Hair] - Stacy", "meshes\\armor\\[d] bdor\\hair\\com\\phw205andpkow25\\phw205andpkow25.xml").find("phw205") != std::string::npos);
 	CHECK(SearchText("[BDOR Hair] - Stacy", "meshes\\armor\\a.xml").find("phw205") == std::string::npos);
+	CHECK(SearchText("[BDOR Hair] - Stacy", "meshes\\armor\\[d] bdor\\hair\\com\\phw205andpkow25\\phw205andpkow25.xml").find(Util::SearchKey("COM/PHW205")) != std::string::npos);
 }
 
 TEST_CASE("A scan's progress is clamped and zero without a size", "[ui][listsearch]")

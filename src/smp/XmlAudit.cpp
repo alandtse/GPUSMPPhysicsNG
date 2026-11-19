@@ -11,8 +11,7 @@ namespace SmpPhysics
 {
 	std::string NormalizeXmlPath(std::string_view a_path)
 	{
-		std::string path = Util::ToLowerAscii(a_path);
-		std::ranges::replace(path, '/', '\\');
+		std::string path = Util::SearchKey(a_path);
 		constexpr std::string_view kData = "data\\";
 		if (path.starts_with(kData))
 			path.erase(0, kData.size());
@@ -21,8 +20,7 @@ namespace SmpPhysics
 
 	bool XmlPathMatches(std::string_view a_path, std::string_view a_needle)
 	{
-		std::string needle = Util::ToLowerAscii(a_needle);
-		std::ranges::replace(needle, '/', '\\');
+		const std::string needle = Util::SearchKey(a_needle);
 		return !needle.empty() && NormalizeXmlPath(a_path).find(needle) != std::string::npos;
 	}
 

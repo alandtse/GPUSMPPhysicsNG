@@ -29,6 +29,14 @@ namespace Util
 		return result;
 	}
 
+	/** @brief Text as searches compare it: lower case with backslashes, so a path matches however its slashes were typed. */
+	inline std::string SearchKey(std::string_view a_text)
+	{
+		std::string key = ToLowerAscii(a_text);
+		std::ranges::replace(key, '/', '\\');
+		return key;
+	}
+
 	/** @brief Case-insensitive equality for two strings. */
 	inline bool IEquals(std::string_view a, std::string_view b)
 	{

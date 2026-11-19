@@ -150,8 +150,30 @@ namespace
 		return items;
 	}
 
+	/** @brief The physics files the last scan found for each item of a list, re-read when a scan finishes. */
+	struct ScannedFiles
+	{
+		std::function<std::vector<RE::TESObjectARMO*>()> forms;
+		std::uint32_t generation{};
+		std::vector<std::vector<std::string>> files;
+
+		const std::vector<std::vector<std::string>>& Get()
+		{
+			const std::uint32_t current = NifProbe::Generation();
+			if (current != generation) {
+				files.clear();
+				if (current) {
+					for (const RE::TESObjectARMO* item : forms())
+						files.push_back(NifProbe::XmlPaths(item->GetFormID()));
+				}
+				generation = current;
+			}
+			return files;
+		}
+	};
+
 	/** @brief Colours a list by how its items' physics files stand once a scan has found them; a_skip leading entries (such as "None") have no item. */
-	std::function<std::vector<int>()> HealthColours(std::function<std::vector<RE::TESObjectARMO*>()> a_forms, std::size_t a_skip)
+	std::function<std::vector<int>()> HealthColours(std::shared_ptr<ScannedFiles> a_files, std::size_t a_skip)
 	{
 		struct Cache
 		{
@@ -159,19 +181,14 @@ namespace
 			std::chrono::steady_clock::time_point at{};
 			std::vector<int> values;
 		};
-		return [forms = std::move(a_forms), a_skip, cache = std::make_shared<Cache>()] {
+		return [scanned = std::move(a_files), a_skip, cache = std::make_shared<Cache>()] {
 			const std::uint32_t generation = NifProbe::Generation();
 			if (!generation)
 				return std::vector<int>{};
 			const auto now = std::chrono::steady_clock::now();
 			if (cache->generation == generation && now - cache->at < std::chrono::seconds(1))
 				return cache->values;
-			const std::vector<RE::TESObjectARMO*> items = forms();
-			std::vector<std::vector<std::string>> files;
-			files.reserve(items.size());
-			for (const RE::TESObjectARMO* item : items)
-				files.push_back(NifProbe::XmlPaths(item->GetFormID()));
-			const std::vector<SmpPhysics::Health> health = Instance().ItemHealths(files);
+			const std::vector<SmpPhysics::Health> health = Instance().ItemHealths(scanned->Get());
 			cache->values.assign(a_skip, 0);
 			for (const SmpPhysics::Health state : health)
 				cache->values.push_back(static_cast<int>(state));
@@ -182,27 +199,27 @@ namespace
 	}
 
 	/** @brief Each item's physics file paths, joined, for a list's filter to match; empty before a scan. a_skip leading entries have no item. */
-	std::function<std::vector<std::string>()> ItemFiles(std::function<std::vector<RE::TESObjectARMO*>()> a_forms, std::size_t a_skip)
+	std::function<std::vector<std::string>()> ItemFiles(std::shared_ptr<ScannedFiles> a_files, std::size_t a_skip)
 	{
 		struct Cache
 		{
 			std::uint32_t generation{};
 			std::vector<std::string> values;
 		};
-		return [forms = std::move(a_forms), a_skip, cache = std::make_shared<Cache>()] {
+		return [scanned = std::move(a_files), a_skip, cache = std::make_shared<Cache>()] {
 			const std::uint32_t generation = NifProbe::Generation();
 			if (!generation)
 				return std::vector<std::string>{};
-			if (cache->generation == generation)
-				return cache->values;
-			cache->values.assign(a_skip, std::string{});
-			for (const RE::TESObjectARMO* item : forms()) {
-				std::string joined;
-				for (const std::string& path : NifProbe::XmlPaths(item->GetFormID()))
-					joined += path + '\n';
-				cache->values.push_back(std::move(joined));
+			if (cache->generation != generation) {
+				cache->values.assign(a_skip, std::string{});
+				for (const std::vector<std::string>& paths : scanned->Get()) {
+					std::string joined;
+					for (const std::string& path : paths)
+						joined += path + '\n';
+					cache->values.push_back(std::move(joined));
+				}
+				cache->generation = generation;
 			}
-			cache->generation = generation;
 			return cache->values;
 		};
 	}
@@ -276,9 +293,10 @@ namespace
 
 	Row WithHealth(Row a_row, std::function<std::vector<RE::TESObjectARMO*>()> a_forms, std::size_t a_skip)
 	{
-		a_row.itemFilesFn = ItemFiles(a_forms, a_skip);
+		const auto scanned = std::make_shared<ScannedFiles>(ScannedFiles{ std::move(a_forms), 0, {} });
+		a_row.itemFilesFn = ItemFiles(scanned, a_skip);
 		a_row.progressFn = [] { return NifProbe::Running() ? NifProbe::Progress() : std::pair<std::size_t, std::size_t>{}; };
-		a_row.itemStatusFn = HealthColours(std::move(a_forms), a_skip);
+		a_row.itemStatusFn = HealthColours(scanned, a_skip);
 		a_row.onShowFiltered = [] {
 			if (!NifProbe::Generation() && !NifProbe::Running())
 				NifProbe::Start();
