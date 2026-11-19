@@ -21,8 +21,6 @@ namespace SmpPhysics
 		constexpr std::size_t kMaxFloatTextLength = 64;
 		constexpr std::size_t kMaxElementCount = 20000;
 		constexpr std::size_t kMaxEntityLength = 8;
-		constexpr std::size_t kMaxBones = 1024;
-		constexpr std::size_t kMaxJoints = 1024;
 		constexpr float kIdentityTolerance = 1e-6f;
 		constexpr float kGravityFactorMinimum = 0.0f;
 		constexpr float kGravityFactorMaximum = 1.0f;
@@ -962,14 +960,6 @@ namespace SmpPhysics
 
 	bool ValidateRig(const SmpRig& a_rig, std::string& a_reason, bool a_requireForest)
 	{
-		if (a_rig.bones.size() > kMaxBones) {
-			a_reason = "bone count above the limit";
-			return false;
-		}
-		if (a_rig.joints.size() > kMaxJoints) {
-			a_reason = "joint count above the limit";
-			return false;
-		}
 		for (const RigBone& bone : a_rig.bones) {
 			if (!std::isfinite(bone.mass) || bone.mass < 0.0f) {
 				a_reason = "bone '" + bone.name + "' has a non-finite or negative mass";

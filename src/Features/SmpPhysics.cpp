@@ -1540,6 +1540,8 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 	}
 
 	SmpPhysics::SmpRig rig = DropMissingBones(a_context, skeleton, parsed->rig);
+	const std::size_t bonesInFile = parsed->rig.bones.size();
+	const std::size_t bonesOnSkeleton = rig.bones.size();
 	std::string topologyReason;
 	if (!SmpPhysics::NormalizeRigTopology(rig, topologyReason)) {
 		RecordDecline(path, topologyReason);
@@ -1590,7 +1592,11 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 		return false;
 	}
 	std::string rigReason;
-	if (!SmpPhysics::ValidateRig(rig, rigReason) || restPose.size() != boneCount ||
+	if (!SmpPhysics::ValidateRig(rig, rigReason)) {
+		RecordDecline(path, rigReason);
+		return false;
+	}
+	if (restPose.size() != boneCount ||
 		!std::all_of(restPose.begin(), restPose.end(), [](const SmpPhysics::Transform& a_pose) { return SmpPhysics::IsFiniteTransform(a_pose); })) {
 		RecordDecline(path, "the rest pose is not usable by the solver");
 		return false;
@@ -1657,8 +1663,8 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 			RegisterClothMeshes(claim.actorFormID, claim.cardGeometries);
 		claims.insert_or_assign(a_token, std::move(claim));
 	}
-	logger::info("{} Claimed '{}' for token {} ({} bones, {} dynamic, {} joints dropped, {} collision spheres, {} of {} start inside a collider and are exempt, {} colliders, {} fitted, {} defaulted) in {} ms",
-		kLogPrefix, path, a_token, boneCount, dynamicCount, additionalJoints, sphereCount,
+	logger::info("{} Claimed '{}' for token {} ({} of the file's {} bones kept, {} missing from the skeleton, {} in groups no joint holds; {} dynamic, {} extra joints, {} collision spheres, {} of {} start inside a collider and are exempt, {} colliders, {} fitted, {} defaulted) in {} ms",
+		kLogPrefix, path, a_token, boneCount, bonesInFile, bonesInFile - bonesOnSkeleton, bonesOnSkeleton - boneCount, dynamicCount, additionalJoints, sphereCount,
 		exemptSpheres, sphereCount, colliderCount, collision.fitted, collision.defaulted,
 		std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - claimStart).count());
 	if (collision.retargetBehind > 0) {
