@@ -526,3 +526,23 @@ TEST_CASE("A probe finds no spheres when the bone poses do not match the sphere 
 	ProbeSpheres({}, {}, {}, {}, { Transform{} }, probes);
 	REQUIRE(probes.empty());
 }
+
+TEST_CASE("Probing more spheres than the parallel threshold keeps each probe with its bone", "[SmpPhysics]")
+{
+	const std::size_t count = kParallelProbeSpheres + 37;
+	std::vector<std::vector<BoneSphere>> spheres(count);
+	std::vector<Transform> worlds(count);
+	for (std::size_t bone = 0; bone < count; ++bone) {
+		spheres[bone].push_back({ Vec3{}, 1.0f });
+		worlds[bone].translation = Vec3{ static_cast<float>(bone % 10), static_cast<float>(bone % 7), 88.0f + static_cast<float>(bone % 5) * 0.1f };
+	}
+	std::vector<SphereProbe> probes;
+	ProbeSpheres(spheres, {}, { MakeFloorSurface(88.0f) }, worlds, { Transform{} }, probes);
+
+	REQUIRE(probes.size() == count);
+	for (std::size_t bone = 0; bone < count; ++bone) {
+		REQUIRE(probes[bone].bone == static_cast<int>(bone));
+		REQUIRE(probes[bone].center.z == Approx(worlds[bone].translation.z));
+		REQUIRE(probes[bone].depth == Approx(std::max(0.0f, 1.0f - (worlds[bone].translation.z - 88.0f))).margin(0.01f));
+	}
+}
