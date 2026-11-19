@@ -946,6 +946,43 @@ TEST_CASE("A bone's surface mask follows the collide tags of its shape and spare
 	CHECK(AllowedSurfaceMask(nullptr, surfaces) == 0xFFFFFFFFu);
 }
 
+namespace
+{
+	std::string SpringRigXml(std::string_view a_flag)
+	{
+		std::string body = R"XML(
+		<bone name="Head"><mass>0</mass></bone>
+		<bone name="Hair01"><mass>0.01</mass><inertia x="1" y="1" z="1"/></bone>
+		<generic-constraint bodyA="Hair01" bodyB="Head">
+			<enableAngularSprings>)XML";
+		body.append(a_flag);
+		body.append("</enableAngularSprings></generic-constraint>");
+		return WrapSystem(body);
+	}
+}
+
+TEST_CASE("A boolean element reads 1 and 0 as hdtSMP64 does", "[SmpPhysics]")
+{
+	const ParseResult enabled = ParseSmpXml(SpringRigXml("1"));
+	REQUIRE(enabled.status == ParseStatus::Ok);
+	REQUIRE(enabled.rig.joints.size() == 1);
+	CHECK(enabled.rig.joints[0].angularSpringsEnabled);
+
+	const ParseResult disabled = ParseSmpXml(SpringRigXml("0"));
+	REQUIRE(disabled.status == ParseStatus::Ok);
+	CHECK_FALSE(disabled.rig.joints[0].angularSpringsEnabled);
+
+	CHECK(ParseSmpXml(SpringRigXml("yes")).status != ParseStatus::Ok);
+}
+
+TEST_CASE("A UTF-8 byte order mark before the XML prolog is skipped", "[SmpPhysics]")
+{
+	const std::string bare = WrapSystem(R"XML(<bone name="Head"><mass>0</mass></bone>)XML");
+	const ParseResult withMark = ParseSmpXml("\xEF\xBB\xBF" + bare);
+	CHECK(withMark.status == ParseStatus::Ok);
+	CHECK(withMark.rig.bones.size() == ParseSmpXml(bare).rig.bones.size());
+}
+
 TEST_CASE("wind-effect in a collision shape is accepted without a warning", "[SmpPhysics]")
 {
 	const ParseResult result = ParseSmpXml(WrapSystem(R"XML(
