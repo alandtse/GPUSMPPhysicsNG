@@ -145,10 +145,27 @@ namespace SmpPhysics
 		void Fail(const char* a_reason);
 		/** @brief Rebuilds the shared buffers from the claims, carrying the surviving claims' body state across. */
 		[[nodiscard]] bool RebuildBuffers();
+		/** @brief Writes the claims added since the last build into the free tail of the shared buffers, or rebuilds them when the tail is too small. */
+		[[nodiscard]] bool AppendClaims();
+
+		/** @brief The shared buffers' record counts, which a claim's records are appended after. */
+		struct PoolTotals
+		{
+			std::uint32_t bodies{};
+			std::uint32_t constraints{};
+			std::uint32_t islands{};
+			std::uint32_t list{};
+		};
+		struct PackedPools;
+		/** @brief Adds one claim's records, shifted to a_totals, to a_pools and advances a_totals past them. */
+		static void PackClaim(Claim& a_claim, PoolTotals& a_totals, PackedPools& a_pools);
 
 		std::vector<Claim> claims;
 		std::unordered_map<std::uint64_t, std::size_t> claimIndex;
 		bool dirty{};
+		std::size_t builtClaims{};  ///< How many of the claims the shared buffers hold; later ones are appended on the next dispatch.
+		PoolTotals capacity;        ///< The record counts the shared buffers have room for.
+		PoolTotals used;            ///< The record counts the built claims fill.
 		bool available{ true };
 		std::string unavailableReason;
 
