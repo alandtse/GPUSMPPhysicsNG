@@ -491,6 +491,24 @@ TEST_CASE("The rigid packing colours each island's constraints", "[smpphysics][r
 		CHECK(packed.coloredConstraints.size() == kRingBodies);
 	}
 
+	SECTION("a body held by more constraints than the old 32 classes still colours")
+	{
+		constexpr std::size_t kLeaves{ 40 };
+		World world = buildWorld(kLeaves + 1, false);
+		world.constraints.clear();
+		for (std::size_t leaf = 1; leaf <= kLeaves; ++leaf) {
+			Generic6DofSpring2 constraint;
+			constraint.bodyA = static_cast<int>(leaf);
+			constraint.bodyB = 0;
+			world.constraints.push_back(constraint);
+		}
+		const StepData packed = PackStep(world, 1.0f / 60.0f);
+		REQUIRE(packed.colorsFit);
+		REQUIRE(packed.islands.size() == 1);
+		CHECK(colorCount(packed, 0) == kLeaves);
+		CHECK(packed.coloredConstraints.size() == kLeaves);
+	}
+
 	SECTION("an island needing more classes than the packing holds reports failure")
 	{
 		constexpr std::size_t kCliqueBodies{ kMaxColors + 1 };

@@ -16,11 +16,13 @@
 #include "Utils/HiggsInterface.h"
 #include "Utils/MathUtils.h"
 #include "Utils/StringUtils.h"
+#include "Utils/TestBench/ItemRows.h"
 #include "Utils/TestBench/TestCrowd.h"
 #include "d3d/TracyGpu.h"
 #include "engine/ReadyWeaponGate.h"
 #include "plugin/Settings.h"
 #include "smp/CardVertices.h"
+#include "smp/ClaimPolicy.h"
 #include "smp/GpuViews.h"
 #include "smp/SceneParent.h"
 
@@ -217,7 +219,7 @@ namespace
 
 		RE::BSResourceNiBinaryStream stream(a_path);
 		if (!stream.good()) {
-			result.reason = "the physics file could not be opened";
+			result.reason = std::string(SmpPhysics::kMissingFileReason);
 			return result;
 		}
 
@@ -374,8 +376,11 @@ void SmpPhysicsFeature::RegisterUxActions()
 			const auto before = self->settings;
 			json merged = self->settings;
 			merged.update(a_args, true);
-			if (a_args.contains("developerMode") && a_args["developerMode"].is_boolean())
+			if (a_args.contains("developerMode") && a_args["developerMode"].is_boolean()) {
 				globals::state->developerMode = a_args["developerMode"].get<bool>();
+				if (!globals::state->developerMode)
+					TestBench::GetCrowd().SetIncludePlayer(false);
+			}
 			self->LoadSettings(merged);
 			if (before.Enabled != self->settings.Enabled || before.ClaimHeadParts != self->settings.ClaimHeadParts || before.ClaimArmor != self->settings.ClaimArmor || before.CollisionEnabled != self->settings.CollisionEnabled)
 				self->ReevaluateAllActors();
@@ -435,6 +440,17 @@ void SmpPhysicsFeature::RegisterUxActions()
 			for (const SmpPhysics::HairColorChoice& color : SmpPhysics::TestCrowdHairColors())
 				rows.push_back({ { "name", std::string(color.name) }, { "formId", color.formId } });
 			return rows;
+		});
+	FEATURE_COMMAND("setTestCrowdWig", "Put a wig on every test character standing now, and on the player while stripTestCrowd's includePlayer is on. Args: name (string, case-insensitive part of an entry of testCrowdWigs; the first match is worn) or index (number, an entry of testCrowdWigs). Read the outcome from testCrowdReport.",
+		[](Feature* a_self, const json& a_args) {
+			static_cast<SmpPhysicsFeature*>(a_self)->WearWig(TestBench::ItemIndexFromArgs(a_args, SmpPhysics::CrowdWigs::WigNames()));
+		});
+	FEATURE_QUERY("testCrowdWigs", "List the wigs the test crowd can wear, with their index for setTestCrowdWig, and which one was worn last (worn is -1 for none). Args: filter (string, case-insensitive part of the name, default none), limit (number, default 100).",
+		[](const Feature* a_self, const json& a_args) -> json {
+			json result;
+			result["worn"] = static_cast<const SmpPhysicsFeature*>(a_self)->crowdWigs.WornIndex();
+			result["wigs"] = TestBench::ItemRows(SmpPhysics::CrowdWigs::WigNames(), SmpPhysics::CrowdWigs::WigForms(), a_args);
+			return result;
 		});
 	FEATURE_COMMAND("restoreTestCrowdHairColors", "Put back the natural hair colour of every base setTestCrowdHairColor changed, so each test character can be compared with its own colour again, and refresh the characters standing now. Read the outcome from testCrowdReport.",
 		[](Feature* a_self, const json&) {
@@ -890,22 +906,24 @@ std::vector<SmpPhysics::Health> SmpPhysicsFeature::ItemHealths(const std::vector
 			declined.emplace(key(entry.first), entry.second);
 	}
 
-	std::map<std::string, SmpPhysics::Health> byFile;
+	std::map<std::string, SmpPhysics::FileHealth> byFile;
 	std::vector<SmpPhysics::Health> result;
 	result.reserve(a_itemFiles.size());
 	for (const std::vector<std::string>& files : a_itemFiles) {
-		SmpPhysics::Health worst = SmpPhysics::Health::None;
+		std::vector<SmpPhysics::FileHealth> states;
 		for (const std::string& file : files) {
 			const std::string fileKey = key(file);
 			auto found = byFile.find(fileKey);
 			if (found == byFile.end()) {
 				const auto parsed = GetParsedRig(file);
 				const auto reason = declined.find(fileKey);
-				found = byFile.emplace(fileKey, SmpPhysics::ClassifyFile(parsed->status == SmpPhysics::ParseStatus::Ok, parsed->reason, repaired.contains(fileKey) || !parsed->warnings.empty(), reason != declined.end() ? std::string_view(reason->second) : std::string_view{})).first;
+				const bool parsedOk = parsed->status == SmpPhysics::ParseStatus::Ok;
+				const SmpPhysics::Health health = SmpPhysics::ClassifyFile(parsedOk, parsed->reason, repaired.contains(fileKey) || !parsed->warnings.empty(), reason != declined.end() ? std::string_view(reason->second) : std::string_view{});
+				found = byFile.emplace(fileKey, SmpPhysics::FileHealth{ health, !parsedOk && parsed->reason == SmpPhysics::kMissingFileReason }).first;
 			}
-			worst = SmpPhysics::Worse(worst, found->second);
+			states.push_back(found->second);
 		}
-		result.push_back(worst);
+		result.push_back(SmpPhysics::ClassifyItem(states));
 	}
 	return result;
 }
@@ -1304,10 +1322,10 @@ bool SmpPhysicsFeature::ResolveRigNodes(const hdt::IMeshClaimContext& a_context,
 		}
 		if (sceneParent != parentNode) {
 			repairLog.Record(a_path, std::format("'{}' hangs under '{}' in the skeleton but its joint is to '{}'", a_rig.bones[static_cast<std::size_t>(joint.child)].name, sceneParent->name.c_str(), a_rig.bones[static_cast<std::size_t>(joint.parent)].name),
-				"accepted it; the rest pose comes from the scene graph and the joint still binds the physics parent");
+				"used the skeleton's pose and kept the joint to the file's parent");
 		} else if (childNode->parent != parentNode) {
 			repairLog.Record(a_path, std::format("'{}' hangs under '{}', a node hdtSMP64 added when it merged the armor, not directly under '{}' as the file says", a_rig.bones[static_cast<std::size_t>(joint.child)].name, childNode->parent ? childNode->parent->name.c_str() : "nothing", a_rig.bones[static_cast<std::size_t>(joint.parent)].name),
-				"accepted it and simulated the bone from where the scene graph puts it");
+				"simulated the bone from where the skeleton puts it");
 		}
 	}
 	return true;
@@ -1411,6 +1429,7 @@ void SmpPhysicsFeature::InstallClaimCollision(Claim& a_claim, ClaimCollision& a_
 	a_claim.collisionDrivers = std::move(a_collision.drivers);
 	a_claim.hairMeshNames = std::move(a_collision.hairMeshNames);
 	a_claim.bodySignature = a_collision.bodySignature;
+	a_claim.modelName = std::move(a_collision.modelName);
 	a_claim.collisionActive = true;
 }
 
@@ -1478,12 +1497,18 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 	}
 
 	ClaimCollision collision;
+	bool collisionDropped = false;
 	if (hasCollisionShapes) {
 		std::string collisionReason;
 		if (!BuildClaimCollision(a_context, rig, nodes, restPose, collision, collisionReason)) {
 			RegisterBodyShapes(a_context, path, collision.bodyShapes);
-			RecordDecline(path, collisionReason);
-			return false;
+			if (!SmpPhysics::MayClaimWithoutCollision(collision.noCollisionGeometry, static_cast<int>(dynamicCount))) {
+				RecordDecline(path, collisionReason);
+				return false;
+			}
+			logger::info("{} '{}': {}, so it runs without collision", kLogPrefix, path, collisionReason);
+			collision = ClaimCollision{};
+			collisionDropped = true;
 		}
 	}
 
@@ -1525,7 +1550,7 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 	auto* actor = a_context.getActor();
 	claim.token = a_token;
 	claim.headPart = a_context.getKind() == hdt::MeshKind::HeadPart;
-	claim.cloth = IsClothClaim(a_context);
+	claim.cloth = !collisionDropped && IsClothClaim(a_context);
 	ReadViewRules(claim);
 	claim.actorFormID = actor ? actor->GetFormID() : 0;
 	claim.physicsFile = path;
@@ -1553,7 +1578,7 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 	claim.sphereCount = collision.sphereCount;
 	claim.exemptSphereCount = collision.exemptSpheres;
 	claim.colliderCount = static_cast<int>(collision.colliders.size());
-	if (hasCollisionShapes)
+	if (hasCollisionShapes && !collisionDropped)
 		InstallClaimCollision(claim, collision);
 
 	const int additionalJoints = claim.additionalJointCount;
@@ -1569,7 +1594,7 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 			RegisterClothMeshes(claim.actorFormID, claim.cardGeometries);
 		claims.insert_or_assign(a_token, std::move(claim));
 	}
-	logger::info("{} Claimed '{}' for token {} ({} bones, {} dynamic, {} joints dropped, {} collision spheres, {} of {} start inside a collider and are exempt, {} colliders, {} fitted, {} defaulted) in {} ms",
+	logger::info("{} Claimed '{}' for token {} ({} bones, {} dynamic, {} additional joints, {} collision spheres, {} of {} start inside a collider and are exempt, {} colliders, {} fitted, {} defaulted) in {} ms",
 		kLogPrefix, path, a_token, boneCount, dynamicCount, additionalJoints, sphereCount,
 		exemptSpheres, sphereCount, colliderCount, collision.fitted, collision.defaulted,
 		std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - claimStart).count());
@@ -1592,7 +1617,7 @@ std::shared_ptr<const SmpPhysics::ParseResult> SmpPhysicsFeature::GetParsedRig(c
 	auto parsed = std::make_shared<SmpPhysics::ParseResult>(ReadPhysicsFile(a_path));
 	for (const std::string& warning : parsed->warnings) {
 		logger::warn("{} '{}': {}", kLogPrefix, a_path, warning);
-		repairLog.Record(a_path, warning, "repaired it and used the file");
+		repairLog.Record(a_path, warning, {});
 	}
 
 	const std::scoped_lock lock(stateMutex);
@@ -1683,7 +1708,7 @@ void SmpPhysicsFeature::RecordDecline(const std::string& a_file, const std::stri
 	if (shouldLog)
 		logger::info("{} Declined '{}': {}", kLogPrefix, a_file, a_reason);
 	if (SmpPhysics::RepairLog::IsFileFault(a_reason))
-		repairLog.Record(a_file, a_reason, "declined the file, so hdtSMP64 simulates it");
+		repairLog.Record(a_file, a_reason, a_reason == SmpPhysics::kMissingFileReason ? "nothing to simulate; hdtSMP64 skips a missing file too" : "not simulated here; hdtSMP64 simulates it instead");
 }
 
 void SmpPhysicsFeature::ReleaseMesh(std::uint64_t a_token)
@@ -1901,6 +1926,12 @@ void SmpPhysicsFeature::ApplyCulling()
 	});
 	for (std::size_t index = budget; index < live.size(); ++index)
 		live[index].claim->culledByBudget = true;
+}
+
+void SmpPhysicsFeature::WearWig(int a_index)
+{
+	if (auto* task = SKSE::GetTaskInterface())
+		task->AddTask([this, a_index] { crowdWigs.WearNow(TestBench::GetCrowd(), a_index); });
 }
 
 void SmpPhysicsFeature::SetBodyContactProbe(const json& a_args)

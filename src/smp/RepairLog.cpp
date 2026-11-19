@@ -44,18 +44,22 @@ namespace SmpPhysics
 
 	std::string RepairLog::Format(const FileReport& a_report)
 	{
-		std::string text = std::format("Physics file: {}\n\nGPU SMP Physics found {} problem(s) in this file:\n", a_report.file, a_report.entries.size());
-		for (std::size_t index = 0; index < a_report.entries.size(); ++index)
-			text += std::format("{}. {}\n   What GPU SMP Physics did: {}\n", index + 1, a_report.entries[index].problem, a_report.entries[index].action);
-		text += "\nhdtSMP64 may reject or mis-simulate a file with these problems.\n";
+		std::string text = std::format("Physics file: {}\n\n{} problem(s) found by GPU SMP Physics:\n", a_report.file, a_report.entries.size());
+		for (std::size_t index = 0; index < a_report.entries.size(); ++index) {
+			text += std::format("{}. {}\n", index + 1, a_report.entries[index].problem);
+			if (!a_report.entries[index].action.empty())
+				text += std::format("   -> {}\n", a_report.entries[index].action);
+		}
+		text += "\nFix these in the file so every loader reads it the same way.\n";
 		return text;
 	}
 
 	bool RepairLog::IsFileFault(std::string_view a_reason)
 	{
-		constexpr std::array<std::string_view, 5> kNotTheFile = {
-			"collision is switched off", "the GPU solver is not available", "the rigid-body solver is not available", "the mesh has no physics file", "claiming threw"
-		};
+		constexpr auto kNotTheFile = std::to_array<std::string_view>({ "collision is switched off", "the GPU solver is not available", "the rigid-body solver is not available",
+			"the mesh has no physics file", "claiming threw", "the mesh has no skeleton node", "the actor has no scene graph", "none of the hair meshes",
+			"the rest pose is not usable by the solver", "the rigid claim", "the rig could not be packed", "the rig has more collision sphere lists",
+			"a chain has more bones than the compute solver", "the rig needs ", "the GPU solver has no free slot" });
 		return std::ranges::none_of(kNotTheFile, [a_reason](std::string_view a_prefix) { return a_reason.starts_with(a_prefix); });
 	}
 }

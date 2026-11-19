@@ -17,7 +17,7 @@ EYE_HEIGHT = 1.6  # tracking-space height of the headset, in metres
 
 CROWD_NAMES = {'spawnTestCrowd', 'clearTestCrowd', 'refreshTestCrowd', 'turnTestCrowd', 'stripTestCrowd', 'cycleTestCrowdArmor',
                'playTestCrowdAnimation', 'setTestCrowdLoop', 'testCrowdAnimations', 'testCrowdOutfit', 'testCrowdReport',
-               'setTestCrowdCloak', 'testCrowdCloaks', 'setTestCrowdArmor'}
+               'setTestCrowdCloak', 'testCrowdCloaks', 'setTestCrowdArmor', 'testCrowdArmors', 'setTestCrowdIncludePlayer'}
 
 
 class Bench:

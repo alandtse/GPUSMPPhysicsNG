@@ -70,7 +70,7 @@ namespace HairRigidSolver
 	static const int kRowsPerConstraint = kRowsPerAxis * kAxisSlots;
 
 	/** @brief The colour classes one island's constraints may take, mirroring RigidGpuPacking.h's kMaxColors. */
-	static const uint kMaxColors = 32u;
+	static const uint kMaxColors = 64u;
 
 	/** @brief A rotation quaternion in Bullet's (x, y, z, w) order. */
 	struct Quat

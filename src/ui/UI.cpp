@@ -19,6 +19,7 @@ namespace logger = SKSE::log;
 
 #include "Utils/StringUtils.h"
 #include "ui/ListSearch.h"
+#include "ui/ListView.h"
 #include "ui/UiModel.h"
 
 namespace SettingsUi
@@ -71,18 +72,36 @@ namespace SettingsUi
 			}
 			const auto statusOf = [&status](std::size_t a_index) { return a_index < status.size() ? status[a_index] : 0; };
 			const int selected = row.selectedFn ? row.selectedFn() : *row.intValue;
-			const bool scroll = selected != row.lastSelected;
+			const bool scroll = ShouldScroll(selected, row.lastSelected, row.pickedIndex);
+			if (selected != row.lastSelected)
+				row.pickedIndex = -1;
 			bool clicked = false;
+			if (!row.items.empty()) {
+				const bool previous = ImGuiMCP::Button(("Previous##gsp_prev_" + row.label).c_str(), { 0, 0 });
+				ImGuiMCP::SameLine(0.0f, -1.0f);
+				const bool next = ImGuiMCP::Button(("Next##gsp_next_" + row.label).c_str(), { 0, 0 });
+				if (previous || next) {
+					std::vector<std::string> lowerNames;
+					lowerNames.reserve(row.items.size());
+					for (std::size_t index = 0; index < row.items.size(); ++index)
+						lowerNames.push_back(SearchText(row.items[index], index < files.size() ? files[index] : std::string_view{}));
+					const int target = StepVisible(lowerNames, filter, row.showMode, status, selected, next ? 1 : -1);
+					if (target != selected) {
+						*row.intValue = target;
+						clicked = true;
+						if (row.onActivated)
+							row.onActivated();
+					}
+				}
+			}
 			if (ImGuiMCP::BeginListBox(a_id.c_str(), { kWidth, kListBoxRows * ImGuiMCP::GetTextLineHeightWithSpacing() })) {
 				std::size_t shown = 0;
 				std::size_t hidden = 0;
 				for (std::size_t index = 0; index < row.items.size(); ++index) {
 					const std::string& name = row.items[index];
 					constexpr const char* kStateTags[] = { "", "  [OK]", "  [REPAIRED]", "  [FAULT]" };
-					if (!filter.empty() && SearchText(name, index < files.size() ? files[index] : std::string_view{}).find(filter) == std::string::npos)
-						continue;
 					const int state = std::clamp(statusOf(index), 0, kMaxItemState);
-					if ((row.showMode == 1 && state == 0) || (row.showMode == 2 && state < 2))
+					if (!RowVisible(SearchText(name, index < files.size() ? files[index] : std::string_view{}), filter, row.showMode, state))
 						continue;
 					if (shown >= kMaxRows) {
 						++hidden;
@@ -95,10 +114,14 @@ namespace SettingsUi
 						constexpr ImGuiMCP::ImVec4 kColours[] = { { 0.40f, 0.85f, 0.45f, 1.0f }, { 0.95f, 0.65f, 0.10f, 1.0f }, { 0.95f, 0.35f, 0.35f, 1.0f } };
 						ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kColours[state - 1]);
 					}
-					if (ImGuiMCP::Selectable((name + kStateTags[state] + "##gsp_item_" + std::to_string(index)).c_str(), isSelected, 0, { 0, 0 })) {
+					if (ImGuiMCP::Selectable((name + kStateTags[state] + "##gsp_item_" + std::to_string(index)).c_str(), isSelected,
+							row.onActivated ? ImGuiMCP::ImGuiSelectableFlags_AllowDoubleClick : 0, { 0, 0 })) {
 						*row.intValue = static_cast<int>(index);
+						row.pickedIndex = static_cast<int>(index);
 						clicked = true;
 					}
+					if (row.onActivated && ImGuiMCP::IsItemHovered() && ImGuiMCP::IsMouseDoubleClicked(0))
+						row.onActivated();
 					if (coloured)
 						ImGuiMCP::PopStyleColor(1);
 					if (isSelected && scroll)
