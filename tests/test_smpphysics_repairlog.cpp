@@ -54,5 +54,6 @@ TEST_CASE("Settings and machine declines are not the file's fault", "[smpphysics
 {
 	CHECK_FALSE(RepairLog::IsFileFault("collision is switched off in the settings"));
 	CHECK_FALSE(RepairLog::IsFileFault("the GPU solver is not available: no device"));
+	CHECK_FALSE(RepairLog::IsFileFault("none of the hair meshes 'collision body' is below the actor"));
 	CHECK(RepairLog::IsFileFault("bone 'X' has no node below the skeleton"));
 }

@@ -53,8 +53,8 @@ namespace SmpPhysics
 
 	bool RepairLog::IsFileFault(std::string_view a_reason)
 	{
-		constexpr std::array<std::string_view, 5> kNotTheFile = {
-			"collision is switched off", "the GPU solver is not available", "the rigid-body solver is not available", "the mesh has no physics file", "claiming threw"
+		constexpr std::array<std::string_view, 6> kNotTheFile = {
+			"collision is switched off", "the GPU solver is not available", "the rigid-body solver is not available", "the mesh has no physics file", "claiming threw", "none of the hair meshes"
 		};
 		return std::ranges::none_of(kNotTheFile, [a_reason](std::string_view a_prefix) { return a_reason.starts_with(a_prefix); });
 	}
