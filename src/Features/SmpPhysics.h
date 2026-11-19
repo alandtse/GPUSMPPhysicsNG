@@ -297,6 +297,7 @@ private:
 		std::vector<std::string> hairMeshNames;              ///< the meshes the rig's own shapes name, which are never body
 		std::uint64_t bodySignature{};                       ///< hashes the worn meshes the colliders were measured from
 		std::string modelName;                               ///< the claimed model's root, which the actor has once the meshes are attached
+		bool noCollisionGeometry{};                          ///< the rig's meshes gave no collision geometry, so it may run without collision
 		int sphereCount{};
 		int exemptSpheres{};  ///< of sphereCount, the ones that start inside a collider
 		int fitted{};

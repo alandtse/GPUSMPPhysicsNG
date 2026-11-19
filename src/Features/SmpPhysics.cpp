@@ -22,6 +22,7 @@
 #include "engine/ReadyWeaponGate.h"
 #include "plugin/Settings.h"
 #include "smp/CardVertices.h"
+#include "smp/ClaimPolicy.h"
 #include "smp/GpuViews.h"
 #include "smp/SceneParent.h"
 
@@ -1475,12 +1476,18 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 	}
 
 	ClaimCollision collision;
+	bool collisionDropped = false;
 	if (hasCollisionShapes) {
 		std::string collisionReason;
 		if (!BuildClaimCollision(a_context, rig, nodes, restPose, collision, collisionReason)) {
 			RegisterBodyShapes(a_context, path, collision.bodyShapes);
-			RecordDecline(path, collisionReason);
-			return false;
+			if (!SmpPhysics::MayClaimWithoutCollision(collision.noCollisionGeometry, static_cast<int>(dynamicCount))) {
+				RecordDecline(path, collisionReason);
+				return false;
+			}
+			logger::info("{} '{}': {}, so it runs without collision", kLogPrefix, path, collisionReason);
+			collision = ClaimCollision{};
+			collisionDropped = true;
 		}
 	}
 
@@ -1522,7 +1529,7 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 	auto* actor = a_context.getActor();
 	claim.token = a_token;
 	claim.headPart = a_context.getKind() == hdt::MeshKind::HeadPart;
-	claim.cloth = IsClothClaim(a_context);
+	claim.cloth = !collisionDropped && IsClothClaim(a_context);
 	ReadViewRules(claim);
 	claim.actorFormID = actor ? actor->GetFormID() : 0;
 	claim.physicsFile = path;
@@ -1550,7 +1557,7 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 	claim.sphereCount = collision.sphereCount;
 	claim.exemptSphereCount = collision.exemptSpheres;
 	claim.colliderCount = static_cast<int>(collision.colliders.size());
-	if (hasCollisionShapes)
+	if (hasCollisionShapes && !collisionDropped)
 		InstallClaimCollision(claim, collision);
 
 	const int additionalJoints = claim.additionalJointCount;
