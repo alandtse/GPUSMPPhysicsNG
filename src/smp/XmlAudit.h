@@ -11,6 +11,9 @@ namespace SmpPhysics
 	/** @brief A path as compared: lower case, backslashes, and any leading Data folder removed. */
 	[[nodiscard]] std::string NormalizeXmlPath(std::string_view a_path);
 
+	/** @brief Whether a_needle, written in any case and with either slash, is part of the physics file path a_path. */
+	[[nodiscard]] bool XmlPathMatches(std::string_view a_path, std::string_view a_needle);
+
 	/** @brief The file= value of every <map> in an hdtSMP64 defaultBBPs.xml, as written. */
 	[[nodiscard]] std::vector<std::string> ParseDefaultBbpFiles(std::string_view a_xml);
 

@@ -18,6 +18,7 @@ namespace logger = SKSE::log;
 #include "SKSEMenuFramework.h"
 
 #include "Utils/StringUtils.h"
+#include "ui/ListSearch.h"
 #include "ui/ListView.h"
 #include "ui/UiModel.h"
 
@@ -47,7 +48,19 @@ namespace SettingsUi
 			Tip(row.tooltip);
 			ImGuiMCP::SetNextItemWidth(kWidth);
 			ImGuiMCP::InputTextWithHint(("##gsp_filter_" + row.label).c_str(), "Filter", row.filterText.data(), row.filterText.size());
-			const std::string filter = Util::ToLowerAscii(row.filterText.data());
+			const std::string filter = Util::SearchKey(row.filterText.data());
+			if (!filter.empty() && !row.scanAsked && row.onShowFiltered) {
+				row.scanAsked = true;
+				row.onShowFiltered();
+			}
+			if (row.progressFn) {
+				const auto [done, total] = row.progressFn();
+				if (total) {
+					const std::string text = std::format("Scanning physics files: {} of {}", done, total);
+					ImGuiMCP::ProgressBar(ScanFraction(done, total), { kWidth, 0.0f }, text.c_str());
+				}
+			}
+			const std::vector<std::string> files = row.itemFilesFn ? row.itemFilesFn() : std::vector<std::string>{};
 			std::vector<int> status;
 			if (row.itemStatusFn) {
 				status = row.itemStatusFn();
@@ -70,8 +83,8 @@ namespace SettingsUi
 				if (previous || next) {
 					std::vector<std::string> lowerNames;
 					lowerNames.reserve(row.items.size());
-					for (const std::string& name : row.items)
-						lowerNames.push_back(Util::ToLowerAscii(name));
+					for (std::size_t index = 0; index < row.items.size(); ++index)
+						lowerNames.push_back(SearchText(row.items[index], index < files.size() ? files[index] : std::string_view{}));
 					const int target = StepVisible(lowerNames, filter, row.showMode, status, selected, next ? 1 : -1);
 					if (target != selected) {
 						*row.intValue = target;
@@ -88,7 +101,7 @@ namespace SettingsUi
 					const std::string& name = row.items[index];
 					constexpr const char* kStateTags[] = { "", "  [OK]", "  [REPAIRED]", "  [FAULT]" };
 					const int state = std::clamp(statusOf(index), 0, kMaxItemState);
-					if (!RowVisible(Util::ToLowerAscii(name), filter, row.showMode, state))
+					if (!RowVisible(SearchText(name, index < files.size() ? files[index] : std::string_view{}), filter, row.showMode, state))
 						continue;
 					if (shown >= kMaxRows) {
 						++hidden;

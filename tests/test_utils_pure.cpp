@@ -11,6 +11,7 @@
 
 #include <array>
 #include <cmath>
+#include <filesystem>
 #include <limits>
 
 using Catch::Approx;
@@ -125,4 +126,11 @@ TEST_CASE("SanitizeParams repairs every non-finite or out-of-range value", "[sol
 	CHECK(clean.wind.x == 0.0f);
 
 	CHECK(SmpPhysics::SanitizeParams(SmpPhysics::SolverParams{}).gravity == SmpPhysics::SolverParams{}.gravity);
+}
+
+TEST_CASE("A path with a name the system code page cannot hold still converts", "[utils][string]")
+{
+	const std::filesystem::path path = std::filesystem::path(L"Meshes") / L"\x43f\x43e\x43b\x43d\x44b\x439.xml";
+	const std::string expected = "Meshes/\xD0\xBF\xD0\xBE\xD0\xBB\xD0\xBD\xD1\x8B\xD0\xB9.xml";
+	CHECK(Util::PathUtf8(path) == expected);
 }

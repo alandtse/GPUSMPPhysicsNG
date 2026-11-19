@@ -75,6 +75,25 @@ using namespace SmpPhysicsLimits;
 
 namespace
 {
+	/** @brief What NifProbe::Find has for a_file, with each match's index in the test crowd's armor and cloak lists. */
+	json FindPhysicsFile(const std::string& a_file)
+	{
+		const auto indexOf = [](const std::vector<RE::TESObjectARMO*>& a_forms, RE::FormID a_id) {
+			const auto found = std::ranges::find_if(a_forms, [a_id](const RE::TESObjectARMO* a_form) { return a_form && a_form->GetFormID() == a_id; });
+			return found == a_forms.end() ? -1 : static_cast<int>(found - a_forms.begin());
+		};
+		const std::vector<RE::TESObjectARMO*> armors = TestBench::TestCrowd::ArmorForms();
+		const std::vector<RE::TESObjectARMO*> cloaks = TestBench::TestCrowd::CloakForms();
+		json rows = json::array();
+		for (const NifProbe::Match& match : NifProbe::Find(a_file)) {
+			json row{ { "name", match.name }, { "formId", match.formID }, { "model", match.model }, { "files", match.files } };
+			row["armorIndex"] = indexOf(armors, match.formID);
+			row["cloakIndex"] = indexOf(cloaks, match.formID);
+			rows.push_back(std::move(row));
+		}
+		return { { "scanned", NifProbe::Generation() != 0 }, { "matches", std::move(rows) } };
+	}
+
 	constexpr std::uint32_t kMaxPhysicsFileBytes = 4u * 1024u * 1024u;
 	/** @brief Seconds between reads of the weather, as in hdtSMP64. */
 	constexpr float kWindTick = 0.5f;
@@ -477,6 +496,8 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](const Feature*, const json&) -> json { return NifProbe::Result(); });
 	FEATURE_QUERY("xmlAudit", "After nifPhysicsProbe has finished: the loose physics xml files that no model or defaultBBPs.xml entry names (orphans) and the names with no loose file (dangling; a file packed in an archive shows here too).",
 		[](const Feature*, const json&) -> json { return NifProbe::XmlAuditResult(); });
+	FEATURE_QUERY("findPhysicsFile", "After nifPhysicsProbe has finished: the armors, cloaks, wigs and head parts whose models name a physics file containing the text. Args: file (string, part of the path in any case with either slash). Each match has its name, form ID, model, matching files and its index in testCrowdArmors and testCrowdCloaks (-1 when it is not in that list).",
+		[](const Feature*, const json& a_args) -> json { return FindPhysicsFile(a_args.value("file", std::string{})); });
 	FEATURE_QUERY("islandSizes", "How the rigid solver's islands split by constraint count in the last buffer build: islands and constraints per size bucket (1, 2-4, 5-8, 9-16, 17-32, 33-64, 65 or more), the island total, the largest island's constraints and the most colour classes one takes. Shows which solve kernel suits the islands.",
 		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->IslandSizesJson(); });
 	FEATURE_QUERY("physicsHealth", "After nifPhysicsProbe has finished: each armor and cloak the scan found physics files for, with the worst health among them (working, repaired or broken) and the files; what colours the Test crowd lists.",

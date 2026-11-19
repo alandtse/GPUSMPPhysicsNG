@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -28,11 +29,26 @@ namespace Util
 		return result;
 	}
 
+	/** @brief Text as searches compare it: lower case with backslashes, so a path matches however its slashes were typed. */
+	inline std::string SearchKey(std::string_view a_text)
+	{
+		std::string key = ToLowerAscii(a_text);
+		std::ranges::replace(key, '/', '\\');
+		return key;
+	}
+
 	/** @brief Case-insensitive equality for two strings. */
 	inline bool IEquals(std::string_view a, std::string_view b)
 	{
 		return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char ca, char cb) {
 			return std::tolower(static_cast<unsigned char>(ca)) == std::tolower(static_cast<unsigned char>(cb));
 		});
+	}
+
+	/** @brief A path with forward slashes as UTF-8; generic_string() throws on a name the system code page cannot hold. */
+	inline std::string PathUtf8(const std::filesystem::path& a_path)
+	{
+		const std::u8string text = a_path.generic_u8string();
+		return { reinterpret_cast<const char*>(text.data()), text.size() };
 	}
 }
