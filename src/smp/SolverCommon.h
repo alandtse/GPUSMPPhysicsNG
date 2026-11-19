@@ -84,6 +84,9 @@ namespace SmpPhysics
 	/** @brief a_params with every non-finite or out-of-range value replaced by one the solver can run with. */
 	[[nodiscard]] SolverParams SanitizeParams(SolverParams a_params) noexcept;
 
+	/** @brief Spheres at which ProbeSpheres spreads its queries over the cores; fewer are quicker on one. */
+	inline constexpr std::size_t kParallelProbeSpheres = 512;
+
 	/** @brief One collision sphere as placed by a set of bone poses, and the deepest collider it penetrates. */
 	struct SphereProbe
 	{
