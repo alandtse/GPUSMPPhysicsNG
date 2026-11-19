@@ -21,6 +21,7 @@
 #include <mutex>
 #include <optional>
 #include <set>
+#include <utility>
 
 namespace HairLook
 {
@@ -44,6 +45,7 @@ namespace HairLook
 
 		std::mutex mutex;
 		std::map<std::string, Shape> shapes;
+		std::map<std::pair<std::string, std::string>, SmpPhysics::HairMatch> matches;
 		json lastResult = json::object();
 
 		void Publish(json a_result)
@@ -218,6 +220,27 @@ namespace HairLook
 			return shapes.contains(Util::SearchKey(a_model));
 		}
 
+		/** @brief How alike two models are, kept so a ranking that is repeated while it loads shapes does not compare the same pair again. */
+		SmpPhysics::HairMatch MatchOf(const std::string& a_source, const std::string& a_candidate, const SmpPhysics::HairDescriptor& a_left, const SmpPhysics::HairDescriptor& a_right)
+		{
+			const auto key = std::make_pair(Util::SearchKey(a_source), Util::SearchKey(a_candidate));
+			{
+				const std::scoped_lock lock(mutex);
+				if (const auto found = matches.find(key); found != matches.end())
+					return found->second;
+			}
+			const SmpPhysics::HairMatch match = SmpPhysics::CompareHair(a_left, a_right);
+			const std::scoped_lock lock(mutex);
+			matches.emplace(key, match);
+			return match;
+		}
+
+		bool IsMatched(const std::string& a_source, const std::string& a_candidate)
+		{
+			const std::scoped_lock lock(mutex);
+			return matches.contains(std::make_pair(Util::SearchKey(a_source), Util::SearchKey(a_candidate)));
+		}
+
 		std::string ModelOf(const RE::TESObjectARMO& a_armor, int a_sex)
 		{
 			for (const RE::TESObjectARMA* addon : a_armor.armorAddons) {
@@ -321,7 +344,7 @@ namespace HairLook
 			if (model.empty() || !seen.insert(Util::SearchKey(model)).second)
 				continue;
 			++considered;
-			if (!IsCached(model) && elapsedMs() > budget) {
+			if ((!IsCached(model) || !IsMatched(sourceModel, model)) && elapsedMs() > budget) {
 				++pending;
 				continue;
 			}
@@ -330,7 +353,7 @@ namespace HairLook
 				failed.push_back({ { "name", armor->GetName() }, { "model", model }, { "reason", shape.reason } });
 				continue;
 			}
-			ranked.push_back({ armor, std::move(model), SmpPhysics::CompareHair(*source.descriptor, *shape.descriptor) });
+			ranked.push_back({ armor, std::move(model), MatchOf(sourceModel, model, *source.descriptor, *shape.descriptor) });
 		}
 		std::ranges::sort(ranked, [](const Candidate& a_left, const Candidate& a_right) { return a_left.match.chamfer < a_right.match.chamfer; });
 

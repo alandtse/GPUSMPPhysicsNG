@@ -76,6 +76,15 @@ using namespace SmpPhysicsLimits;
 namespace
 {
 	/** @brief What NifProbe::Find has for a_file, with each match's index in the test crowd's armor and cloak lists. */
+	json HairTargetJson(const SmpPhysics::HairTargetView& a_view)
+	{
+		json result{ { "formId", a_view.formID }, { "text", a_view.text }, { "status", a_view.status }, { "hasConsole", a_view.hasConsole }, { "hasCrosshair", a_view.hasCrosshair }, { "pinned", a_view.pinned },
+			{ "ranked", a_view.progress.second } };
+		if (!a_view.order.empty())
+			result["closest"] = SmpPhysics::CrowdWigs::WigNames()[static_cast<std::size_t>(a_view.order.front())];
+		return result;
+	}
+
 	json FindPhysicsFile(const std::string& a_file)
 	{
 		const auto indexOf = [](const std::vector<RE::TESObjectARMO*>& a_forms, RE::FormID a_id) {
@@ -499,7 +508,35 @@ void SmpPhysicsFeature::RegisterUxActions()
 	FEATURE_QUERY("findPhysicsFile", "After nifPhysicsProbe has finished: the armors, cloaks, wigs and head parts whose models name a physics file containing the text. Args: file (string, part of the path in any case with either slash). Each match has its name, form ID, model, matching files and its index in testCrowdArmors and testCrowdCloaks (-1 when it is not in that list).",
 		[](const Feature*, const json& a_args) -> json { return FindPhysicsFile(a_args.value("file", std::string{})); });
 	FEATURE_COMMAND("hairLookRank", "Prototype: rank the hair-slot armors by how closely their shape matches one hair. Args: actorFormID (number, an NPC whose own hair is the target) or model (string, a path under Meshes) or name (string, part of a hair-slot armor's name); sex (0 male, 1 female), filter (string, part of a candidate's name), physicsOnly (bool, default true once nifPhysicsProbe has run), budgetMs (number, default 3000), top (number, default 10). Shapes are loaded once and kept, so repeat while hairLookResult says pending. Read the outcome from hairLookResult.",
-		[](Feature*, const json& a_args) { HairLook::Rank(a_args); });
+		[](Feature* a_self, const json& a_args) {
+			json args = a_args;
+			if (!args.contains("actorFormID") && !args.contains("model") && !args.contains("name") && !args.contains("headPart")) {
+				const std::uint32_t target = static_cast<SmpPhysicsFeature*>(a_self)->HairTargetState().formID;
+				args["actorFormID"] = target ? target : 0x14u;
+			}
+			HairLook::Rank(args);
+		});
+	FEATURE_QUERY("hairTarget", "The character whose hair is matched and swapped: formId (0 for the player), text, status while the wigs are being ranked, which sources exist (hasConsole for a prid selection, hasCrosshair) and whether one is pinned.",
+		[](const Feature* a_self, const json&) -> json { return HairTargetJson(static_cast<const SmpPhysicsFeature*>(a_self)->HairTargetState()); });
+	FEATURE_COMMAND("setHairTarget", "Choose whose hair is matched and swapped. Args: source (string: player, console for the reference selected with prid, crosshair for the character last looked at, or auto to let the console selection set it again).",
+		[](Feature* a_self, const json& a_args) {
+			auto* self = static_cast<SmpPhysicsFeature*>(a_self);
+			const std::string source = a_args.value("source", std::string{ "auto" });
+			if (source == "auto")
+				self->UnpinHairTarget();
+			else if (source == "player")
+				self->PinHairTarget(SmpPhysics::HairTargetSource::Player);
+			else if (source == "console")
+				self->PinHairTarget(SmpPhysics::HairTargetSource::Console);
+			else if (source == "crosshair")
+				self->PinHairTarget(SmpPhysics::HairTargetSource::Crosshair);
+		});
+	FEATURE_COMMAND("wearWigOnTarget", "Put a wig on the hair target alone. Args: name (string, case-insensitive part of an entry of testCrowdWigs; the first match is worn) or index (number, an entry of testCrowdWigs).",
+		[](Feature* a_self, const json& a_args) {
+			static_cast<SmpPhysicsFeature*>(a_self)->WearWigOnTarget(TestBench::ItemIndexFromArgs(a_args, SmpPhysics::CrowdWigs::WigNames()));
+		});
+	FEATURE_COMMAND("restoreTargetHair", "Take the wig off the hair target and show its own hair again.",
+		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->RestoreTargetHair(); });
 	FEATURE_QUERY("hairLookResult", "The outcome of the last hairLookRank: the target's shape, then the closest hairs with their chamfer distance (game units, lower is closer), the share of the shape farther than 15 units from the other (coverage), voxel overlap, bounding box overlap and area ratio.",
 		[](const Feature*, const json&) -> json { return HairLook::Result(); });
 	FEATURE_QUERY("islandSizes", "How the rigid solver's islands split by constraint count in the last buffer build: islands and constraints per size bucket (1, 2-4, 5-8, 9-16, 17-32, 33-64, 65 or more), the island total, the largest island's constraints and the most colour classes one takes. Shows which solve kernel suits the islands.",
@@ -1251,6 +1288,7 @@ RE::BSEventNotifyControl SmpPhysicsFeature::FrameSyncListener::ProcessEvent(
 	TracyGpu::NextFrame();
 	try {
 		feature.crowdWigs.Tick();
+		feature.hairTarget.Tick(feature.gamePaused.load(std::memory_order_relaxed));
 		feature.StepClaims();
 		feature.RecordBoneFrame();
 	} catch (const std::exception& error) {
@@ -1927,6 +1965,34 @@ void SmpPhysicsFeature::WearWig(int a_index)
 {
 	if (auto* task = SKSE::GetTaskInterface())
 		task->AddTask([this, a_index] { crowdWigs.WearNow(TestBench::GetCrowd(), a_index); });
+}
+
+namespace
+{
+	RE::Actor* HairTargetActor(std::uint32_t a_formID)
+	{
+		return a_formID ? RE::TESForm::LookupByID<RE::Actor>(a_formID) : RE::PlayerCharacter::GetSingleton();
+	}
+}
+
+void SmpPhysicsFeature::WearWigOnTarget(int a_index)
+{
+	if (auto* task = SKSE::GetTaskInterface()) {
+		task->AddTask([this, a_index] {
+			if (auto* actor = HairTargetActor(hairTarget.FormID()))
+				crowdWigs.WearOn(*actor, a_index);
+		});
+	}
+}
+
+void SmpPhysicsFeature::RestoreTargetHair()
+{
+	if (auto* task = SKSE::GetTaskInterface()) {
+		task->AddTask([this] {
+			if (auto* actor = HairTargetActor(hairTarget.FormID()))
+				crowdWigs.TakeOff(*actor);
+		});
+	}
 }
 
 void SmpPhysicsFeature::SetBodyContactProbe(const json& a_args)

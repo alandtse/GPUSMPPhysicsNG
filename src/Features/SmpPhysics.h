@@ -2,6 +2,7 @@
 
 #include "Features/SmpPhysics/ClaimOverrides.h"
 #include "Features/SmpPhysics/CrowdWigs.h"
+#include "Features/SmpPhysics/HairTarget.h"
 
 #include "Feature.h"
 #include "d3d/GpuSolver.h"
@@ -197,6 +198,16 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] std::string ItemReportText(RE::FormID a_armor);
 	/** @brief Puts the wig at a_index of CrowdWigs::WigForms() on the crowd and, while it is included, the player; runs on the game thread. */
 	void WearWig(int a_index);
+	/** @brief The character whose hair is matched and swapped, and the wigs ranked by their match to its hair. */
+	[[nodiscard]] SmpPhysics::HairTargetView HairTargetState() const { return hairTarget.View(); }
+	/** @brief Pins a_source as the hair target; false when it has no character. */
+	bool PinHairTarget(SmpPhysics::HairTargetSource a_source) { return hairTarget.Pin(a_source); }
+	/** @brief Lets the console selection set the hair target again. */
+	void UnpinHairTarget() { hairTarget.Unpin(); }
+	/** @brief Puts the wig at a_index of CrowdWigs::WigForms() on the hair target alone; runs on the game thread. */
+	void WearWigOnTarget(int a_index);
+	/** @brief Takes the wig off the hair target and shows its own hair again; runs on the game thread. */
+	void RestoreTargetHair();
 	/** @brief The entry of CrowdWigs::WigForms() worn last, or -1 for none. */
 	[[nodiscard]] int WornWigIndex() const noexcept { return crowdWigs.WornIndex(); }
 	/** @brief The rigid solver's island size summary, for the devbench islandSizes query. */
@@ -653,4 +664,5 @@ private:
 	FrameListener frameListener{ *this };
 	FrameSyncListener frameSyncListener{ *this };
 	SmpPhysics::CrowdWigs crowdWigs;  ///< What this feature adds to the test crowd.
+	SmpPhysics::HairTarget hairTarget;
 };
