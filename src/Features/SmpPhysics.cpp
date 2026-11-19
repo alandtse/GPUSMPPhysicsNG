@@ -1,6 +1,7 @@
 #include "Features/SmpPhysics.h"
 #include "Features/SmpPhysics/ClaimHandBack.h"
 #include "Features/SmpPhysics/ClaimPriority.h"
+#include "engine/HairLook.h"
 #include "engine/NifProbe.h"
 
 #include "Features/Wind/Wind.h"
@@ -498,6 +499,10 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](const Feature*, const json&) -> json { return NifProbe::XmlAuditResult(); });
 	FEATURE_QUERY("findPhysicsFile", "After nifPhysicsProbe has finished: the armors, cloaks, wigs and head parts whose models name a physics file containing the text. Args: file (string, part of the path in any case with either slash). Each match has its name, form ID, model, matching files and its index in testCrowdArmors and testCrowdCloaks (-1 when it is not in that list).",
 		[](const Feature*, const json& a_args) -> json { return FindPhysicsFile(a_args.value("file", std::string{})); });
+	FEATURE_COMMAND("hairLookRank", "Prototype: rank the hair-slot armors by how closely their shape matches one hair. Args: actorFormID (number, an NPC whose own hair is the target) or model (string, a path under Meshes) or name (string, part of a hair-slot armor's name); sex (0 male, 1 female), filter (string, part of a candidate's name), physicsOnly (bool, default true once nifPhysicsProbe has run), budgetMs (number, default 3000), top (number, default 10). Shapes are loaded once and kept, so repeat while hairLookResult says pending. Read the outcome from hairLookResult.",
+		[](Feature*, const json& a_args) { HairLook::Rank(a_args); });
+	FEATURE_QUERY("hairLookResult", "The outcome of the last hairLookRank: the target's shape, then the closest hairs with their chamfer distance (game units, lower is closer), the share of the shape farther than 15 units from the other (coverage), voxel overlap, bounding box overlap and area ratio.",
+		[](const Feature*, const json&) -> json { return HairLook::Result(); });
 	FEATURE_QUERY("islandSizes", "How the rigid solver's islands split by constraint count in the last buffer build: islands and constraints per size bucket (1, 2-4, 5-8, 9-16, 17-32, 33-64, 65 or more), the island total, the largest island's constraints and the most colour classes one takes. Shows which solve kernel suits the islands.",
 		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->IslandSizesJson(); });
 	FEATURE_QUERY("physicsHealth", "After nifPhysicsProbe has finished: each armor and cloak the scan found physics files for, with the worst health among them (working, repaired or broken) and the files; what colours the Test crowd lists.",
