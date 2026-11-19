@@ -173,6 +173,17 @@ namespace SmpPhysics::RigidGpu
 		return sizes;
 	}
 
+	void MergeIslandSizes(IslandSizes& a_into, const IslandSizes& a_more) noexcept
+	{
+		for (std::size_t bucket = 0; bucket < IslandSizes::kBuckets; ++bucket) {
+			a_into.islands[bucket] += a_more.islands[bucket];
+			a_into.constraints[bucket] += a_more.constraints[bucket];
+		}
+		a_into.total += a_more.total;
+		a_into.largest = std::max(a_into.largest, a_more.largest);
+		a_into.mostColors = std::max(a_into.mostColors, a_more.mostColors);
+	}
+
 	StepData PackStep(const RigidReference::World& a_packed, float a_timeStep)
 	{
 		StepData data;

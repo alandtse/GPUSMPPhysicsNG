@@ -2,6 +2,7 @@
 
 #include "smp/RigidReference.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -239,4 +240,13 @@ namespace SmpPhysics::RigidGpu
 
 	/** @brief Counts each island and its constraints into the size bucket its constraint count falls in. */
 	[[nodiscard]] IslandSizes SummariseIslands(const std::vector<IslandRecord>& a_islands);
+
+	/** @brief Adds a_more's counts to a_into, so summaries of two island sets give the summary of both. */
+	void MergeIslandSizes(IslandSizes& a_into, const IslandSizes& a_more) noexcept;
+
+	/** @brief The capacity a pool of a_capacity records needs to hold a_needed: unchanged when it fits, else half again as many as needed so appends rarely regrow it. */
+	[[nodiscard]] constexpr std::uint32_t GrownPoolCapacity(std::uint32_t a_capacity, std::uint32_t a_needed) noexcept
+	{
+		return a_needed <= a_capacity ? a_capacity : std::max(64u, a_needed + a_needed / 2u);
+	}
 }

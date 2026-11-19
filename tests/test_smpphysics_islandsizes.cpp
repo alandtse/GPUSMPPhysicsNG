@@ -36,3 +36,30 @@ TEST_CASE("Empty islands are not counted and the most colours is kept", "[smpphy
 	CHECK(sizes.mostColors == 7);
 	CHECK(SummariseIslands({}).total == 0);
 }
+
+TEST_CASE("Merged island summaries equal the summary of the islands together", "[smpphysics][islandsizes]")
+{
+	const std::vector<IslandRecord> first{ Island(2, 1), Island(40, 3) };
+	const std::vector<IslandRecord> second{ Island(5, 7), Island(2, 2) };
+	std::vector<IslandRecord> both = first;
+	both.insert(both.end(), second.begin(), second.end());
+
+	IslandSizes merged = SummariseIslands(first);
+	MergeIslandSizes(merged, SummariseIslands(second));
+	const IslandSizes whole = SummariseIslands(both);
+
+	CHECK(merged.islands == whole.islands);
+	CHECK(merged.constraints == whole.constraints);
+	CHECK(merged.total == whole.total);
+	CHECK(merged.largest == whole.largest);
+	CHECK(merged.mostColors == whole.mostColors);
+}
+
+TEST_CASE("A pool keeps its capacity while a claim fits and grows past it by half again", "[smpphysics][islandsizes]")
+{
+	CHECK(GrownPoolCapacity(100, 100) == 100);
+	CHECK(GrownPoolCapacity(100, 0) == 100);
+	CHECK(GrownPoolCapacity(0, 10) == 64);
+	CHECK(GrownPoolCapacity(100, 101) == 151);
+	CHECK(GrownPoolCapacity(0, 1000) == 1500);
+}

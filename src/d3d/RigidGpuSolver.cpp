@@ -168,12 +168,13 @@ namespace SmpPhysics
 		}
 		claim.setup = std::move(a_setup);
 		if (const auto found = claimIndex.find(claim.setup.token); found != claimIndex.end()) {
+			dirty = dirty || found->second < builtClaims;
 			claims[found->second] = std::move(claim);
 		} else {
 			claimIndex[claim.setup.token] = claims.size();
 			claims.push_back(std::move(claim));
 		}
-		dirty = true;
+		dirty = dirty || !bodies;
 		return true;
 	}
 
@@ -189,6 +190,61 @@ namespace SmpPhysics
 		dirty = true;
 	}
 
+	struct RigidGpuSolver::PackedPools
+	{
+		std::vector<RigidGpu::BodyRecord> bodies;
+		std::vector<RigidGpu::ConstraintRecord> constraints;
+		std::vector<RigidGpu::IslandRecord> islands;
+		std::vector<std::uint32_t> islandConstraints;
+		std::vector<std::uint32_t> colored;
+		std::vector<std::uint32_t> colorOffsets;
+		std::vector<BodyMeta> meta;
+	};
+
+	void RigidGpuSolver::PackClaim(Claim& a_claim, PoolTotals& a_totals, PackedPools& a_pools)
+	{
+		a_claim.bodyBase = a_totals.bodies;
+		a_claim.constraintBase = a_totals.constraints;
+		a_pools.bodies.insert(a_pools.bodies.end(), a_claim.data.bodies.begin(), a_claim.data.bodies.end());
+		for (RigidGpu::ConstraintRecord record : a_claim.data.constraints) {
+			record.header.x += a_claim.bodyBase;
+			record.header.y += a_claim.bodyBase;
+			a_pools.constraints.push_back(record);
+		}
+		for (RigidGpu::IslandRecord record : a_claim.data.islands) {
+			record.range.x += a_totals.list;
+			a_pools.islands.push_back(record);
+		}
+		for (const std::uint32_t index : a_claim.data.islandConstraints)
+			a_pools.islandConstraints.push_back(index + a_claim.constraintBase);
+		for (const std::uint32_t index : a_claim.data.coloredConstraints)
+			a_pools.colored.push_back(index + a_claim.constraintBase);
+		a_pools.colorOffsets.insert(a_pools.colorOffsets.end(), a_claim.data.colorOffsets.begin(), a_claim.data.colorOffsets.end());
+		for (std::size_t body = 0; body < a_claim.setup.world.bodies.size(); ++body) {
+			BodyMeta meta;
+			meta.slots.x = a_claim.setup.boneOffset + static_cast<std::uint32_t>(body);
+			meta.slots.y = a_claim.setup.rootBody[body] < 0 ? kNoBody : a_claim.bodyBase + static_cast<std::uint32_t>(a_claim.setup.rootBody[body]);
+			const Transform& rest = a_claim.setup.restRelative[body];
+			meta.restRotation = Quat4(rest.rotation);
+			meta.restTranslation = { rest.translation.x, rest.translation.y, rest.translation.z, 0.0f };
+			if (body < a_claim.setup.nodeFromBody.size()) {
+				const Transform& node = a_claim.setup.nodeFromBody[body];
+				meta.nodeRotation = Quat4(node.rotation);
+				meta.nodeTranslation = { node.translation.x, node.translation.y, node.translation.z, 0.0f };
+			}
+			if (body < a_claim.setup.wind.size()) {
+				const ClaimSetup::WindBody& wind = a_claim.setup.wind[body];
+				meta.windAxis = { wind.axis.x, wind.axis.y, wind.axis.z, wind.area };
+				meta.windParams = { wind.factor, 0.0f, 0.0f, 0.0f };
+			}
+			a_pools.meta.push_back(meta);
+		}
+		a_totals.bodies += static_cast<std::uint32_t>(a_claim.data.bodies.size());
+		a_totals.constraints += static_cast<std::uint32_t>(a_claim.data.constraints.size());
+		a_totals.islands += static_cast<std::uint32_t>(a_claim.data.islands.size());
+		a_totals.list += static_cast<std::uint32_t>(a_claim.data.islandConstraints.size());
+	}
+
 	bool RigidGpuSolver::RebuildBuffers()
 	{
 		ZoneScopedN("SmpPhysics::RigidRebuildBuffers");
@@ -200,68 +256,28 @@ namespace SmpPhysics
 			std::uint32_t count{};
 		};
 		std::vector<Carried> carried;
-		std::vector<RigidGpu::BodyRecord> allBodies;
-		std::vector<RigidGpu::ConstraintRecord> allConstraints;
-		std::vector<RigidGpu::IslandRecord> allIslands;
-		std::vector<std::uint32_t> allIslandConstraints;
-		std::vector<std::uint32_t> allColored;
-		std::vector<std::uint32_t> allColorOffsets;
-		std::vector<BodyMeta> allMeta;
-		std::uint32_t bodyTotal = 0;
-		std::uint32_t constraintTotal = 0;
-		std::uint32_t islandTotal = 0;
-		std::uint32_t listTotal = 0;
+		PackedPools pools;
+		PoolTotals totals;
 		for (Claim& claim : claims) {
 			const std::uint32_t oldBase = claim.bodyBase;
 			const bool existing = claim.stepped;
-			claim.bodyBase = bodyTotal;
-			claim.constraintBase = constraintTotal;
-			const auto bodiesHere = static_cast<std::uint32_t>(claim.data.bodies.size());
+			PackClaim(claim, totals, pools);
 			if (existing)
-				carried.push_back({ oldBase, claim.bodyBase, bodiesHere });
-			allBodies.insert(allBodies.end(), claim.data.bodies.begin(), claim.data.bodies.end());
-			for (RigidGpu::ConstraintRecord record : claim.data.constraints) {
-				record.header.x += claim.bodyBase;
-				record.header.y += claim.bodyBase;
-				allConstraints.push_back(record);
-			}
-			for (RigidGpu::IslandRecord record : claim.data.islands) {
-				record.range.x += listTotal;
-				allIslands.push_back(record);
-			}
-			for (const std::uint32_t index : claim.data.islandConstraints)
-				allIslandConstraints.push_back(index + claim.constraintBase);
-			for (const std::uint32_t index : claim.data.coloredConstraints)
-				allColored.push_back(index + claim.constraintBase);
-			allColorOffsets.insert(allColorOffsets.end(), claim.data.colorOffsets.begin(), claim.data.colorOffsets.end());
-			for (std::size_t body = 0; body < claim.setup.world.bodies.size(); ++body) {
-				BodyMeta meta;
-				meta.slots.x = claim.setup.boneOffset + static_cast<std::uint32_t>(body);
-				meta.slots.y = claim.setup.rootBody[body] < 0 ? kNoBody : claim.bodyBase + static_cast<std::uint32_t>(claim.setup.rootBody[body]);
-				const Transform& rest = claim.setup.restRelative[body];
-				meta.restRotation = Quat4(rest.rotation);
-				meta.restTranslation = { rest.translation.x, rest.translation.y, rest.translation.z, 0.0f };
-				if (body < claim.setup.nodeFromBody.size()) {
-					const Transform& node = claim.setup.nodeFromBody[body];
-					meta.nodeRotation = Quat4(node.rotation);
-					meta.nodeTranslation = { node.translation.x, node.translation.y, node.translation.z, 0.0f };
-				}
-				if (body < claim.setup.wind.size()) {
-					const ClaimSetup::WindBody& wind = claim.setup.wind[body];
-					meta.windAxis = { wind.axis.x, wind.axis.y, wind.axis.z, wind.area };
-					meta.windParams = { wind.factor, 0.0f, 0.0f, 0.0f };
-				}
-				allMeta.push_back(meta);
-			}
-			bodyTotal += bodiesHere;
-			constraintTotal += static_cast<std::uint32_t>(claim.data.constraints.size());
-			islandTotal += static_cast<std::uint32_t>(claim.data.islands.size());
-			listTotal += static_cast<std::uint32_t>(claim.data.islandConstraints.size());
+				carried.push_back({ oldBase, claim.bodyBase, static_cast<std::uint32_t>(claim.data.bodies.size()) });
 		}
+		const PoolTotals room{ RigidGpu::GrownPoolCapacity(capacity.bodies, totals.bodies), RigidGpu::GrownPoolCapacity(capacity.constraints, totals.constraints),
+			RigidGpu::GrownPoolCapacity(capacity.islands, totals.islands), RigidGpu::GrownPoolCapacity(capacity.list, totals.list) };
+		pools.bodies.resize(room.bodies);
+		pools.constraints.resize(room.constraints);
+		pools.islands.resize(room.islands);
+		pools.islandConstraints.resize(room.list);
+		pools.colored.resize(room.list);
+		pools.colorOffsets.resize(static_cast<std::size_t>(room.islands) * RigidGpu::kMaxColors);
+		pools.meta.resize(room.bodies);
 
 		try {
 			winrt::com_ptr<ID3D11Buffer> previousBodies = bodies ? bodies->resource : nullptr;
-			bodies = MakeWritable<RigidGpu::BodyRecord>(&allBodies, bodyTotal, "SmpPhysics::RigidBodies", true);
+			bodies = MakeWritable<RigidGpu::BodyRecord>(&pools.bodies, room.bodies, "SmpPhysics::RigidBodies", true);
 			if (previousBodies) {
 				for (const Carried& range : carried) {
 					const D3D11_BOX box{ range.oldBase * static_cast<UINT>(sizeof(RigidGpu::BodyRecord)), 0, 0,
@@ -270,17 +286,17 @@ namespace SmpPhysics
 						previousBodies.get(), 0, &box);
 				}
 			}
-			solverBodies = MakeWritable<RigidGpu::SolverBodyRecord>(nullptr, bodyTotal, "SmpPhysics::RigidSolverBodies", false);
-			rows = MakeWritable<RigidGpu::RowRecord>(nullptr, constraintTotal * RigidGpu::kRowsPerConstraint, "SmpPhysics::RigidRows", false);
-			rowMasks = MakeWritable<std::uint32_t>(nullptr, constraintTotal * RigidGpu::kAxisSlots, "SmpPhysics::RigidRowMasks", false);
-			constraints = MakeStatic(allConstraints, "SmpPhysics::RigidConstraints");
-			islands = MakeStatic(allIslands, "SmpPhysics::RigidIslands");
-			islandConstraints = MakeStatic(allIslandConstraints, "SmpPhysics::RigidIslandConstraints");
-			coloredConstraints = MakeStatic(allColored, "SmpPhysics::RigidColoredConstraints");
-			colorOffsets = MakeStatic(allColorOffsets, "SmpPhysics::RigidColorOffsets");
-			bodyMeta = MakeStatic(allMeta, "SmpPhysics::RigidBodyMeta");
-			frameInputs = std::make_unique<Buffer>(StructuredBufferDesc<FrameInput>(std::max(1u, bodyTotal), false, true), nullptr, "SmpPhysics::RigidFrameInputs");
-			frameInputs->CreateSRV(StructuredSrvDesc(std::max(1u, bodyTotal)));
+			solverBodies = MakeWritable<RigidGpu::SolverBodyRecord>(nullptr, room.bodies, "SmpPhysics::RigidSolverBodies", false);
+			rows = MakeWritable<RigidGpu::RowRecord>(nullptr, room.constraints * RigidGpu::kRowsPerConstraint, "SmpPhysics::RigidRows", false);
+			rowMasks = MakeWritable<std::uint32_t>(nullptr, room.constraints * RigidGpu::kAxisSlots, "SmpPhysics::RigidRowMasks", false);
+			constraints = MakeStatic(pools.constraints, "SmpPhysics::RigidConstraints");
+			islands = MakeStatic(pools.islands, "SmpPhysics::RigidIslands");
+			islandConstraints = MakeStatic(pools.islandConstraints, "SmpPhysics::RigidIslandConstraints");
+			coloredConstraints = MakeStatic(pools.colored, "SmpPhysics::RigidColoredConstraints");
+			colorOffsets = MakeStatic(pools.colorOffsets, "SmpPhysics::RigidColorOffsets");
+			bodyMeta = MakeStatic(pools.meta, "SmpPhysics::RigidBodyMeta");
+			frameInputs = std::make_unique<Buffer>(StructuredBufferDesc<FrameInput>(std::max(1u, room.bodies), false, true), nullptr, "SmpPhysics::RigidFrameInputs");
+			frameInputs->CreateSRV(StructuredSrvDesc(std::max(1u, room.bodies)));
 			if (!stepConstants)
 				stepConstants = std::make_unique<ConstantBuffer>(ConstantBufferDesc<RigidGpu::StepConstants>(true), "SmpPhysics::RigidStepConstants");
 			if (!runtimeConstants)
@@ -290,12 +306,46 @@ namespace SmpPhysics
 			logger::warn("{} buffer error: {}", kLogPrefix, error.what());
 			return false;
 		}
-		bodyCount = bodyTotal;
-		constraintCount = constraintTotal;
-		islandCount = islandTotal;
-		islandSizes = RigidGpu::SummariseIslands(allIslands);
-		frameScratch.assign(bodyTotal, FrameInput{});
+		capacity = room;
+		used = totals;
+		bodyCount = totals.bodies;
+		constraintCount = totals.constraints;
+		islandCount = totals.islands;
+		islandSizes = {};
+		for (const Claim& claim : claims)
+			RigidGpu::MergeIslandSizes(islandSizes, RigidGpu::SummariseIslands(claim.data.islands));
+		frameScratch.assign(bodyCount, FrameInput{});
+		builtClaims = claims.size();
 		dirty = false;
+		return true;
+	}
+
+	bool RigidGpuSolver::AppendClaims()
+	{
+		ZoneScopedN("SmpPhysics::RigidAppendClaims");
+		PackedPools pools;
+		PoolTotals totals = used;
+		const PoolTotals first = totals;
+		for (std::size_t index = builtClaims; index < claims.size(); ++index)
+			PackClaim(claims[index], totals, pools);
+		if (totals.bodies > capacity.bodies || totals.constraints > capacity.constraints || totals.islands > capacity.islands || totals.list > capacity.list)
+			return RebuildBuffers();
+
+		Util::UpdateBufferSlots(bodies->resource.get(), first.bodies, pools.bodies);
+		Util::UpdateBufferSlots(bodyMeta->resource.get(), first.bodies, pools.meta);
+		Util::UpdateBufferSlots(constraints->resource.get(), first.constraints, pools.constraints);
+		Util::UpdateBufferSlots(islands->resource.get(), first.islands, pools.islands);
+		Util::UpdateBufferSlots(islandConstraints->resource.get(), first.list, pools.islandConstraints);
+		Util::UpdateBufferSlots(coloredConstraints->resource.get(), first.list, pools.colored);
+		Util::UpdateBufferSlots(colorOffsets->resource.get(), first.islands * RigidGpu::kMaxColors, pools.colorOffsets);
+		used = totals;
+		bodyCount = totals.bodies;
+		constraintCount = totals.constraints;
+		islandCount = totals.islands;
+		for (std::size_t index = builtClaims; index < claims.size(); ++index)
+			RigidGpu::MergeIslandSizes(islandSizes, RigidGpu::SummariseIslands(claims[index].data.islands));
+		frameScratch.resize(bodyCount, FrameInput{});
+		builtClaims = claims.size();
 		return true;
 	}
 
@@ -307,7 +357,7 @@ namespace SmpPhysics
 		auto* context = globals::d3d::context;
 		if (!context || !EnsureShaders())
 			return false;
-		if (dirty && !RebuildBuffers())
+		if (dirty ? !RebuildBuffers() : builtClaims < claims.size() && !AppendClaims())
 			return false;
 
 		float frameTime = 0.0f;
