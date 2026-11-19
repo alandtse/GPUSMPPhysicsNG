@@ -65,6 +65,7 @@ namespace SmpPhysics
 		HairTargetView view;
 		std::uint32_t rankedFor{ UINT32_MAX };  ///< The target the view's ranking is for, or is being made for.
 		RE::FormID rankedWig{};                 ///< The wig that stood for the target's hair in that ranking, 0 for none.
+		RE::FormID rankedHair{};                ///< The hair head part the target had in that ranking, 0 for none; a new one, as a change of sex brings, ranks again.
 		bool ranking{};
 		std::chrono::steady_clock::time_point sampledAt{};
 	};

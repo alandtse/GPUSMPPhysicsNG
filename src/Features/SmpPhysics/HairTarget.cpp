@@ -78,9 +78,13 @@ namespace SmpPhysics
 			view.formID = target;
 			auto* actor = RE::TESForm::LookupByID<RE::Actor>(target ? target : kPlayerFormID);
 			wig = actor ? a_wigs.NaturalWig(*actor) : 0;
-			if (rankedFor != target || rankedWig != wig) {
+			const auto* base = actor ? actor->GetActorBase() : nullptr;
+			const auto* hairPart = base ? const_cast<RE::TESNPC*>(base)->GetCurrentHeadPartByType(RE::BGSHeadPart::HeadPartType::kHair) : nullptr;
+			const RE::FormID hair = hairPart ? hairPart->GetFormID() : 0;
+			if (rankedFor != target || rankedWig != wig || rankedHair != hair) {
 				rankedFor = target;
 				rankedWig = wig;
+				rankedHair = hair;
 				ranking = true;
 				view.order.clear();
 				view.badges.clear();

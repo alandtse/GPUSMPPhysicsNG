@@ -296,7 +296,11 @@ namespace HairLook
 				sourceName = wig->GetName();
 				wornWig = true;
 			} else if (hair) {
-				sourceModel = hair->GetModel() ? hair->GetModel() : "";
+				if (!hair->GetModel() || !*hair->GetModel()) {
+					Publish({ { "error", "that actor's hair head part has no model" } });
+					return;
+				}
+				sourceModel = hair->GetModel();
 				sourceName = std::string(hair->GetFormEditorID());
 			} else {
 				Publish({ { "error", "that actor has no hair head part" } });

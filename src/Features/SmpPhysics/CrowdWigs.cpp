@@ -229,8 +229,9 @@ namespace SmpPhysics
 		const std::vector<RE::TESObjectARMO*>& wigs = WigForms();
 		if (a_index < 0 || static_cast<std::size_t>(a_index) >= wigs.size())
 			return false;
-		naturalWigs.try_emplace(a_actor.GetFormID(), NaturalWig(a_actor));
-		Wear(a_actor, *wigs[static_cast<std::size_t>(a_index)]);
+		RE::TESObjectARMO& wig = *wigs[static_cast<std::size_t>(a_index)];
+		naturalWigs.insert_or_assign(a_actor.GetFormID(), OwnWig{ NaturalWig(a_actor), wig.GetFormID() });
+		Wear(a_actor, wig);
 		return true;
 	}
 
@@ -246,10 +247,9 @@ namespace SmpPhysics
 
 	RE::FormID CrowdWigs::NaturalWig(RE::Actor& a_actor) const
 	{
-		if (const auto found = naturalWigs.find(a_actor.GetFormID()); found != naturalWigs.end())
-			return found->second;
 		const RE::TESObjectARMO* worn = WornWig(a_actor);
-		return worn ? worn->GetFormID() : 0;
+		const auto found = naturalWigs.find(a_actor.GetFormID());
+		return NaturalWigId(found != naturalWigs.end() ? std::optional<OwnWig>(found->second) : std::nullopt, worn ? worn->GetFormID() : 0);
 	}
 
 	void CrowdWigs::TakeOff(RE::Actor& a_actor)
@@ -263,7 +263,7 @@ namespace SmpPhysics
 		const auto own = naturalWigs.find(a_actor.GetFormID());
 		if (own == naturalWigs.end())
 			return;
-		if (auto* wig = own->second ? RE::TESForm::LookupByID<RE::TESObjectARMO>(own->second) : nullptr)
+		if (auto* wig = own->second.natural ? RE::TESForm::LookupByID<RE::TESObjectARMO>(own->second.natural) : nullptr)
 			Wear(a_actor, *wig);
 		naturalWigs.erase(own);
 	}
