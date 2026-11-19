@@ -1390,6 +1390,7 @@ void SmpPhysicsFeature::InstallClaimCollision(Claim& a_claim, ClaimCollision& a_
 	a_claim.collisionDrivers = std::move(a_collision.drivers);
 	a_claim.hairMeshNames = std::move(a_collision.hairMeshNames);
 	a_claim.bodySignature = a_collision.bodySignature;
+	a_claim.modelName = std::move(a_collision.modelName);
 	a_claim.collisionActive = true;
 }
 
