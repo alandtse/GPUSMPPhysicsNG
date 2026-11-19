@@ -945,3 +945,16 @@ TEST_CASE("A bone's surface mask follows the collide tags of its shape and spare
 	CHECK(AllowedSurfaceMask(&skirt2, surfaces) == 0b1101u);
 	CHECK(AllowedSurfaceMask(nullptr, surfaces) == 0xFFFFFFFFu);
 }
+
+TEST_CASE("A rig may have up to 1024 bones", "[smpphysics][rig]")
+{
+	SmpRig rig;
+	rig.bones.resize(1024);
+	std::string reason;
+	ValidateRig(rig, reason);
+	CHECK(reason != "bone count above the limit");
+
+	rig.bones.resize(1025);
+	CHECK_FALSE(ValidateRig(rig, reason));
+	CHECK(reason == "bone count above the limit");
+}

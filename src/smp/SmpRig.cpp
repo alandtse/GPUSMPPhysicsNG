@@ -21,8 +21,8 @@ namespace SmpPhysics
 		constexpr std::size_t kMaxFloatTextLength = 64;
 		constexpr std::size_t kMaxElementCount = 20000;
 		constexpr std::size_t kMaxEntityLength = 8;
-		constexpr std::size_t kMaxBones = 512;
-		constexpr std::size_t kMaxJoints = 512;
+		constexpr std::size_t kMaxBones = 1024;
+		constexpr std::size_t kMaxJoints = 1024;
 		constexpr float kIdentityTolerance = 1e-6f;
 		constexpr float kGravityFactorMinimum = 0.0f;
 		constexpr float kGravityFactorMaximum = 1.0f;
