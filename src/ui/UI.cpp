@@ -70,6 +70,10 @@ namespace SettingsUi
 				if (row.showMode != before && row.showMode != 0 && row.onShowFiltered)
 					row.onShowFiltered();
 			}
+			std::vector<int> order = row.orderFn ? row.orderFn() : std::vector<int>{};
+			if (order.size() != row.items.size())
+				order.clear();
+			const std::vector<std::string> badges = row.itemBadgeFn ? row.itemBadgeFn() : std::vector<std::string>{};
 			const auto statusOf = [&status](std::size_t a_index) { return a_index < status.size() ? status[a_index] : 0; };
 			const int selected = row.selectedFn ? row.selectedFn() : *row.intValue;
 			const bool scroll = ShouldScroll(selected, row.lastSelected, row.pickedIndex);
@@ -85,7 +89,7 @@ namespace SettingsUi
 					lowerNames.reserve(row.items.size());
 					for (std::size_t index = 0; index < row.items.size(); ++index)
 						lowerNames.push_back(SearchText(row.items[index], index < files.size() ? files[index] : std::string_view{}));
-					const int target = StepVisible(lowerNames, filter, row.showMode, status, selected, next ? 1 : -1);
+					const int target = StepVisible(lowerNames, filter, row.showMode, status, selected, next ? 1 : -1, order);
 					if (target != selected) {
 						*row.intValue = target;
 						clicked = true;
@@ -97,7 +101,8 @@ namespace SettingsUi
 			if (ImGuiMCP::BeginListBox(a_id.c_str(), { kWidth, kListBoxRows * ImGuiMCP::GetTextLineHeightWithSpacing() })) {
 				std::size_t shown = 0;
 				std::size_t hidden = 0;
-				for (std::size_t index = 0; index < row.items.size(); ++index) {
+				for (std::size_t position = 0; position < row.items.size(); ++position) {
+					const std::size_t index = order.empty() ? position : static_cast<std::size_t>(order[position]);
 					const std::string& name = row.items[index];
 					constexpr const char* kStateTags[] = { "", "  [OK]", "  [REPAIRED]", "  [FAULT]" };
 					const int state = std::clamp(statusOf(index), 0, kMaxItemState);
@@ -114,7 +119,7 @@ namespace SettingsUi
 						constexpr ImGuiMCP::ImVec4 kColours[] = { { 0.40f, 0.85f, 0.45f, 1.0f }, { 0.95f, 0.65f, 0.10f, 1.0f }, { 0.95f, 0.35f, 0.35f, 1.0f } };
 						ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kColours[state - 1]);
 					}
-					if (ImGuiMCP::Selectable((name + kStateTags[state] + "##gsp_item_" + std::to_string(index)).c_str(), isSelected,
+					if (ImGuiMCP::Selectable((name + kStateTags[state] + (index < badges.size() && !badges[index].empty() ? "  [" + badges[index] + "]" : std::string{}) + "##gsp_item_" + std::to_string(index)).c_str(), isSelected,
 							row.onActivated ? ImGuiMCP::ImGuiSelectableFlags_AllowDoubleClick : 0, { 0, 0 })) {
 						*row.intValue = static_cast<int>(index);
 						row.pickedIndex = static_cast<int>(index);

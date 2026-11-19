@@ -50,6 +50,10 @@ namespace SettingsUi
 		std::function<std::pair<std::size_t, std::size_t>()> progressFn;
 		/** @brief Whether the filter box has already asked for the data its filter needs. */
 		bool scanAsked{};
+		/** @brief A List's item indexes in the order it shows them, read every frame; empty keeps the natural order. */
+		std::function<std::vector<int>()> orderFn;
+		/** @brief Text a List shows after each item's name, indexed by item and read every frame; an empty text adds nothing. */
+		std::function<std::vector<std::string>()> itemBadgeFn;
 		bool sameLine{};
 		float minimum{};
 		float maximum{};

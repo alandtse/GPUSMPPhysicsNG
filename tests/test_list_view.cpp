@@ -57,6 +57,19 @@ TEST_CASE("Stepping stays put when no row is visible", "[ui][listview]")
 	CHECK(StepVisible({}, "", 0, states, -1, 1) == -1);
 }
 
+TEST_CASE("Stepping follows the order the list shows its rows in", "[ui][listview]")
+{
+	const std::vector<int> states;
+	const std::vector<int> order{ 2, 0, 3, 1 };
+	CHECK(StepVisible(kNames, "", 0, states, 2, 1, order) == 0);
+	CHECK(StepVisible(kNames, "", 0, states, 0, 1, order) == 3);
+	CHECK(StepVisible(kNames, "", 0, states, 1, 1, order) == 2);
+	CHECK(StepVisible(kNames, "", 0, states, 2, -1, order) == 1);
+	CHECK(StepVisible(kNames, "braid", 0, states, 2, 1, order) == 0);
+	CHECK(StepVisible(kNames, "", 0, states, -1, 1, order) == 2);
+	CHECK(StepVisible(kNames, "", 0, states, 0, 1, std::vector<int>{ 1, 0 }) == 1);
+}
+
 TEST_CASE("A list scrolls to a changed selection except one the user just clicked", "[ui][listview]")
 {
 	CHECK(ShouldScroll(5, 2, -1));
