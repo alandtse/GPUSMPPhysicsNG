@@ -198,7 +198,7 @@ namespace
 
 		RE::BSResourceNiBinaryStream stream(a_path);
 		if (!stream.good()) {
-			result.reason = "the physics file could not be opened";
+			result.reason = std::string(SmpPhysics::kMissingFileReason);
 			return result;
 		}
 
@@ -869,22 +869,24 @@ std::vector<SmpPhysics::Health> SmpPhysicsFeature::ItemHealths(const std::vector
 			declined.emplace(key(entry.first), entry.second);
 	}
 
-	std::map<std::string, SmpPhysics::Health> byFile;
+	std::map<std::string, SmpPhysics::FileHealth> byFile;
 	std::vector<SmpPhysics::Health> result;
 	result.reserve(a_itemFiles.size());
 	for (const std::vector<std::string>& files : a_itemFiles) {
-		SmpPhysics::Health worst = SmpPhysics::Health::None;
+		std::vector<SmpPhysics::FileHealth> states;
 		for (const std::string& file : files) {
 			const std::string fileKey = key(file);
 			auto found = byFile.find(fileKey);
 			if (found == byFile.end()) {
 				const auto parsed = GetParsedRig(file);
 				const auto reason = declined.find(fileKey);
-				found = byFile.emplace(fileKey, SmpPhysics::ClassifyFile(parsed->status == SmpPhysics::ParseStatus::Ok, parsed->reason, repaired.contains(fileKey) || !parsed->warnings.empty(), reason != declined.end() ? std::string_view(reason->second) : std::string_view{})).first;
+				const bool parsedOk = parsed->status == SmpPhysics::ParseStatus::Ok;
+				const SmpPhysics::Health health = SmpPhysics::ClassifyFile(parsedOk, parsed->reason, repaired.contains(fileKey) || !parsed->warnings.empty(), reason != declined.end() ? std::string_view(reason->second) : std::string_view{});
+				found = byFile.emplace(fileKey, SmpPhysics::FileHealth{ health, !parsedOk && parsed->reason == SmpPhysics::kMissingFileReason }).first;
 			}
-			worst = SmpPhysics::Worse(worst, found->second);
+			states.push_back(found->second);
 		}
-		result.push_back(worst);
+		result.push_back(SmpPhysics::ClassifyItem(states));
 	}
 	return result;
 }
@@ -1283,10 +1285,10 @@ bool SmpPhysicsFeature::ResolveRigNodes(const hdt::IMeshClaimContext& a_context,
 		}
 		if (sceneParent != parentNode) {
 			repairLog.Record(a_path, std::format("'{}' hangs under '{}' in the skeleton but its joint is to '{}'", a_rig.bones[static_cast<std::size_t>(joint.child)].name, sceneParent->name.c_str(), a_rig.bones[static_cast<std::size_t>(joint.parent)].name),
-				"accepted it; the rest pose comes from the scene graph and the joint still binds the physics parent");
+				"used the skeleton's pose and kept the joint to the file's parent");
 		} else if (childNode->parent != parentNode) {
 			repairLog.Record(a_path, std::format("'{}' hangs under '{}', a node hdtSMP64 added when it merged the armor, not directly under '{}' as the file says", a_rig.bones[static_cast<std::size_t>(joint.child)].name, childNode->parent ? childNode->parent->name.c_str() : "nothing", a_rig.bones[static_cast<std::size_t>(joint.parent)].name),
-				"accepted it and simulated the bone from where the scene graph puts it");
+				"simulated the bone from where the skeleton puts it");
 		}
 	}
 	return true;
@@ -1572,7 +1574,7 @@ std::shared_ptr<const SmpPhysics::ParseResult> SmpPhysicsFeature::GetParsedRig(c
 	auto parsed = std::make_shared<SmpPhysics::ParseResult>(ReadPhysicsFile(a_path));
 	for (const std::string& warning : parsed->warnings) {
 		logger::warn("{} '{}': {}", kLogPrefix, a_path, warning);
-		repairLog.Record(a_path, warning, "repaired it and used the file");
+		repairLog.Record(a_path, warning, {});
 	}
 
 	const std::scoped_lock lock(stateMutex);
@@ -1663,7 +1665,7 @@ void SmpPhysicsFeature::RecordDecline(const std::string& a_file, const std::stri
 	if (shouldLog)
 		logger::info("{} Declined '{}': {}", kLogPrefix, a_file, a_reason);
 	if (SmpPhysics::RepairLog::IsFileFault(a_reason))
-		repairLog.Record(a_file, a_reason, "declined the file, so hdtSMP64 simulates it");
+		repairLog.Record(a_file, a_reason, a_reason == SmpPhysics::kMissingFileReason ? "nothing to simulate; hdtSMP64 skips a missing file too" : "not simulated here; hdtSMP64 simulates it instead");
 }
 
 void SmpPhysicsFeature::ReleaseMesh(std::uint64_t a_token)
