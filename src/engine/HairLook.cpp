@@ -11,6 +11,7 @@
 #include "Utils/SkinVertexBlock.h"
 #include "Utils/StringUtils.h"
 #include "engine/NifProbe.h"
+#include "smp/HairPartModel.h"
 #include "smp/HairShape.h"
 
 #include <algorithm>
@@ -281,6 +282,12 @@ namespace HairLook
 		}
 
 		std::string sourceModel = a_args.value("model", std::string{});
+		const auto hairPartModel = [](const RE::BGSHeadPart& a_part) {
+			std::vector<std::string> extras;
+			for (const RE::BGSHeadPart* extra : a_part.extraParts)
+				extras.emplace_back(extra && extra->GetModel() ? extra->GetModel() : "");
+			return SmpPhysics::HairPartModel(a_part.GetModel() ? a_part.GetModel() : "", extras);
+		};
 		std::string sourceName = sourceModel;
 		RE::FormID sourceArmor = 0;
 		bool wornWig = false;
@@ -296,11 +303,11 @@ namespace HairLook
 				sourceName = wig->GetName();
 				wornWig = true;
 			} else if (hair) {
-				if (!hair->GetModel() || !*hair->GetModel()) {
+				sourceModel = hairPartModel(*hair);
+				if (sourceModel.empty()) {
 					Publish({ { "error", "that actor's hair head part has no model" } });
 					return;
 				}
-				sourceModel = hair->GetModel();
 				sourceName = std::string(hair->GetFormEditorID());
 			} else {
 				Publish({ { "error", "that actor has no hair head part" } });
@@ -308,11 +315,11 @@ namespace HairLook
 			}
 		} else if (sourceModel.empty() && a_args.contains("headPart")) {
 			const auto* part = RE::TESForm::LookupByEditorID<RE::BGSHeadPart>(a_args.value("headPart", std::string{}));
-			if (!part || !part->GetModel()) {
+			sourceModel = part ? hairPartModel(*part) : std::string();
+			if (sourceModel.empty()) {
 				Publish({ { "error", "no head part with that editor ID has a model" } });
 				return;
 			}
-			sourceModel = part->GetModel();
 			sourceName = std::string(part->GetFormEditorID());
 		} else if (sourceModel.empty() && !name.empty()) {
 			for (const RE::TESObjectARMO* armor : handler->GetFormArray<RE::TESObjectARMO>()) {
@@ -321,6 +328,20 @@ namespace HairLook
 					sourceName = armor->GetName();
 					sourceArmor = armor->GetFormID();
 					break;
+				}
+			}
+			if (sourceModel.empty()) {
+				for (const RE::BGSHeadPart* part : handler->GetFormArray<RE::BGSHeadPart>()) {
+					if (!part || part->type != RE::BGSHeadPart::HeadPartType::kHair)
+						continue;
+					const std::string editorId(part->GetFormEditorID());
+					if (Util::SearchKey(editorId).find(name) == std::string::npos && Util::SearchKey(part->GetName()).find(name) == std::string::npos)
+						continue;
+					sourceModel = hairPartModel(*part);
+					if (!sourceModel.empty()) {
+						sourceName = editorId;
+						break;
+					}
 				}
 			}
 		}

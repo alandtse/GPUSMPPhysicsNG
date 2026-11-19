@@ -24,6 +24,7 @@
 #include "plugin/Settings.h"
 #include "smp/CardVertices.h"
 #include "smp/GpuViews.h"
+#include "smp/HairPartModel.h"
 #include "smp/SceneParent.h"
 
 #include <algorithm>
@@ -95,12 +96,43 @@ namespace
 		}
 	}
 
+	/** @brief What a character wears on its head: its hair head part with the mesh that stands for it, and each worn armor in a hair or head slot. */
+	json HairWearing(std::uint32_t a_formID)
+	{
+		using Slot = RE::BGSBipedObjectForm::BipedObjectSlot;
+		json list = json::array();
+		auto* actor = a_formID ? RE::TESForm::LookupByID<RE::Actor>(a_formID) : RE::PlayerCharacter::GetSingleton();
+		if (!actor)
+			return list;
+		const auto* base = const_cast<RE::TESNPC*>(actor->GetActorBase());
+		if (const RE::BGSHeadPart* part = base ? const_cast<RE::TESNPC*>(base)->GetCurrentHeadPartByType(RE::BGSHeadPart::HeadPartType::kHair) : nullptr) {
+			std::vector<std::string> extras;
+			for (const RE::BGSHeadPart* extra : part->extraParts)
+				extras.emplace_back(extra && extra->GetModel() ? extra->GetModel() : "");
+			list.push_back({ { "kind", "hairPart" }, { "name", std::string(part->GetFormEditorID()) }, { "formId", part->GetFormID() },
+				{ "model", SmpPhysics::HairPartModel(part->GetModel() ? part->GetModel() : "", extras) }, { "extraParts", extras.size() } });
+		}
+		const auto worn = actor->GetInventory([](RE::TESBoundObject& a_object) {
+			const auto* armor = a_object.As<RE::TESObjectARMO>();
+			return armor && (armor->HasPartOf(Slot::kHair) || armor->HasPartOf(Slot::kLongHair) || armor->HasPartOf(Slot::kHead));
+		});
+		for (const auto& [object, entry] : worn) {
+			const auto* armor = object ? object->As<RE::TESObjectARMO>() : nullptr;
+			if (!armor || !entry.second || !entry.second->IsWorn())
+				continue;
+			list.push_back({ { "kind", "armor" }, { "name", armor->GetName() }, { "formId", armor->GetFormID() }, { "hairSlot", armor->HasPartOf(Slot::kHair) || armor->HasPartOf(Slot::kLongHair) },
+				{ "headSlot", armor->HasPartOf(Slot::kHead) } });
+		}
+		return list;
+	}
+
 	json HairTargetJson(const SmpPhysics::HairTargetView& a_view)
 	{
 		json result{ { "formId", a_view.formID }, { "text", a_view.text }, { "status", a_view.status }, { "hasConsole", a_view.hasConsole }, { "hasCrosshair", a_view.hasCrosshair }, { "pinned", a_view.pinned },
 			{ "ranked", a_view.progress.second } };
 		if (!a_view.order.empty())
 			result["closest"] = SmpPhysics::CrowdWigs::WigNames()[static_cast<std::size_t>(a_view.order.front())];
+		result["wearing"] = HairWearing(a_view.formID);
 		return result;
 	}
 
@@ -539,7 +571,7 @@ void SmpPhysicsFeature::RegisterUxActions()
 			}
 			HairLook::Rank(args);
 		});
-	FEATURE_QUERY("hairTarget", "The character whose hair is matched and swapped: formId (0 for the player), text, status while the wigs are being ranked, which sources exist (hasConsole for a prid selection, hasCrosshair) and whether one is pinned.",
+	FEATURE_QUERY("hairTarget", "The character whose hair is matched and swapped: formId (0 for the player), text, status while the wigs are being ranked, which sources exist (hasConsole for a prid selection, hasCrosshair) whether one is pinned, and wearing: its hair head part with the mesh that stands for it and each worn armor in a hair or head slot.",
 		[](const Feature* a_self, const json&) -> json { return HairTargetJson(static_cast<const SmpPhysicsFeature*>(a_self)->HairTargetState()); });
 	FEATURE_COMMAND("setHairTarget", "Choose whose hair is matched and swapped. Args: source (string: player, console for the reference selected with prid, crosshair for the character last looked at, or auto to let the console selection set it again).",
 		[](Feature* a_self, const json& a_args) {
