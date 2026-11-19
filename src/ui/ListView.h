@@ -54,19 +54,28 @@ namespace SettingsUi
 		Natural,
 		NameAscending,
 		NameDescending,
-		WorstFirst,      ///< Rows with a broken physics file first, then repaired, then working, then those with none.
-		HasPhysicsFirst  ///< Rows with physics before those without.
+		WorstFirst,       ///< Rows with a broken physics file first, then repaired, then working, then those with none.
+		HasPhysicsFirst,  ///< Rows with physics before those without.
+		MostBones,        ///< Rows with the most physics bones first, those with none last.
+		FewestBones       ///< Rows with the fewest physics bones first, those with none last.
 	};
 
 	/**
 	 * @brief The row indexes in the order a_sort shows them, empty for the natural order; ties keep the natural order.
 	 * @param a_states Each row's state as RowVisible takes it, shorter than a_names for rows with none.
+	 * @param a_bones Each row's physics bone count, shorter than a_names for rows with none; what the bone sorts order by.
 	 */
-	[[nodiscard]] inline std::vector<int> SortedOrder(Sort a_sort, std::span<const std::string> a_names, std::span<const int> a_states)
+	[[nodiscard]] inline std::vector<int> SortedOrder(Sort a_sort, std::span<const std::string> a_names, std::span<const int> a_states, std::span<const int> a_bones = {})
 	{
 		if (a_sort == Sort::Natural)
 			return {};
 		const auto state = [&](int a_index) { return static_cast<std::size_t>(a_index) < a_states.size() ? a_states[static_cast<std::size_t>(a_index)] : 0; };
+		const auto bones = [&](int a_index) { return static_cast<std::size_t>(a_index) < a_bones.size() ? a_bones[static_cast<std::size_t>(a_index)] : 0; };
+		const auto fewer = [&](int a_left, int a_right) {
+			const int left = bones(a_left);
+			const int right = bones(a_right);
+			return left != 0 && (right == 0 || left < right);
+		};
 		const auto lessName = [&](int a_left, int a_right) {
 			return std::ranges::lexicographical_compare(a_names[static_cast<std::size_t>(a_left)], a_names[static_cast<std::size_t>(a_right)],
 				[](unsigned char a_l, unsigned char a_r) { return std::tolower(a_l) < std::tolower(a_r); });
@@ -81,6 +90,10 @@ namespace SettingsUi
 				return lessName(a_right, a_left);
 			case Sort::WorstFirst:
 				return state(a_left) > state(a_right);
+			case Sort::MostBones:
+				return bones(a_left) > bones(a_right);
+			case Sort::FewestBones:
+				return fewer(a_left, a_right);
 			default:
 				return (state(a_left) != 0) > (state(a_right) != 0);
 			}

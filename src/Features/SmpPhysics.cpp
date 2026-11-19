@@ -991,6 +991,21 @@ std::vector<SmpPhysics::Health> SmpPhysicsFeature::ItemHealths(const std::vector
 	return result;
 }
 
+std::vector<int> SmpPhysicsFeature::ItemBoneCounts(const std::vector<std::vector<std::string>>& a_itemFiles)
+{
+	std::vector<int> counts;
+	counts.reserve(a_itemFiles.size());
+	for (const std::vector<std::string>& files : a_itemFiles) {
+		std::size_t bones = 0;
+		for (const std::string& file : files) {
+			if (const auto parsed = GetParsedRig(file); parsed && parsed->status == SmpPhysics::ParseStatus::Ok)
+				bones += parsed->rig.bones.size();
+		}
+		counts.push_back(static_cast<int>(bones));
+	}
+	return counts;
+}
+
 std::string SmpPhysicsFeature::ItemStatsText(RE::FormID a_armor)
 {
 	if (!NifProbe::Generation())

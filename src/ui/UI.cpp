@@ -79,6 +79,10 @@ namespace SettingsUi
 				sortLabels.emplace_back("Worst physics first");
 				sortLabels.emplace_back("With physics first");
 			}
+			if (row.itemBonesFn) {
+				sortLabels.emplace_back("Most bones first");
+				sortLabels.emplace_back("Fewest bones first");
+			}
 			std::string joinedSorts;
 			for (const std::string& label : sortLabels)
 				joinedSorts += label + '\0';
@@ -92,8 +96,9 @@ namespace SettingsUi
 				order = choice.orderFn ? choice.orderFn() : std::vector<int>{};
 				badges = choice.badgeFn ? choice.badgeFn() : std::vector<std::string>{};
 			} else {
-				constexpr Sort kBuiltIn[] = { Sort::Natural, Sort::NameAscending, Sort::NameDescending, Sort::WorstFirst, Sort::HasPhysicsFirst };
-				order = SortedOrder(kBuiltIn[static_cast<std::size_t>(row.sortIndex) - row.sorts.size()], row.items, status);
+				constexpr Sort kBuiltIn[] = { Sort::Natural, Sort::NameAscending, Sort::NameDescending, Sort::WorstFirst, Sort::HasPhysicsFirst, Sort::MostBones, Sort::FewestBones };
+				const std::vector<int> bones = row.itemBonesFn ? row.itemBonesFn() : std::vector<int>{};
+				order = SortedOrder(kBuiltIn[static_cast<std::size_t>(row.sortIndex) - row.sorts.size()], row.items, status, bones);
 			}
 			if (order.size() != row.items.size())
 				order.clear();

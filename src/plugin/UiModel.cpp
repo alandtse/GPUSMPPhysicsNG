@@ -198,6 +198,28 @@ namespace
 		};
 	}
 
+	/** @brief Each item's physics bone count for the bone sorts; empty before a scan. a_skip leading entries have no item. */
+	std::function<std::vector<int>()> ItemBones(std::shared_ptr<ScannedFiles> a_files, std::size_t a_skip)
+	{
+		struct Cache
+		{
+			std::uint32_t generation{};
+			std::vector<int> values;
+		};
+		return [scanned = std::move(a_files), a_skip, cache = std::make_shared<Cache>()] {
+			const std::uint32_t generation = NifProbe::Generation();
+			if (!generation)
+				return std::vector<int>{};
+			if (cache->generation != generation) {
+				cache->values.assign(a_skip, 0);
+				for (const int bones : Instance().ItemBoneCounts(scanned->Get()))
+					cache->values.push_back(bones);
+				cache->generation = generation;
+			}
+			return cache->values;
+		};
+	}
+
 	/** @brief Each item's physics file paths, joined, for a list's filter to match; empty before a scan. a_skip leading entries have no item. */
 	std::function<std::vector<std::string>()> ItemFiles(std::shared_ptr<ScannedFiles> a_files, std::size_t a_skip)
 	{
@@ -366,18 +388,6 @@ namespace
 		return copy;
 	}
 
-	/** @brief A line about the selected item's physics. */
-	Row ItemNote(std::function<std::vector<RE::TESObjectARMO*>()> a_forms, const int* a_index, int a_skip)
-	{
-		return Text([report = SelectedItemReport(std::move(a_forms), a_index, a_skip)] {
-			const std::string text = report();
-			if (text.empty())
-				return std::string("Select an item that has physics to see its report.");
-			const std::size_t first = text.find('\n');
-			return text.substr(0, text.find('\n', first == std::string::npos ? 0 : first + 1));
-		});
-	}
-
 	/** @brief A button that copies the selected item's full report for its mod author. */
 	Row ItemCopy(const char* a_label, std::function<std::vector<RE::TESObjectARMO*>()> a_forms, const int* a_index, int a_skip)
 	{
@@ -392,6 +402,7 @@ namespace
 		a_row.itemFilesFn = ItemFiles(scanned, a_skip);
 		a_row.progressFn = [] { return NifProbe::Running() ? NifProbe::Progress() : std::pair<std::size_t, std::size_t>{}; };
 		a_row.itemStatusFn = HealthColours(scanned, a_skip);
+		a_row.itemBonesFn = ItemBones(scanned, a_skip);
 		a_row.itemTipFn = ItemTip(scanned->forms, static_cast<int>(a_skip));
 		a_row.onShowFiltered = [] {
 			if (!NifProbe::Generation() && !NifProbe::Running())
@@ -441,7 +452,7 @@ namespace
 		return { std::move(wear), std::move(take), std::move(crowd) };
 	}
 
-	/** @brief One kind of item in a picker: its list, the picked item's physics state, a button to copy its report and the wear buttons, shown while a_shown holds. */
+	/** @brief One kind of item in a picker: its list, a button to copy the picked item's report and the wear buttons, shown while a_shown holds. */
 	std::vector<Row> KindRows(const ItemKind& a_kind, const char* a_label, const char* a_copyLabel, const char* a_tooltip, int* a_index, std::function<bool()> a_shown)
 	{
 		std::vector<Row> wear = WearRows(a_kind, a_index);
@@ -451,7 +462,7 @@ namespace
 			if (enabled())
 				wearNow();
 		};
-		std::vector<Row> rows{ std::move(list), ItemNote(a_kind.forms, a_index, a_kind.skip), ItemCopy(a_copyLabel, a_kind.forms, a_index, a_kind.skip) };
+		std::vector<Row> rows{ std::move(list), ItemCopy(a_copyLabel, a_kind.forms, a_index, a_kind.skip) };
 		rows.insert(rows.end(), std::make_move_iterator(wear.begin()), std::make_move_iterator(wear.end()));
 		for (Row& row : rows)
 			row.shown = a_shown;

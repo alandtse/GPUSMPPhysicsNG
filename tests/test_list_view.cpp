@@ -102,3 +102,12 @@ TEST_CASE("Sorting by physics health puts the worst or the ones with physics fir
 	CHECK(SortedOrder(Sort::HasPhysicsFirst, names, states) == std::vector<int>{ 1, 2, 3, 5, 0, 4 });
 	CHECK(SortedOrder(Sort::WorstFirst, names, std::vector<int>{ 0, 2 }) == std::vector<int>{ 1, 0, 2, 3, 4, 5 });
 }
+
+TEST_CASE("Sorting by bones puts the most or the fewest first and rows with none last", "[ui][listview]")
+{
+	const std::vector<std::string> names{ "a", "b", "c", "d", "e" };
+	const std::vector<int> bones{ 0, 50, 200, 50, 10 };
+
+	CHECK(SortedOrder(Sort::MostBones, names, {}, bones) == std::vector<int>{ 2, 1, 3, 4, 0 });
+	CHECK(SortedOrder(Sort::FewestBones, names, {}, bones) == std::vector<int>{ 4, 1, 3, 2, 0 });
+}

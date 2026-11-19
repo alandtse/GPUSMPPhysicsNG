@@ -219,6 +219,8 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] json PhysicsHealthJson();
 	/** @brief The worst health among each item's physics files, parsing any not yet read; None for an item with no files. Game thread only. */
 	[[nodiscard]] std::vector<SmpPhysics::Health> ItemHealths(const std::vector<std::vector<std::string>>& a_itemFiles);
+	/** @brief Each item's physics bones, summed over its files as written; 0 for an item with none. */
+	[[nodiscard]] std::vector<int> ItemBoneCounts(const std::vector<std::vector<std::string>>& a_itemFiles);
 
 	/** @brief Link state, live claims and declined physics files, for the devbench status query. */
 	[[nodiscard]] json BuildStatusJson() const;
