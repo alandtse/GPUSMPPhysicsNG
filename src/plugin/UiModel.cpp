@@ -457,6 +457,7 @@ namespace
 	{
 		std::vector<Row> wear = WearRows(a_kind, a_index);
 		Row list = ItemList(a_kind, a_label, a_tooltip, a_index);
+		list.hideLabel = true;
 		list.tooltip += " Double-click an item, or step with Previous and Next, to put it on the target.";
 		list.onActivated = [enabled = wear.front().enabled, wearNow = wear.front().onChanged] {
 			if (enabled())

@@ -44,10 +44,14 @@ namespace SettingsUi
 			constexpr float kWidth = 420.0f;
 			constexpr float kListBoxRows = 8.0f;
 			constexpr int kMaxItemState = 3;
-			ImGuiMCP::TextUnformatted(row.label.c_str());
-			Tip(row.tooltip);
+			if (!row.hideLabel) {
+				ImGuiMCP::TextUnformatted(row.label.c_str());
+				Tip(row.tooltip);
+			}
 			ImGuiMCP::SetNextItemWidth(kWidth);
 			ImGuiMCP::InputTextWithHint(("##gsp_filter_" + row.label).c_str(), "Filter", row.filterText.data(), row.filterText.size());
+			if (row.hideLabel)
+				Tip(row.tooltip);
 			const std::string filter = Util::SearchKey(row.filterText.data());
 			if (!filter.empty() && !row.scanAsked && row.onShowFiltered) {
 				row.scanAsked = true;
