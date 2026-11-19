@@ -19,4 +19,20 @@ namespace SmpPhysics
 			return Health::Broken;
 		return a_repaired ? Health::Repaired : Health::Working;
 	}
+
+	Health ClassifyItem(std::span<const FileHealth> a_files)
+	{
+		Health worst = Health::None;
+		bool anyMissing = false;
+		bool anyPresent = false;
+		for (const FileHealth& file : a_files) {
+			if (file.missing) {
+				anyMissing = true;
+				continue;
+			}
+			anyPresent = true;
+			worst = Worse(worst, file.health);
+		}
+		return anyMissing && !anyPresent ? Health::Broken : worst;
+	}
 }

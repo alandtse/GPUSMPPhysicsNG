@@ -208,6 +208,15 @@ namespace SmpPhysics
 	 */
 	[[nodiscard]] bool ValidateRig(const SmpRig& a_rig, std::string& a_reason, bool a_requireForest = true);
 
+	/** @brief Removes the joints whose child and parent are both kinematic, which hdtSMP64 builds but which move nothing. Returns how many. */
+	std::size_t DropInertJoints(SmpRig& a_rig);
+
+	/**
+	 * @brief Turns a joint whose child is kinematic and whose parent is dynamic around, flagging it `reversed`, so the dynamic bone is the child.
+	 * @details SMP's constraints are symmetric, so a kinematic anchor written as bodyA still holds the dynamic bone in bodyB. Returns how many joints it turned.
+	 */
+	std::size_t ReorientAnchoredJoints(SmpRig& a_rig);
+
 	/**
 	 * @brief The rig's dynamic bones sorted so a parent always precedes its children, which ValidateRig
 	 *        has already proved is a forest.
