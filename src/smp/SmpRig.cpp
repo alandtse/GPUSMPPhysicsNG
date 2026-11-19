@@ -323,6 +323,8 @@ namespace SmpPhysics
 			{
 				if (input.size() > kMaxInputBytes)
 					return Fail("input size above the limit");
+				if (StartsWith("\xEF\xBB\xBF"))
+					position += 3;
 				SkipWhitespace();
 				if (StartsWith("<?")) {
 					const bool isProlog = StartsWith("<?xml") && position + 5 < input.size() &&

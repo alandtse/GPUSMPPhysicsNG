@@ -974,3 +974,11 @@ TEST_CASE("A boolean element reads 1 and 0 as hdtSMP64 does", "[SmpPhysics]")
 
 	CHECK(ParseSmpXml(SpringRigXml("yes")).status != ParseStatus::Ok);
 }
+
+TEST_CASE("A UTF-8 byte order mark before the XML prolog is skipped", "[SmpPhysics]")
+{
+	const std::string bare = WrapSystem(R"XML(<bone name="Head"><mass>0</mass></bone>)XML");
+	const ParseResult withMark = ParseSmpXml("\xEF\xBB\xBF" + bare);
+	CHECK(withMark.status == ParseStatus::Ok);
+	CHECK(withMark.rig.bones.size() == ParseSmpXml(bare).rig.bones.size());
+}
