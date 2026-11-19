@@ -11,6 +11,14 @@
 /** @brief What the settings page shows, as plain data so the page code needs neither the plugin's PCH nor its feature types. */
 namespace SettingsUi
 {
+	/** @brief An order a List can show its rows in besides the built-in ones, such as closest to a hair target. */
+	struct SortChoice
+	{
+		std::string label;
+		std::function<std::vector<int>()> orderFn;          ///< The item indexes in display order, read every frame; an order of another length is ignored.
+		std::function<std::vector<std::string>()> badgeFn;  ///< Text after each item's name, indexed by item, while this order is chosen.
+	};
+
 	struct Row
 	{
 		enum class Kind
@@ -36,10 +44,11 @@ namespace SettingsUi
 		std::string joinedItems;                            ///< items as the framework wants them; built once by the page code.
 		std::function<std::string()> textFn;                ///< A Note shows this instead of its label when set, refreshed every frame.
 		std::function<int()> selectedFn;                    ///< A List's highlighted item, read every frame so changes made elsewhere show; intValue when empty.
+		std::function<std::string()> tooltipFn;             ///< A Note's tip, refreshed every frame, shown while it is hovered.
 		std::function<std::string()> clipboardFn;           ///< A Button copies this text to the clipboard when pressed, and is greyed out while it is empty.
 		std::function<std::vector<int>()> itemStatusFn;     ///< A List's per-item state read every frame: 0 unknown, 1 working (green), 2 repaired (amber), 3 broken (red). Adds a Show filter.
 		std::function<void()> onActivated;                  ///< Runs when a List item is double-clicked, after that click has selected it.
-		std::function<void()> onShowFiltered;               ///< Runs when a List's Show filter is switched away from All, so the data it filters by can be gathered.
+		std::function<void()> onShowFiltered;               ///< Runs once when a List first draws, and when its Show filter is switched away from All, so the data it filters by is gathered.
 		int showMode{};                                     ///< Which items a List with itemStatusFn shows: 0 all, 1 with physics, 2 needing attention.
 		std::array<char, 64> filterText{};                  ///< What a List's filter box holds.
 		int pickedIndex{ -1 };                              ///< The item the user last clicked in a List, so the list does not scroll under the cursor.
@@ -50,10 +59,17 @@ namespace SettingsUi
 		std::function<std::pair<std::size_t, std::size_t>()> progressFn;
 		/** @brief Whether the filter box has already asked for the data its filter needs. */
 		bool scanAsked{};
+		/** @brief Orders a List offers first, before its built-in ones; the first is the one the list opens with. */
+		std::vector<SortChoice> sorts;
+		bool hideLabel{};                               ///< A List without its title line, when what picks it already names it; the tip moves to its filter box.
+		std::function<std::vector<int>()> itemBonesFn;  ///< A List's physics bone count per item, 0 for none, read every frame; adds the bone sorts.
+		std::function<std::string(int)> itemTipFn;      ///< A List's tip for the item under the cursor, by item index; called only while one is hovered.
+		int sortIndex{};                                ///< The chosen order: an entry of sorts, then the built-in ones.
 		bool sameLine{};
 		float minimum{};
 		float maximum{};
 		const char* format{ "%.2f" };
+		std::function<bool()> shown;      ///< When set and false the row is not drawn at all, so rows can stand in for one another.
 		std::function<bool()> enabled;    ///< When set and false the control is drawn greyed out and cannot be edited.
 		std::function<void()> onChanged;  ///< Runs after the user edits the control; may be empty.
 	};

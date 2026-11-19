@@ -198,6 +198,28 @@ namespace
 		};
 	}
 
+	/** @brief Each item's physics bone count for the bone sorts; empty before a scan. a_skip leading entries have no item. */
+	std::function<std::vector<int>()> ItemBones(std::shared_ptr<ScannedFiles> a_files, std::size_t a_skip)
+	{
+		struct Cache
+		{
+			std::uint32_t generation{};
+			std::vector<int> values;
+		};
+		return [scanned = std::move(a_files), a_skip, cache = std::make_shared<Cache>()] {
+			const std::uint32_t generation = NifProbe::Generation();
+			if (!generation)
+				return std::vector<int>{};
+			if (cache->generation != generation) {
+				cache->values.assign(a_skip, 0);
+				for (const int bones : Instance().ItemBoneCounts(scanned->Get()))
+					cache->values.push_back(bones);
+				cache->generation = generation;
+			}
+			return cache->values;
+		};
+	}
+
 	/** @brief Each item's physics file paths, joined, for a list's filter to match; empty before a scan. a_skip leading entries have no item. */
 	std::function<std::vector<std::string>()> ItemFiles(std::shared_ptr<ScannedFiles> a_files, std::size_t a_skip)
 	{
@@ -251,6 +273,42 @@ namespace
 		};
 	}
 
+	/** @brief The hover tip of a list of items: each item's physics files, their health and size, and what the last claim kept, refreshed at most once a second per item. */
+	std::function<std::string(int)> ItemTip(std::function<std::vector<RE::TESObjectARMO*>()> a_forms, int a_skip)
+	{
+		struct Cache
+		{
+			int index = -2;
+			std::uint32_t generation{};
+			std::chrono::steady_clock::time_point at{};
+			std::string text;
+		};
+		return [forms = std::move(a_forms), a_skip, cache = std::make_shared<Cache>()](int a_index) {
+			const int index = a_index - a_skip;
+			const std::uint32_t generation = NifProbe::Generation();
+			if (index < 0)
+				return std::string();
+			if (!generation)
+				return std::string("Scan for physics to see this item's files.");
+			const auto now = std::chrono::steady_clock::now();
+			if (cache->index == index && cache->generation == generation && now - cache->at < std::chrono::seconds(1))
+				return cache->text;
+			const std::vector<RE::TESObjectARMO*> items = forms();
+			cache->text = static_cast<std::size_t>(index) < items.size() ? Instance().ItemStatsText(items[static_cast<std::size_t>(index)]->GetFormID()) : std::string();
+			cache->index = index;
+			cache->generation = generation;
+			cache->at = now;
+			return cache->text;
+		};
+	}
+
+	/** @brief Shows a list closest to the hair target's hair first, with each item's distance after its name. */
+	Row WithHairMatch(Row a_row)
+	{
+		a_row.sorts.push_back({ "Closest to hair target", [] { return Instance().HairTargetState().order; }, [] { return Instance().HairTargetState().badges; } });
+		return a_row;
+	}
+
 	/**
 	 * @brief A kind of wearable item the pickers list: its names and forms, what the crowd wears now, and how to put one on.
 	 * @details Indexes are the list's, which has skip leading entries (a "None") before the first form. Devbench reaches the same lists through
@@ -263,6 +321,9 @@ namespace
 		std::function<int()> worn;
 		std::function<void(int)> wear;
 		int skip{};
+		SmpPhysics::TargetItem item{};     ///< What Put on target and Take off target act on.
+		const char* noun{};                ///< Names one of this kind in the buttons.
+		std::function<Row(Row)> decorate;  ///< Adds what only this kind's list has, when set.
 	};
 
 	const ItemKind& ArmorKind()
@@ -272,7 +333,9 @@ namespace
 			[] { return TestBench::TestCrowd::ArmorForms(); },
 			[] { return TestBench::GetCrowd().WornArmorIndex(); },
 			[](int a_index) { TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(a_index)); },
-			0
+			0,
+			SmpPhysics::TargetItem::Armor,
+			"armor"
 		};
 		return kind;
 	}
@@ -284,7 +347,9 @@ namespace
 			[] { return TestBench::TestCrowd::CloakForms(); },
 			[] { return TestBench::GetCrowd().WornCloakIndex() + 1; },
 			[](int a_index) { RunCrowdCommand("setTestCrowdCloak", { { "index", a_index - 1 } }); },
-			1
+			1,
+			SmpPhysics::TargetItem::Cloak,
+			"cloak"
 		};
 		return kind;
 	}
@@ -296,7 +361,10 @@ namespace
 			[] { return SmpPhysics::CrowdWigs::WigForms(); },
 			[] { return Instance().WornWigIndex(); },
 			[](int a_index) { Instance().WearWig(a_index); },
-			0
+			0,
+			SmpPhysics::TargetItem::Wig,
+			"wig",
+			WithHairMatch
 		};
 		return kind;
 	}
@@ -320,18 +388,6 @@ namespace
 		return copy;
 	}
 
-	/** @brief A line about the selected item's physics. */
-	Row ItemNote(std::function<std::vector<RE::TESObjectARMO*>()> a_forms, const int* a_index, int a_skip)
-	{
-		return Text([report = SelectedItemReport(std::move(a_forms), a_index, a_skip)] {
-			const std::string text = report();
-			if (text.empty())
-				return std::string("Select an item that has physics to see its report.");
-			const std::size_t first = text.find('\n');
-			return text.substr(0, text.find('\n', first == std::string::npos ? 0 : first + 1));
-		});
-	}
-
 	/** @brief A button that copies the selected item's full report for its mod author. */
 	Row ItemCopy(const char* a_label, std::function<std::vector<RE::TESObjectARMO*>()> a_forms, const int* a_index, int a_skip)
 	{
@@ -346,6 +402,8 @@ namespace
 		a_row.itemFilesFn = ItemFiles(scanned, a_skip);
 		a_row.progressFn = [] { return NifProbe::Running() ? NifProbe::Progress() : std::pair<std::size_t, std::size_t>{}; };
 		a_row.itemStatusFn = HealthColours(scanned, a_skip);
+		a_row.itemBonesFn = ItemBones(scanned, a_skip);
+		a_row.itemTipFn = ItemTip(scanned->forms, static_cast<int>(a_skip));
 		a_row.onShowFiltered = [] {
 			if (!NifProbe::Generation() && !NifProbe::Running())
 				NifProbe::Start();
@@ -353,29 +411,100 @@ namespace
 		return a_row;
 	}
 
-	/** @brief A coloured list of one kind of item; picking selects it and, with a_wearOnPick, puts it on the test characters at once. */
-	Row ItemList(const ItemKind& a_kind, const char* a_label, const char* a_tooltip, int* a_index, bool a_wearOnPick)
+	/** @brief A coloured list of one kind of item; picking selects it. */
+	Row ItemList(const ItemKind& a_kind, const char* a_label, const char* a_tooltip, int* a_index)
 	{
-		return WithHealth(Browse(a_label, a_tooltip, a_index, a_kind.names, a_wearOnPick ? a_kind.worn : std::function<int()>{}, a_wearOnPick ? [&a_kind, a_index] { a_kind.wear(*a_index); } : std::function<void()>{}), a_kind.forms, static_cast<std::size_t>(a_kind.skip));
+		Row list = WithHealth(Browse(a_label, a_tooltip, a_index, a_kind.names, {}, {}), a_kind.forms, static_cast<std::size_t>(a_kind.skip));
+		return a_kind.decorate ? a_kind.decorate(std::move(list)) : list;
 	}
 
-	/** @brief Includes the player in the outfit controls, so wearing from the Armor physics page shows on you; defined with the crowd's choices. */
-	void EnsurePlayerIncluded();
-
-	/** @brief A list of one kind of item with the selected one's physics state, a button to copy its report and one to put it on; picking only selects. */
-	std::vector<Row> ItemBrowser(const ItemKind& a_kind, const char* a_label, const char* a_copyLabel, const char* a_wearLabel, const char* a_tooltip, int* a_index)
+	/** @brief Choosing whose hair the wig list matches and where a wig goes: the target, what it is, and the sources to pick it from. */
+	/** @brief A colour box that applies its pick at once: a name from the hair colours, or Natural for the character's own. */
+	Row HairColourRow(int* a_index, const char* a_tooltip, std::function<void(const std::string&)> a_apply)
 	{
-		Row wear = Button(a_wearLabel, "Puts the selected item on you, and on the test characters if any are spawned. Developer mode off, or Include the player off on the Test crowd page, takes it off again.", [&a_kind, a_index] {
-			EnsurePlayerIncluded();
-			a_kind.wear(*a_index); }, true);
-		wear.enabled = [a_index] { return *a_index >= 0; };
-		Row list = ItemList(a_kind, a_label, a_tooltip, a_index, false);
-		list.tooltip += " Double-click an item, or step with Previous and Next, to put it on as the button below does.";
-		list.onActivated = [enabled = wear.enabled, wearNow = wear.onChanged] {
+		return Pick(
+			"Hair colour", a_tooltip, a_index, [] {
+				std::vector<std::string> names{ "Natural" };
+				for (const SmpPhysics::HairColorChoice& color : SmpPhysics::TestCrowdHairColors())
+					names.emplace_back(color.name);
+				return names; },
+			[a_index, apply = std::move(a_apply)] {
+				const auto& colors = SmpPhysics::TestCrowdHairColors();
+				const bool picked = *a_index > 0 && *a_index <= static_cast<int>(colors.size());
+				apply(picked ? std::string(colors[static_cast<std::size_t>(*a_index - 1)].name) : std::string{});
+			});
+	}
+
+	int targetHairColor = 0;
+
+	/** @brief The target's line; hovering it shows which hair was matched and what the target wears on its head. */
+	Row TargetLine()
+	{
+		Row row = Text([] {
+			const SmpPhysics::HairTargetView view = Instance().HairTargetState();
+			return view.status.empty() ? view.text : std::format("{}  ({}: {} of {})", view.text, view.status, view.progress.first, view.progress.second);
+		});
+		row.tooltipFn = [cache = std::make_shared<std::pair<std::chrono::steady_clock::time_point, std::string>>()] {
+			const auto now = std::chrono::steady_clock::now();
+			if (now - cache->first < std::chrono::seconds(1))
+				return cache->second;
+			const SmpPhysics::HairTargetView view = Instance().HairTargetState();
+			std::string text = view.detail;
+			if (const std::string files = view.matchedModel.empty() ? std::string() : Instance().FilesStatsText(NifProbe::XmlPathsOfModel(view.matchedModel)); !files.empty())
+				text += "\nPhysics of that mesh:\n" + files;
+			*cache = { now, std::move(text) };
+			return cache->second;
+		};
+		return row;
+	}
+
+	std::vector<Row> HairTargetRows()
+	{
+		const auto pin = [](SmpPhysics::HairTargetSource a_source) { return [a_source] { Instance().PinHairTarget(a_source); }; };
+		Row console = Button("Console selection", "Matches hair to and dresses the reference selected with prid in the console. A new selection is taken at once unless you picked a source here.", pin(SmpPhysics::HairTargetSource::Console));
+		console.enabled = [] { return Instance().HairTargetState().hasConsole; };
+		Row crosshair = Button("Crosshair target", "Matches hair to and dresses the character you last looked at before opening this menu.", pin(SmpPhysics::HairTargetSource::Crosshair), true);
+		crosshair.enabled = [] { return Instance().HairTargetState().hasCrosshair; };
+		std::vector<Row> rows{
+			Header("Target"),
+			TargetLine(),
+			std::move(console),
+			std::move(crosshair),
+			Button("Me", "Matches hair to and dresses you.", pin(SmpPhysics::HairTargetSource::Player), true),
+			Button("Auto", "Lets the console selection choose again; with none, it is you.", [] { Instance().UnpinHairTarget(); }, true), Text([] { return std::string("Select someone with prid in the console, or look at them and open this menu. Wigs are listed closest first to their hair, or to the wig they wear."); })
+		};
+		return rows;
+	}
+
+	/** @brief Buttons that put the picked item on the target alone or take it off, and one that puts it on the test characters. */
+	std::vector<Row> WearRows(const ItemKind& a_kind, const int* a_index)
+	{
+		const auto picked = [&a_kind, a_index] { return *a_index - a_kind.skip >= 0; };
+		Row wear = Button("Put on target", std::format("Puts the picked {} on the target alone. An item stays in a character's inventory in your save until you take it off.", a_kind.noun).c_str(),
+			[&a_kind, a_index] { Instance().WearOnTarget(a_kind.item, *a_index - a_kind.skip); });
+		wear.enabled = picked;
+		Row take = Button("Take off target", std::format("Takes the {} off the target and puts back what it wore; a wig shows their own hair again.", a_kind.noun).c_str(), [&a_kind] { Instance().RestoreTarget(a_kind.item); }, true);
+		Row crowd = Button("Put on test characters", std::format("Puts the picked {} on every test character, and on you while Include the player is on.", a_kind.noun).c_str(), [&a_kind, a_index] { a_kind.wear(*a_index); }, true);
+		crowd.enabled = picked;
+		return { std::move(wear), std::move(take), std::move(crowd) };
+	}
+
+	/** @brief One kind of item in a picker: its list, a button to copy the picked item's report and the wear buttons, shown while a_shown holds. */
+	std::vector<Row> KindRows(const ItemKind& a_kind, const char* a_label, const char* a_copyLabel, const char* a_tooltip, int* a_index, std::function<bool()> a_shown)
+	{
+		std::vector<Row> wear = WearRows(a_kind, a_index);
+		Row list = ItemList(a_kind, a_label, a_tooltip, a_index);
+		list.hideLabel = true;
+		list.tooltip += " Double-click an item, or step with Previous and Next, to put it on the target.";
+		list.onActivated = [enabled = wear.front().enabled, wearNow = wear.front().onChanged] {
 			if (enabled())
 				wearNow();
 		};
-		return { std::move(list), ItemNote(a_kind.forms, a_index, a_kind.skip), ItemCopy(a_copyLabel, a_kind.forms, a_index, a_kind.skip), std::move(wear) };
+		std::vector<Row> rows{ std::move(list), ItemCopy(a_copyLabel, a_kind.forms, a_index, a_kind.skip) };
+		rows.insert(rows.end(), std::make_move_iterator(wear.begin()), std::make_move_iterator(wear.end()));
+		for (Row& row : rows)
+			row.shown = a_shown;
+		return rows;
 	}
 
 	std::vector<Row> Join(std::vector<Row> a_first, std::vector<Row> a_second)
@@ -406,27 +535,32 @@ namespace
 		bool includePlayer = false;
 		bool animateOnSpawn = false;
 		bool loopAnimation = false;
-		int armor = -1;
-		int cloak = 0;
-		int wig = -1;
 		int idle = 0;
 		int hairColor = 0;
 	} crowdChoices;
 
-	/** @brief What the Armor physics page has selected; separate from the crowd's, since picking there dresses nobody. */
-	struct BrowseChoices
+	/** @brief What the item pickers on the Armor physics and Test crowd pages have selected: the kind shown and each kind's picked entry. */
+	struct PickerChoices
 	{
+		int kind = 0;
 		int armor = -1;
 		int cloak = 0;
 		int wig = -1;
-	} browseChoices;
+	} pickerChoices;
 
-	void EnsurePlayerIncluded()
+	/** @brief Armors, cloaks and wigs in one list, the kind picked from a box; each kind keeps its own pick. */
+	std::vector<Row> ItemPicker()
 	{
-		if (crowdChoices.includePlayer)
-			return;
-		crowdChoices.includePlayer = true;
-		RunCrowdCommand("setTestCrowdIncludePlayer", { { "enabled", true } });
+		const auto showing = [](int a_kind) { return [a_kind] { return pickerChoices.kind == a_kind; }; };
+		std::vector<Row> rows{ Pick("Item type", "Which kind of item the list below shows. Each kind keeps its own pick.", &pickerChoices.kind, [] { return std::vector<std::string>{ "Armors", "Cloaks", "Wigs" }; }) };
+		const auto add = [&rows](std::vector<Row> a_more) { rows = Join(std::move(rows), std::move(a_more)); };
+		add(KindRows(ArmorKind(), "Armors", "Copy report for the selected armor", "Every playable body armor. Click one to see its physics and copy a report for its mod author.", &pickerChoices.armor, showing(0)));
+		add(KindRows(CloakKind(), "Cloaks", "Copy report for the selected cloak", "Every cloak and cape. Click one to see its physics and copy a report for its mod author.", &pickerChoices.cloak, showing(1)));
+		add(KindRows(WigKind(), "Wigs", "Copy report for the selected wig", "Every wig, the hair-slot armors hair mods add. Click one to see its physics and copy a report for its mod author.", &pickerChoices.wig, showing(2)));
+		Row colour = HairColourRow(&targetHairColor, "Sets the target's hair colour at once; a worn wig takes it. Every character made from the same base changes too. Natural puts their own back.", [](const std::string& a_color) { Instance().ApplyTargetHairColor(a_color); });
+		colour.shown = showing(2);
+		rows.push_back(std::move(colour));
+		return rows;
 	}
 
 	/** @brief The crowd's switch for dressing the player with it, on the Test crowd page. */
@@ -550,42 +684,41 @@ void PluginUi::Register()
 	physicsModel.showFooter = false;
 	physicsModel.rows = Join(
 		{ Text([] { return std::string("Finds which armors and cloaks carry physics and whether their files work, without dressing anyone."); }),
-			Button("Scan for physics", "Reads every armor's, cloak's and head part's models for physics data and checks each physics file, then lists physics files nothing uses. Takes a few seconds.", [] { NifProbe::Start(); }),
+			Button("Rescan physics", "Reads every armor's, cloak's and head part's models for physics data and checks each physics file, then lists physics files nothing uses. A scan runs when a list first opens; this runs it again after you change your mods.", [] { NifProbe::Start(); }),
 			Text([] {
 				const auto [done, total] = NifProbe::Progress();
 				if (NifProbe::Running())
 					return std::format("Scanning: {} of {}", done, total);
-				return NifProbe::Generation() ? std::string("Green [OK]: no file problems detected. Amber [REPAIRED]: repaired and used. Red [FAULT]: file fault. Plain: no physics found.") : std::string("Not scanned yet."); }) },
-		Join(ItemBrowser(ArmorKind(), "Armors", "Copy report for the selected armor", "Dress test characters in it", "Every playable body armor. Click one to see its physics and copy a report for its mod author.", &browseChoices.armor),
-			Join(ItemBrowser(CloakKind(), "Cloaks", "Copy report for the selected cloak", "Put it on test characters", "Every cloak and cape. Click one to see its physics and copy a report for its mod author.", &browseChoices.cloak),
-				ItemBrowser(WigKind(), "Wigs", "Copy report for the selected wig", "Put it on test characters", "Every wig, the hair-slot armors hair mods add. Click one to see its physics and copy a report for its mod author.", &browseChoices.wig))));
+				return NifProbe::Generation() ? std::string("Green [OK]: no file problems detected. Amber [REPAIRED]: repaired and used. Red [FAULT]: file fault. Plain: no physics found.") : std::string("Scanning starts when a list opens."); }) },
+		Join(HairTargetRows(), ItemPicker()));
 
 	auto& choices = crowdChoices;
 	crowdModel.title = "Test crowd";
 	crowdModel.showFooter = false;
-	crowdModel.rows = {
-		Header("Spawn"),
-		SlideInt("Test characters", "How many characters to spawn in rows ahead of you.", &choices.count, 1, static_cast<int>(TestBench::kMaxTestCrowd)),
-		Check("Any adult woman", "Picks from every named adult female NPC that is friendly or neutral to you; off, one generic female character is used.", &choices.anyAdultWoman),
-		Check("Random order", "Shuffles which characters appear.", &choices.randomOrder),
-		Button("Spawn test characters", "Spawns the characters standing still, each wearing a different wig.", [&choices] {
-			RunCrowdCommand("spawnTestCrowd", { { "count", choices.count }, { "anyAdultWoman", choices.anyAdultWoman }, { "randomOrder", choices.randomOrder } });
-		}),
-		Button("Remove them", "Removes the characters spawned here.", [] { RunCrowdCommand("clearTestCrowd"); }, true),
-		Button("Refresh", "Rebuilds their 3D and redoes what a rebuild undoes.", [] { RunCrowdCommand("refreshTestCrowd"); }, true),
-		Text([] { return std::format("{}  ({} standing)", TestBench::GetCrowd().Report(), TestBench::GetCrowd().Count()); }),
-		Header("Outfit"),
-		IncludePlayerCheck(),
-		Check("Strip armor and weapons", "Takes armor and weapons off, except the wigs; later spawns start stripped while this is on.", &choices.stripped, [&choices] { RunCrowdCommand("stripTestCrowd", { { "enabled", choices.stripped } }); }),
-		Text(WornCombo),
-		CopyCombo(),
-		ItemList(ArmorKind(), "Armor list", "Every playable body armor; click one to dress the test characters in it. Coloured by the scan on the Armor physics page.", &choices.armor, true),
-		ItemList(CloakKind(), "Cloak", "A cloak or cape every test character wears, on top of armor or bare body.", &choices.cloak, true),
-		ItemList(WigKind(), "Wig", "A wig every test character wears, in place of the one it spawned with.", &choices.wig, true),
-		Header("Animation"),
-		Check("Animate on spawn (characters' AI runs)", "Off, test characters spawn frozen.", &choices.animateOnSpawn, [&choices] { TestBench::GetCrowd().SetAnimateOnSpawn(choices.animateOnSpawn); }),
-		Check("Loop the animation", "Plays the animation again each time it ends.", &choices.loopAnimation, [&choices] { RunCrowdCommand("setTestCrowdLoop", { { "enabled", choices.loopAnimation } }); }),
-		Browse("Idle", "The idle animation to play on every test character.", &choices.idle, [] {
+	crowdModel.rows = Join(Join(Join(std::vector<Row>{
+										 Header("Spawn"),
+										 SlideInt("Test characters", "How many characters to spawn in rows ahead of you.", &choices.count, 1, static_cast<int>(TestBench::kMaxTestCrowd)),
+										 Check("Any adult woman", "Picks from every named adult female NPC that is friendly or neutral to you; off, one generic female character is used.", &choices.anyAdultWoman),
+										 Check("Random order", "Shuffles which characters appear.", &choices.randomOrder),
+										 Button("Spawn test characters", "Spawns the characters standing still, each wearing a different wig.", [&choices] {
+											 RunCrowdCommand("spawnTestCrowd", { { "count", choices.count }, { "anyAdultWoman", choices.anyAdultWoman }, { "randomOrder", choices.randomOrder } });
+										 }),
+										 Button("Remove them", "Removes the characters spawned here.", [] { RunCrowdCommand("clearTestCrowd"); }, true),
+										 Button("Refresh", "Rebuilds their 3D and redoes what a rebuild undoes.", [] { RunCrowdCommand("refreshTestCrowd"); }, true),
+										 Text([] { return std::format("{}  ({} standing)", TestBench::GetCrowd().Report(), TestBench::GetCrowd().Count()); }),
+										 Header("Outfit"),
+										 IncludePlayerCheck(),
+										 Check("Strip armor and weapons", "Takes armor and weapons off, except the wigs; later spawns start stripped while this is on.", &choices.stripped, [&choices] { RunCrowdCommand("stripTestCrowd", { { "enabled", choices.stripped } }); }),
+										 Text(WornCombo),
+										 CopyCombo(),
+									 },
+									HairTargetRows()),
+							   ItemPicker()),
+		Join(std::vector<Row>{
+				 Header("Animation"),
+				 Check("Animate on spawn (characters' AI runs)", "Off, test characters spawn frozen.", &choices.animateOnSpawn, [&choices] { TestBench::GetCrowd().SetAnimateOnSpawn(choices.animateOnSpawn); }),
+				 Check("Loop the animation", "Plays the animation again each time it ends.", &choices.loopAnimation, [&choices] { RunCrowdCommand("setTestCrowdLoop", { { "enabled", choices.loopAnimation } }); }),
+				 Browse("Idle", "The idle animation to play on every test character.", &choices.idle, [] {
 			const auto idles = TestBench::IdleCache::Snapshot();
 			if (idles.empty())
 				return std::vector<std::string>{};
@@ -593,23 +726,14 @@ void PluginUi::Register()
 			for (const TestBench::IdleChoice& idle : idles)
 				names.push_back(idle.editorId);
 			return names; }, {}, {}),
-		Button("Play on test characters", "Plays the chosen idle on everyone standing, and on each one spawned later.", [&choices] {
+				 Button("Play on test characters", "Plays the chosen idle on everyone standing, and on each one spawned later.", [&choices] {
 			const auto idles = TestBench::IdleCache::Snapshot();
 			const bool picked = choices.idle > 0 && choices.idle <= static_cast<int>(idles.size());
 			RunCrowdCommand("playTestCrowdAnimation", { { "idle", picked ? idles[static_cast<std::size_t>(choices.idle - 1)].editorId : std::string{} } }); }),
-		Button("Stop and freeze", "Stops the animation.", [] { RunCrowdCommand("playTestCrowdAnimation", { { "idle", "ResetRoot" } }); }, true),
-		Header("Hair colour"),
-		Pick("Colour", "Sets the hair colour of every base the crowd is made from.", &choices.hairColor, [] {
-			std::vector<std::string> names{ "Natural" };
-			for (const SmpPhysics::HairColorChoice& color : SmpPhysics::TestCrowdHairColors())
-				names.emplace_back(color.name);
-			return names; }),
-		Button("Apply", "Applies the chosen colour and refreshes the characters standing.", [&feature, &choices] {
-			const auto& colors = SmpPhysics::TestCrowdHairColors();
-			const bool picked = choices.hairColor > 0 && choices.hairColor <= static_cast<int>(colors.size());
-			const std::string color = picked ? std::string(colors[static_cast<std::size_t>(choices.hairColor - 1)].name) : std::string{};
-			feature.ApplyCrowdHairColor(color); }),
-	};
+				 Button("Stop and freeze", "Stops the animation.", [] { RunCrowdCommand("playTestCrowdAnimation", { { "idle", "ResetRoot" } }); }, true),
+				 Header("Hair colour"),
+			 },
+			std::vector<Row>{ HairColourRow(&choices.hairColor, "Sets the hair colour of every base the crowd is made from, and refreshes the characters standing.", [&feature](const std::string& a_color) { feature.ApplyCrowdHairColor(a_color); }) }));
 
 	developerModel.title = "Developer";
 	developerModel.onSave = model.onSave;

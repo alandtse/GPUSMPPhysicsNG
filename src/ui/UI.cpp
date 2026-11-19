@@ -44,12 +44,16 @@ namespace SettingsUi
 			constexpr float kWidth = 420.0f;
 			constexpr float kListBoxRows = 8.0f;
 			constexpr int kMaxItemState = 3;
-			ImGuiMCP::TextUnformatted(row.label.c_str());
-			Tip(row.tooltip);
+			if (!row.hideLabel) {
+				ImGuiMCP::TextUnformatted(row.label.c_str());
+				Tip(row.tooltip);
+			}
 			ImGuiMCP::SetNextItemWidth(kWidth);
 			ImGuiMCP::InputTextWithHint(("##gsp_filter_" + row.label).c_str(), "Filter", row.filterText.data(), row.filterText.size());
+			if (row.hideLabel)
+				Tip(row.tooltip);
 			const std::string filter = Util::SearchKey(row.filterText.data());
-			if (!filter.empty() && !row.scanAsked && row.onShowFiltered) {
+			if (!row.scanAsked && row.onShowFiltered) {
 				row.scanAsked = true;
 				row.onShowFiltered();
 			}
@@ -70,6 +74,38 @@ namespace SettingsUi
 				if (row.showMode != before && row.showMode != 0 && row.onShowFiltered)
 					row.onShowFiltered();
 			}
+			std::vector<std::string> sortLabels;
+			for (const SortChoice& choice : row.sorts)
+				sortLabels.push_back(choice.label);
+			for (const char* label : { "Default order", "Name A-Z", "Name Z-A" })
+				sortLabels.emplace_back(label);
+			if (row.itemStatusFn) {
+				sortLabels.emplace_back("Worst physics first");
+				sortLabels.emplace_back("With physics first");
+			}
+			if (row.itemBonesFn) {
+				sortLabels.emplace_back("Most bones first");
+				sortLabels.emplace_back("Fewest bones first");
+			}
+			std::string joinedSorts;
+			for (const std::string& label : sortLabels)
+				joinedSorts += label + '\0';
+			row.sortIndex = std::clamp(row.sortIndex, 0, static_cast<int>(sortLabels.size()) - 1);
+			ImGuiMCP::SetNextItemWidth(kWidth);
+			ImGuiMCP::Combo(("##gsp_sort_" + row.label).c_str(), &row.sortIndex, joinedSorts.c_str(), -1);
+			std::vector<int> order;
+			std::vector<std::string> badges;
+			if (static_cast<std::size_t>(row.sortIndex) < row.sorts.size()) {
+				const SortChoice& choice = row.sorts[static_cast<std::size_t>(row.sortIndex)];
+				order = choice.orderFn ? choice.orderFn() : std::vector<int>{};
+				badges = choice.badgeFn ? choice.badgeFn() : std::vector<std::string>{};
+			} else {
+				constexpr Sort kBuiltIn[] = { Sort::Natural, Sort::NameAscending, Sort::NameDescending, Sort::WorstFirst, Sort::HasPhysicsFirst, Sort::MostBones, Sort::FewestBones };
+				const std::vector<int> bones = row.itemBonesFn ? row.itemBonesFn() : std::vector<int>{};
+				order = SortedOrder(kBuiltIn[static_cast<std::size_t>(row.sortIndex) - row.sorts.size()], row.items, status, bones);
+			}
+			if (order.size() != row.items.size())
+				order.clear();
 			const auto statusOf = [&status](std::size_t a_index) { return a_index < status.size() ? status[a_index] : 0; };
 			const int selected = row.selectedFn ? row.selectedFn() : *row.intValue;
 			const bool scroll = ShouldScroll(selected, row.lastSelected, row.pickedIndex);
@@ -85,7 +121,7 @@ namespace SettingsUi
 					lowerNames.reserve(row.items.size());
 					for (std::size_t index = 0; index < row.items.size(); ++index)
 						lowerNames.push_back(SearchText(row.items[index], index < files.size() ? files[index] : std::string_view{}));
-					const int target = StepVisible(lowerNames, filter, row.showMode, status, selected, next ? 1 : -1);
+					const int target = StepVisible(lowerNames, filter, row.showMode, status, selected, next ? 1 : -1, order);
 					if (target != selected) {
 						*row.intValue = target;
 						clicked = true;
@@ -97,7 +133,8 @@ namespace SettingsUi
 			if (ImGuiMCP::BeginListBox(a_id.c_str(), { kWidth, kListBoxRows * ImGuiMCP::GetTextLineHeightWithSpacing() })) {
 				std::size_t shown = 0;
 				std::size_t hidden = 0;
-				for (std::size_t index = 0; index < row.items.size(); ++index) {
+				for (std::size_t position = 0; position < row.items.size(); ++position) {
+					const std::size_t index = order.empty() ? position : static_cast<std::size_t>(order[position]);
 					const std::string& name = row.items[index];
 					constexpr const char* kStateTags[] = { "", "  [OK]", "  [REPAIRED]", "  [FAULT]" };
 					const int state = std::clamp(statusOf(index), 0, kMaxItemState);
@@ -114,12 +151,14 @@ namespace SettingsUi
 						constexpr ImGuiMCP::ImVec4 kColours[] = { { 0.40f, 0.85f, 0.45f, 1.0f }, { 0.95f, 0.65f, 0.10f, 1.0f }, { 0.95f, 0.35f, 0.35f, 1.0f } };
 						ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Text, kColours[state - 1]);
 					}
-					if (ImGuiMCP::Selectable((name + kStateTags[state] + "##gsp_item_" + std::to_string(index)).c_str(), isSelected,
+					if (ImGuiMCP::Selectable((name + kStateTags[state] + (index < badges.size() && !badges[index].empty() ? "  [" + badges[index] + "]" : std::string{}) + "##gsp_item_" + std::to_string(index)).c_str(), isSelected,
 							row.onActivated ? ImGuiMCP::ImGuiSelectableFlags_AllowDoubleClick : 0, { 0, 0 })) {
 						*row.intValue = static_cast<int>(index);
 						row.pickedIndex = static_cast<int>(index);
 						clicked = true;
 					}
+					if (row.itemTipFn && ImGuiMCP::IsItemHovered())
+						Tip(row.itemTipFn(static_cast<int>(index)));
 					if (row.onActivated && ImGuiMCP::IsItemHovered() && ImGuiMCP::IsMouseDoubleClicked(0))
 						row.onActivated();
 					if (coloured)
@@ -166,6 +205,8 @@ namespace SettingsUi
 				ImGuiMCP::TextWrapped("%s", status.c_str());
 			}
 			for (Row& row : model->rows) {
+				if (row.shown && !row.shown())
+					continue;
 				// The SMF API has no PushID, so each control's label carries its own unique suffix.
 				const std::string id = row.label + "##gsp_" + row.label;
 				bool changed = false;
@@ -190,6 +231,8 @@ namespace SettingsUi
 					break;
 				case Row::Kind::Note:
 					ImGuiMCP::TextDisabled("%s", (row.textFn ? row.textFn() : row.label).c_str());
+					if (row.tooltipFn && ImGuiMCP::IsItemHovered())
+						Tip(row.tooltipFn());
 					break;
 				case Row::Kind::Button:
 					if (row.sameLine)

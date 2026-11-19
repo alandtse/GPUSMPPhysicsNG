@@ -11,6 +11,7 @@
 #include "Utils/SkinVertexBlock.h"
 #include "Utils/StringUtils.h"
 #include "engine/NifProbe.h"
+#include "smp/HairPartModel.h"
 #include "smp/HairShape.h"
 
 #include <algorithm>
@@ -21,6 +22,7 @@
 #include <mutex>
 #include <optional>
 #include <set>
+#include <utility>
 
 namespace HairLook
 {
@@ -44,6 +46,7 @@ namespace HairLook
 
 		std::mutex mutex;
 		std::map<std::string, Shape> shapes;
+		std::map<std::pair<std::string, std::string>, SmpPhysics::HairMatch> matches;
 		json lastResult = json::object();
 
 		void Publish(json a_result)
@@ -218,6 +221,27 @@ namespace HairLook
 			return shapes.contains(Util::SearchKey(a_model));
 		}
 
+		/** @brief How alike two models are, kept so a ranking that is repeated while it loads shapes does not compare the same pair again. */
+		SmpPhysics::HairMatch MatchOf(const std::string& a_source, const std::string& a_candidate, const SmpPhysics::HairDescriptor& a_left, const SmpPhysics::HairDescriptor& a_right)
+		{
+			const auto key = std::make_pair(Util::SearchKey(a_source), Util::SearchKey(a_candidate));
+			{
+				const std::scoped_lock lock(mutex);
+				if (const auto found = matches.find(key); found != matches.end())
+					return found->second;
+			}
+			const SmpPhysics::HairMatch match = SmpPhysics::CompareHair(a_left, a_right);
+			const std::scoped_lock lock(mutex);
+			matches.emplace(key, match);
+			return match;
+		}
+
+		bool IsMatched(const std::string& a_source, const std::string& a_candidate)
+		{
+			const std::scoped_lock lock(mutex);
+			return matches.contains(std::make_pair(Util::SearchKey(a_source), Util::SearchKey(a_candidate)));
+		}
+
 		std::string ModelOf(const RE::TESObjectARMO& a_armor, int a_sex)
 		{
 			for (const RE::TESObjectARMA* addon : a_armor.armorAddons) {
@@ -258,26 +282,44 @@ namespace HairLook
 		}
 
 		std::string sourceModel = a_args.value("model", std::string{});
+		const auto hairPartModel = [](const RE::BGSHeadPart& a_part) {
+			std::vector<std::string> extras;
+			for (const RE::BGSHeadPart* extra : a_part.extraParts)
+				extras.emplace_back(extra && extra->GetModel() ? extra->GetModel() : "");
+			return SmpPhysics::HairPartModel(a_part.GetModel() ? a_part.GetModel() : "", extras);
+		};
 		std::string sourceName = sourceModel;
 		RE::FormID sourceArmor = 0;
+		bool wornWig = false;
 		if (sourceModel.empty() && a_args.contains("actorFormID")) {
 			const auto* actor = RE::TESForm::LookupByID<RE::Actor>(a_args.value("actorFormID", 0u));
 			auto* base = actor ? const_cast<RE::TESNPC*>(actor->GetActorBase()) : nullptr;
+			const auto* wig = RE::TESForm::LookupByID<RE::TESObjectARMO>(a_args.value("wigFormID", 0u));
 			RE::BGSHeadPart* hair = base ? base->GetCurrentHeadPartByType(RE::BGSHeadPart::HeadPartType::kHair) : nullptr;
-			if (!hair) {
+			if (base)
+				sex = base->GetSex() == RE::SEX::kFemale ? 1 : 0;
+			if (wig && !ModelOf(*wig, sex).empty()) {
+				sourceModel = ModelOf(*wig, sex);
+				sourceName = wig->GetName();
+				wornWig = true;
+			} else if (hair) {
+				sourceModel = hairPartModel(*hair);
+				if (sourceModel.empty()) {
+					Publish({ { "error", "that actor's hair head part has no model" } });
+					return;
+				}
+				sourceName = std::string(hair->GetFormEditorID());
+			} else {
 				Publish({ { "error", "that actor has no hair head part" } });
 				return;
 			}
-			sex = base->GetSex() == RE::SEX::kFemale ? 1 : 0;
-			sourceModel = hair->GetModel() ? hair->GetModel() : "";
-			sourceName = std::string(hair->GetFormEditorID());
 		} else if (sourceModel.empty() && a_args.contains("headPart")) {
 			const auto* part = RE::TESForm::LookupByEditorID<RE::BGSHeadPart>(a_args.value("headPart", std::string{}));
-			if (!part || !part->GetModel()) {
+			sourceModel = part ? hairPartModel(*part) : std::string();
+			if (sourceModel.empty()) {
 				Publish({ { "error", "no head part with that editor ID has a model" } });
 				return;
 			}
-			sourceModel = part->GetModel();
 			sourceName = std::string(part->GetFormEditorID());
 		} else if (sourceModel.empty() && !name.empty()) {
 			for (const RE::TESObjectARMO* armor : handler->GetFormArray<RE::TESObjectARMO>()) {
@@ -286,6 +328,20 @@ namespace HairLook
 					sourceName = armor->GetName();
 					sourceArmor = armor->GetFormID();
 					break;
+				}
+			}
+			if (sourceModel.empty()) {
+				for (const RE::BGSHeadPart* part : handler->GetFormArray<RE::BGSHeadPart>()) {
+					if (!part || part->type != RE::BGSHeadPart::HeadPartType::kHair)
+						continue;
+					const std::string editorId(part->GetFormEditorID());
+					if (Util::SearchKey(editorId).find(name) == std::string::npos && Util::SearchKey(part->GetName()).find(name) == std::string::npos)
+						continue;
+					sourceModel = hairPartModel(*part);
+					if (!sourceModel.empty()) {
+						sourceName = editorId;
+						break;
+					}
 				}
 			}
 		}
@@ -321,7 +377,7 @@ namespace HairLook
 			if (model.empty() || !seen.insert(Util::SearchKey(model)).second)
 				continue;
 			++considered;
-			if (!IsCached(model) && elapsedMs() > budget) {
+			if ((!IsCached(model) || !IsMatched(sourceModel, model)) && elapsedMs() > budget) {
 				++pending;
 				continue;
 			}
@@ -330,7 +386,7 @@ namespace HairLook
 				failed.push_back({ { "name", armor->GetName() }, { "model", model }, { "reason", shape.reason } });
 				continue;
 			}
-			ranked.push_back({ armor, std::move(model), SmpPhysics::CompareHair(*source.descriptor, *shape.descriptor) });
+			ranked.push_back({ armor, std::move(model), MatchOf(sourceModel, model, *source.descriptor, *shape.descriptor) });
 		}
 		std::ranges::sort(ranked, [](const Candidate& a_left, const Candidate& a_right) { return a_left.match.chamfer < a_right.match.chamfer; });
 
@@ -342,7 +398,7 @@ namespace HairLook
 				{ "boxOverlap", candidate.match.boxOverlap }, { "areaRatio", candidate.match.areaRatio },
 				{ "files", NifProbe::XmlPaths(candidate.armor->GetFormID()) } });
 		}
-		Publish({ { "target", { { "name", sourceName }, { "model", sourceModel }, { "shape", SummaryOf(*source.descriptor, source.triangles) } } },
+		Publish({ { "target", { { "name", sourceName }, { "wig", wornWig }, { "model", sourceModel }, { "shape", SummaryOf(*source.descriptor, source.triangles) } } },
 			{ "considered", considered }, { "compared", ranked.size() }, { "pending", pending }, { "failed", std::move(failed) }, { "elapsedMs", elapsedMs() },
 			{ "matches", std::move(rows) } });
 	}

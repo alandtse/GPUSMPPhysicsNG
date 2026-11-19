@@ -178,9 +178,14 @@ namespace SmpPhysics
 
 	void CrowdWigs::Restore(RE::Actor& a_actor)
 	{
+		wornIndex.store(-1, std::memory_order_relaxed);
+		ShowBakedHair(a_actor);
+	}
+
+	void CrowdWigs::ShowBakedHair(RE::Actor& a_actor)
+	{
 		const RE::ObjectRefHandle handle = a_actor.GetHandle();
 		std::erase_if(watches, [&](const BakedHairWatch& a_watch) { return a_watch.handle == handle; });
-		wornIndex.store(-1, std::memory_order_relaxed);
 		auto* root = a_actor.Get3D();
 		if (!root)
 			return;
@@ -219,6 +224,50 @@ namespace SmpPhysics
 		return names;
 	}
 
+	bool CrowdWigs::WearOn(RE::Actor& a_actor, int a_index)
+	{
+		const std::vector<RE::TESObjectARMO*>& wigs = WigForms();
+		if (a_index < 0 || static_cast<std::size_t>(a_index) >= wigs.size())
+			return false;
+		RE::TESObjectARMO& wig = *wigs[static_cast<std::size_t>(a_index)];
+		naturalWigs.insert_or_assign(a_actor.GetFormID(), OwnWig{ NaturalWig(a_actor), wig.GetFormID() });
+		Wear(a_actor, wig);
+		return true;
+	}
+
+	RE::TESObjectARMO* CrowdWigs::WornWig(RE::Actor& a_actor)
+	{
+		const auto worn = a_actor.GetInventory([](RE::TESBoundObject& a_object) { return IsWig(a_object); });
+		for (const auto& [object, entry] : worn) {
+			if (object && entry.second && entry.second->IsWorn())
+				return object->As<RE::TESObjectARMO>();
+		}
+		return nullptr;
+	}
+
+	RE::FormID CrowdWigs::NaturalWig(RE::Actor& a_actor) const
+	{
+		const RE::TESObjectARMO* worn = WornWig(a_actor);
+		const auto found = naturalWigs.find(a_actor.GetFormID());
+		return NaturalWigId(found != naturalWigs.end() ? std::optional<OwnWig>(found->second) : std::nullopt, worn ? worn->GetFormID() : 0);
+	}
+
+	void CrowdWigs::TakeOff(RE::Actor& a_actor)
+	{
+		const auto worn = a_actor.GetInventory([](RE::TESBoundObject& a_object) { return IsWig(a_object); });
+		for (const auto& [object, entry] : worn) {
+			if (object && entry.second && entry.second->IsWorn())
+				TestBench::GetCrowd().TakeBack(a_actor, *object);
+		}
+		ShowBakedHair(a_actor);
+		const auto own = naturalWigs.find(a_actor.GetFormID());
+		if (own == naturalWigs.end())
+			return;
+		if (auto* wig = own->second.natural ? RE::TESForm::LookupByID<RE::TESObjectARMO>(own->second.natural) : nullptr)
+			Wear(a_actor, *wig);
+		naturalWigs.erase(own);
+	}
+
 	void CrowdWigs::WearNow(TestBench::TestCrowd& a_crowd, int a_index)
 	{
 		const std::vector<RE::TESObjectARMO*>& wigs = WigForms();
@@ -231,7 +280,7 @@ namespace SmpPhysics
 		chosen.assign(1, wig);
 		const std::vector<RE::Actor*> targets = a_crowd.OutfitTargets();
 		for (RE::Actor* actor : targets)
-			Wear(*actor, *wig);
+			WearOn(*actor, a_index);
 		a_crowd.SetReport(std::format("{} characters wear the wig {} ({} of {}).", targets.size(), wig->GetName(), a_index + 1, wigs.size()));
 	}
 
@@ -244,8 +293,11 @@ namespace SmpPhysics
 				watch.framesLeft = 0;
 				continue;
 			}
-			if (actor->Is3DLoaded() && HideBakedHair(*actor) > 0)
+			if (actor->Is3DLoaded() && HideBakedHair(*actor) > 0) {
 				watch.everHidden = true;
+				if (const auto* base = actor->GetActorBase(); base && naturalColors.contains(base->GetFormID()))
+					actor->UpdateHairColor();
+			}
 			if (--watch.framesLeft <= 0 && !watch.everHidden) {
 				const char* name = actor->GetName();
 				logger::info("[Test Crowd] {} ({:08X}): no baked hair was hidden in {} frames", name && *name ? name : "unnamed", actor->GetFormID(), kBakedHairWatchFrames);
@@ -272,17 +324,51 @@ namespace SmpPhysics
 		return std::format("They wear {} different hair styles{}.", chosen.size(), chosen.size() < requested ? ", so styles repeat" : "");
 	}
 
+	namespace
+	{
+		RE::BGSColorForm* FindHairColor(const std::string& a_color)
+		{
+			std::optional<std::uint32_t> formId = ResolveHairColor(a_color);
+			if (!formId) {
+				try {
+					formId = static_cast<std::uint32_t>(std::stoul(a_color, nullptr, 0));
+				} catch (const std::exception&) {
+					formId = std::nullopt;
+				}
+			}
+			return formId ? RE::TESForm::LookupByID<RE::BGSColorForm>(*formId) : nullptr;
+		}
+	}
+
+	void CrowdWigs::SetActorHairColorNow(TestBench::TestCrowd& a_crowd, RE::Actor& a_actor, const std::string& a_color)
+	{
+		auto* base = const_cast<RE::TESNPC*>(a_actor.GetActorBase());
+		if (!base)
+			return;
+		const RE::FormID baseId = base->GetFormID();
+		if (a_color.empty()) {
+			if (const auto own = naturalColors.find(baseId); own != naturalColors.end()) {
+				base->SetHairColor(own->second);
+				naturalColors.erase(own);
+			}
+		} else {
+			auto* color = FindHairColor(a_color);
+			if (!color) {
+				a_crowd.SetReport(std::format("'{}' is not a hair colour: use a name from testCrowdHairColors or a hair colour form ID.", a_color));
+				return;
+			}
+			if (base->headRelatedData && base->headRelatedData->hairColor)
+				naturalColors.try_emplace(baseId, base->headRelatedData->hairColor);
+			base->SetHairColor(color);
+		}
+		a_actor.UpdateHairColor();
+		a_actor.DoReset3D(true);
+		a_crowd.SetReport(a_color.empty() ? "Put back the target's own hair colour." : std::format("Set the target's hair colour to {}.", a_color));
+	}
+
 	void CrowdWigs::SetHairColorNow(TestBench::TestCrowd& a_crowd, const std::string& a_color)
 	{
-		std::optional<std::uint32_t> formId = ResolveHairColor(a_color);
-		if (!formId) {
-			try {
-				formId = static_cast<std::uint32_t>(std::stoul(a_color, nullptr, 0));
-			} catch (const std::exception&) {
-				formId = std::nullopt;
-			}
-		}
-		auto* color = formId ? RE::TESForm::LookupByID<RE::BGSColorForm>(*formId) : nullptr;
+		auto* color = FindHairColor(a_color);
 		if (!color) {
 			a_crowd.SetReport(std::format("'{}' is not a hair colour: use a name from testCrowdHairColors or a hair colour form ID.", a_color));
 			return;

@@ -583,6 +583,43 @@ namespace TestBench
 		DressArmorNow(static_cast<std::size_t>(((from + a_step % size) % size + size) % size));
 	}
 
+	bool TestCrowd::DressArmorOn(RE::Actor& a_actor, std::size_t a_index)
+	{
+		const std::vector<RE::TESObjectARMO*>& armors = BodyArmors();
+		if (a_index >= armors.size())
+			return false;
+		RE::TESObjectARMO* armor = armors[a_index];
+		if (const Outfit& outfit = outfits[a_actor.GetFormID()]; outfit.cycled)
+			TakeBack(a_actor, *outfit.cycled);
+		StripActor(a_actor);
+		Give(a_actor, *armor);
+		outfits[a_actor.GetFormID()].cycled = armor;
+		return true;
+	}
+
+	void TestCrowd::TakeOffCloaks(RE::Actor& a_actor)
+	{
+		const std::vector<RE::TESObjectARMO*>& cloaks = CloakArmors();
+		const auto worn = a_actor.GetInventory([&cloaks](RE::TESBoundObject& a_object) {
+			const auto* armor = a_object.As<RE::TESObjectARMO>();
+			return armor && std::ranges::find(cloaks, armor) != cloaks.end();
+		});
+		for (const auto& [object, entry] : worn) {
+			if (object && entry.second && entry.second->IsWorn())
+				TakeBack(a_actor, *object);
+		}
+	}
+
+	bool TestCrowd::DressCloakOn(RE::Actor& a_actor, std::size_t a_index)
+	{
+		const std::vector<RE::TESObjectARMO*>& cloaks = CloakArmors();
+		if (a_index >= cloaks.size())
+			return false;
+		TakeOffCloaks(a_actor);
+		Give(a_actor, *cloaks[a_index]);
+		return true;
+	}
+
 	void TestCrowd::DressArmorNow(std::size_t a_index)
 	{
 		const std::vector<RE::TESObjectARMO*>& armors = BodyArmors();
@@ -593,14 +630,8 @@ namespace TestBench
 		armorIndex.store(static_cast<int>(a_index), std::memory_order_relaxed);
 		RE::TESObjectARMO* armor = armors[a_index];
 		stripped.store(true, std::memory_order_relaxed);
-		for (RE::Actor* actor : OutfitTargets()) {
-			Outfit& outfit = outfits[actor->GetFormID()];
-			if (outfit.cycled)
-				TakeBack(*actor, *outfit.cycled);
-			StripActor(*actor);
-			Give(*actor, *armor);
-			outfits[actor->GetFormID()].cycled = armor;
-		}
+		for (RE::Actor* actor : OutfitTargets())
+			DressArmorOn(*actor, a_index);
 		SetReport(std::format("Test characters wear {} ({} of {}).", armor->GetName(), a_index + 1, armors.size()));
 	}
 

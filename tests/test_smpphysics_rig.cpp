@@ -1054,3 +1054,12 @@ TEST_CASE("A kinematic bone written as a joint's child anchors the dynamic bone 
 	CHECK(name(result.rig.additionalJoints[0].child) == "Hair01");
 	CHECK(result.rig.additionalJoints[0].reversed);
 }
+
+TEST_CASE("A rig is not refused for its bone count", "[smpphysics][rig]")
+{
+	SmpRig rig;
+	rig.bones.resize(2000);
+	std::string reason;
+	ValidateRig(rig, reason);
+	CHECK(reason.find("limit") == std::string::npos);
+}

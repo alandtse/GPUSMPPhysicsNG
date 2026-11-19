@@ -2,6 +2,7 @@
 
 #include "Features/SmpPhysics/ClaimOverrides.h"
 #include "Features/SmpPhysics/CrowdWigs.h"
+#include "Features/SmpPhysics/HairTarget.h"
 
 #include "Feature.h"
 #include "d3d/GpuSolver.h"
@@ -10,6 +11,7 @@
 #include "smp/ClaimTally.h"
 #include "smp/Collision.h"
 #include "smp/CollisionOverride.h"
+#include "smp/ItemStats.h"
 #include "smp/PhysicsHealth.h"
 #include "smp/RefitGuard.h"
 #include "smp/RepairLog.h"
@@ -183,6 +185,8 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] UiStatus GetUiStatus() const;
 	/** @brief Sets the test crowd's hair colour from the game thread, or puts back the natural colours when a_color is empty. */
 	void ApplyCrowdHairColor(std::string a_color);
+	/** @brief Sets the hair target's hair colour (an empty name puts its own back) on the game thread; a worn wig takes it. */
+	void ApplyTargetHairColor(std::string a_color);
 	/** @brief The live claims and the files switched off for testing, one row each, for the Claims page. */
 	[[nodiscard]] std::vector<ClaimRow> GetClaimRows() const;
 	/** @brief Offers, takes and declines by mesh kind, and the decline reasons ranked by the (actor, file) pairs they hold back. */
@@ -196,8 +200,22 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] std::vector<std::pair<std::string, std::string>> GetRepairReports() const;
 	/** @brief Text to send an item's mod author: its name, plugin, physics files and what is wrong with each; empty when the scan found no files. Game thread only. */
 	[[nodiscard]] std::string ItemReportText(RE::FormID a_armor);
+	/** @brief A few short lines for hovering an item: each physics file's health and size, and how many bones its claims kept. Empty before a scan. Game thread only. */
+	[[nodiscard]] std::string ItemStatsText(RE::FormID a_armor);
+	/** @brief The hover lines for the physics files in a_files, as ItemStatsText gives for an item; empty before a scan. */
+	[[nodiscard]] std::string FilesStatsText(const std::vector<std::string>& a_files);
 	/** @brief Puts the wig at a_index of CrowdWigs::WigForms() on the crowd and, while it is included, the player; runs on the game thread. */
 	void WearWig(int a_index);
+	/** @brief The character whose hair is matched and swapped, and the wigs ranked by their match to its hair. */
+	[[nodiscard]] SmpPhysics::HairTargetView HairTargetState() const { return hairTarget.View(); }
+	/** @brief Pins a_source as the hair target; false when it has no character. */
+	bool PinHairTarget(SmpPhysics::HairTargetSource a_source) { return hairTarget.Pin(a_source); }
+	/** @brief Lets the console selection set the hair target again. */
+	void UnpinHairTarget() { hairTarget.Unpin(); }
+	/** @brief Puts the entry a_index of the lists of a_item (CrowdWigs::WigForms(), TestCrowd::ArmorForms(), CloakForms()) on the target alone; runs on the game thread. */
+	void WearOnTarget(SmpPhysics::TargetItem a_item, int a_index);
+	/** @brief Takes a_item off the target and puts back what it wore; for a wig, shows its own hair; runs on the game thread. */
+	void RestoreTarget(SmpPhysics::TargetItem a_item);
 	/** @brief The entry of CrowdWigs::WigForms() worn last, or -1 for none. */
 	[[nodiscard]] int WornWigIndex() const noexcept { return crowdWigs.WornIndex(); }
 	/** @brief The rigid solver's island size summary, for the devbench islandSizes query. */
@@ -206,6 +224,8 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] json PhysicsHealthJson();
 	/** @brief The worst health among each item's physics files, parsing any not yet read; None for an item with no files. Game thread only. */
 	[[nodiscard]] std::vector<SmpPhysics::Health> ItemHealths(const std::vector<std::vector<std::string>>& a_itemFiles);
+	/** @brief Each item's physics bones, summed over its files as written; 0 for an item with none. */
+	[[nodiscard]] std::vector<int> ItemBoneCounts(const std::vector<std::vector<std::string>>& a_itemFiles);
 
 	/** @brief Link state, live claims and declined physics files, for the devbench status query. */
 	[[nodiscard]] json BuildStatusJson() const;
@@ -615,6 +635,7 @@ private:
 	std::unordered_map<std::uint64_t, Claim> claims;
 	std::unordered_map<std::string, std::shared_ptr<const SmpPhysics::ParseResult>> parsedRigs;
 	std::unordered_map<std::string, std::string> declinedFiles;
+	std::unordered_map<std::string, SmpPhysics::ClaimTrim> claimTrims;  ///< By normalized file path: how many of its bones its claims kept. Guarded by stateMutex.
 	SmpPhysics::ClaimTally claimTally;
 	std::vector<SmpPhysics::CollisionOverride> collisionOverrides;          ///< Debugging switches applied to each claim as it is built, guarded by stateMutex.
 	SmpPhysics::RepairLog repairLog;                                        ///< What was wrong in each physics file and what was done about it.
@@ -660,4 +681,5 @@ private:
 	FrameListener frameListener{ *this };
 	FrameSyncListener frameSyncListener{ *this };
 	SmpPhysics::CrowdWigs crowdWigs;  ///< What this feature adds to the test crowd.
+	SmpPhysics::HairTarget hairTarget;
 };

@@ -3,6 +3,7 @@
 #include "CrowdStyles.h"
 
 #include "Utils/TestBench/TestCrowd.h"
+#include "smp/OwnWig.h"
 
 #include <atomic>
 #include <cstddef>
@@ -51,6 +52,15 @@ namespace SmpPhysics
 		/** @brief Puts the wig at a_index of WigForms() on every character the crowd outfits, the player included while it is. Game thread only. */
 		void WearNow(TestBench::TestCrowd& a_crowd, int a_index);
 
+		/** @brief Puts the wig at a_index of WigForms() on a_actor alone, leaving the crowd's own choice as it is; false when there is no such wig. Game thread only. */
+		bool WearOn(RE::Actor& a_actor, int a_index);
+		/** @brief Takes the wig a_actor wears off and shows its own hair again, or puts back the wig it wore before WearOn first changed it. Game thread only. */
+		void TakeOff(RE::Actor& a_actor);
+		/** @brief The wig a_actor wears now, or null. Game thread only. */
+		[[nodiscard]] static RE::TESObjectARMO* WornWig(RE::Actor& a_actor);
+		/** @brief The form ID of the wig that is a_actor's own look: the one it wore before WearOn changed it while WearOn's wig is still on, else the one it wears now; 0 for none. Game thread only. */
+		[[nodiscard]] RE::FormID NaturalWig(RE::Actor& a_actor) const;
+
 		/**
 		 * @brief Sets the hair colour of every base the crowd is made from, then refreshes the characters standing now.
 		 * @param a_color A name from TestCrowdHairColors(), or a BGSColorForm ID written as a decimal or 0x-prefixed number.
@@ -59,12 +69,20 @@ namespace SmpPhysics
 		void SetHairColorNow(TestBench::TestCrowd& a_crowd, const std::string& a_color);
 
 		/**
+		 * @brief Sets a_actor's own base to a_color, an empty one putting its natural colour back, and rebuilds its 3D so a worn wig takes it.
+		 * @details Every character made from the same base changes too. Game thread only. The outcome goes to the crowd's report.
+		 */
+		void SetActorHairColorNow(TestBench::TestCrowd& a_crowd, RE::Actor& a_actor, const std::string& a_color);
+
+		/**
 		 * @brief Puts back the natural hair colour of every base SetHairColorNow changed, then refreshes the characters standing now.
 		 * @details Game thread only. The outcome goes to the crowd's report.
 		 */
 		void RestoreNaturalColorsNow(TestBench::TestCrowd& a_crowd);
 
 	private:
+		/** @brief Stops watching a_actor and shows the baked hair that was hidden. */
+		void ShowBakedHair(RE::Actor& a_actor);
 		/** @brief Puts a_wig on a_actor, hides the hair it was born with and watches that it stays hidden. */
 		void Wear(RE::Actor& a_actor, RE::TESObjectARMO& a_wig);
 		/** @brief A wig wearer watched for its own hair showing: frames left to watch and whether any hair was ever hidden. */
@@ -78,6 +96,7 @@ namespace SmpPhysics
 		std::atomic<int> wornIndex{ -1 };                                 ///< Into WigForms() for the wig last worn, -1 for none. Written on the game thread.
 		std::size_t requested = 0;                                        ///< How many characters the last spawn asked for.
 		std::vector<BakedHairWatch> watches;                              ///< Game thread only.
+		std::unordered_map<RE::FormID, OwnWig> naturalWigs;               ///< Each actor WearOn changed. Game thread only.
 		std::unordered_map<RE::FormID, RE::BGSColorForm*> naturalColors;  ///< Each base's own hair colour, recorded before the first change. Game thread only.
 	};
 }

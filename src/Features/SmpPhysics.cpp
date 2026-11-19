@@ -25,6 +25,8 @@
 #include "smp/CardVertices.h"
 #include "smp/ClaimPolicy.h"
 #include "smp/GpuViews.h"
+#include "smp/HairPartModel.h"
+#include "smp/PathKey.h"
 #include "smp/SceneParent.h"
 
 #include <algorithm>
@@ -77,6 +79,48 @@ using namespace SmpPhysicsLimits;
 namespace
 {
 	/** @brief What NifProbe::Find has for a_file, with each match's index in the test crowd's armor and cloak lists. */
+	SmpPhysics::TargetItem TargetItemFromArgs(const json& a_args)
+	{
+		const std::string item = a_args.value("item", std::string("wig"));
+		return item == "armor" ? SmpPhysics::TargetItem::Armor : item == "cloak" ? SmpPhysics::TargetItem::Cloak :
+		                                                                           SmpPhysics::TargetItem::Wig;
+	}
+
+	std::vector<std::string> TargetItemNames(SmpPhysics::TargetItem a_item)
+	{
+		switch (a_item) {
+		case SmpPhysics::TargetItem::Armor:
+			return TestBench::TestCrowd::ArmorNames();
+		case SmpPhysics::TargetItem::Cloak:
+			return TestBench::TestCrowd::CloakNames();
+		default:
+			return SmpPhysics::CrowdWigs::WigNames();
+		}
+	}
+
+	/** @brief What a character wears on its head, as the hairTarget query lists it. */
+	json HairWearing(std::uint32_t a_formID)
+	{
+		const SmpPhysics::HairTargetDetail detail = SmpPhysics::HairWearingOf(a_formID ? RE::TESForm::LookupByID<RE::Actor>(a_formID) : RE::PlayerCharacter::GetSingleton());
+		json list = json::array();
+		if (!detail.hairPart.empty())
+			list.push_back({ { "kind", "hairPart" }, { "name", detail.hairPart }, { "model", detail.hairPartModel }, { "extraParts", detail.extraParts } });
+		for (const SmpPhysics::WornPiece& piece : detail.worn)
+			list.push_back({ { "kind", "armor" }, { "name", piece.name }, { "hairSlot", piece.hairSlot }, { "headSlot", piece.headSlot } });
+		return list;
+	}
+
+	json HairTargetJson(const SmpPhysics::HairTargetView& a_view)
+	{
+		json result{ { "formId", a_view.formID }, { "text", a_view.text }, { "status", a_view.status }, { "hasConsole", a_view.hasConsole }, { "hasCrosshair", a_view.hasCrosshair }, { "pinned", a_view.pinned },
+			{ "ranked", a_view.progress.second } };
+		if (!a_view.order.empty())
+			result["closest"] = SmpPhysics::CrowdWigs::WigNames()[static_cast<std::size_t>(a_view.order.front())];
+		result["wearing"] = HairWearing(a_view.formID);
+		result["detail"] = a_view.detail;
+		return result;
+	}
+
 	json FindPhysicsFile(const std::string& a_file)
 	{
 		const auto indexOf = [](const std::vector<RE::TESObjectARMO*>& a_forms, RE::FormID a_id) {
@@ -500,12 +544,53 @@ void SmpPhysicsFeature::RegisterUxActions()
 	FEATURE_QUERY("findPhysicsFile", "After nifPhysicsProbe has finished: the armors, cloaks, wigs and head parts whose models name a physics file containing the text. Args: file (string, part of the path in any case with either slash). Each match has its name, form ID, model, matching files and its index in testCrowdArmors and testCrowdCloaks (-1 when it is not in that list).",
 		[](const Feature*, const json& a_args) -> json { return FindPhysicsFile(a_args.value("file", std::string{})); });
 	FEATURE_COMMAND("hairLookRank", "Prototype: rank the hair-slot armors by how closely their shape matches one hair. Args: actorFormID (number, an NPC whose own hair is the target) or model (string, a path under Meshes) or name (string, part of a hair-slot armor's name); sex (0 male, 1 female), filter (string, part of a candidate's name), physicsOnly (bool, default true once nifPhysicsProbe has run), budgetMs (number, default 3000), top (number, default 10). Shapes are loaded once and kept, so repeat while hairLookResult says pending. Read the outcome from hairLookResult.",
-		[](Feature*, const json& a_args) { HairLook::Rank(a_args); });
+		[](Feature* a_self, const json& a_args) {
+			json args = a_args;
+			if (!args.contains("actorFormID") && !args.contains("model") && !args.contains("name") && !args.contains("headPart")) {
+				const std::uint32_t target = static_cast<SmpPhysicsFeature*>(a_self)->HairTargetState().formID;
+				args["actorFormID"] = target ? target : 0x14u;
+			}
+			if (args.contains("actorFormID") && !args.contains("wigFormID")) {
+				if (auto* actor = RE::TESForm::LookupByID<RE::Actor>(args["actorFormID"].get<std::uint32_t>()))
+					args["wigFormID"] = static_cast<SmpPhysicsFeature*>(a_self)->crowdWigs.NaturalWig(*actor);
+			}
+			HairLook::Rank(args);
+		});
+	FEATURE_QUERY("hairTarget", "The character whose hair is matched and swapped: formId (0 for the player), text, status while the wigs are being ranked, which sources exist (hasConsole for a prid selection, hasCrosshair) whether one is pinned, and wearing: its hair head part with the mesh that stands for it and each worn armor in a hair or head slot; detail and physics: the hover text.",
+		[](const Feature* a_self, const json&) -> json {
+			auto* self = const_cast<SmpPhysicsFeature*>(static_cast<const SmpPhysicsFeature*>(a_self));
+			const SmpPhysics::HairTargetView view = self->HairTargetState();
+			json result = HairTargetJson(view);
+			result["physics"] = view.matchedModel.empty() ? std::string() : self->FilesStatsText(NifProbe::XmlPathsOfModel(view.matchedModel));
+			return result;
+		});
+	FEATURE_COMMAND("setHairTarget", "Choose whose hair is matched and swapped. Args: source (string: player, console for the reference selected with prid, crosshair for the character last looked at, or auto to let the console selection set it again).",
+		[](Feature* a_self, const json& a_args) {
+			auto* self = static_cast<SmpPhysicsFeature*>(a_self);
+			const std::string source = a_args.value("source", std::string{ "auto" });
+			if (source == "auto")
+				self->UnpinHairTarget();
+			else if (source == "player")
+				self->PinHairTarget(SmpPhysics::HairTargetSource::Player);
+			else if (source == "console")
+				self->PinHairTarget(SmpPhysics::HairTargetSource::Console);
+			else if (source == "crosshair")
+				self->PinHairTarget(SmpPhysics::HairTargetSource::Crosshair);
+		});
+	FEATURE_COMMAND("wearOnTarget", "Put an armor, cloak or wig on the target alone. Args: item (string: armor, cloak or wig; default wig), name (string, case-insensitive part of an entry of that kind's list, testCrowdArmors, testCrowdCloaks or testCrowdWigs; the first match is worn) or index (number, an entry of that list).",
+		[](Feature* a_self, const json& a_args) {
+			const SmpPhysics::TargetItem item = TargetItemFromArgs(a_args);
+			static_cast<SmpPhysicsFeature*>(a_self)->WearOnTarget(item, TestBench::ItemIndexFromArgs(a_args, TargetItemNames(item)));
+		});
+	FEATURE_COMMAND("setTargetHairColor", "Set the hair target's hair colour; a worn wig takes it, and every character made from the same base changes too. Args: color (string: a name from testCrowdHairColors or a colour form ID; empty puts its own back).",
+		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->ApplyTargetHairColor(a_args.value("color", std::string{})); });
+	FEATURE_COMMAND("restoreTarget", "Take an armor, cloak or wig off the target and put back what it wore; a wig shows its own hair again. Args: item (string: armor, cloak or wig; default wig).",
+		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->RestoreTarget(TargetItemFromArgs(a_args)); });
 	FEATURE_QUERY("hairLookResult", "The outcome of the last hairLookRank: the target's shape, then the closest hairs with their chamfer distance (game units, lower is closer), the share of the shape farther than 15 units from the other (coverage), voxel overlap, bounding box overlap and area ratio.",
 		[](const Feature*, const json&) -> json { return HairLook::Result(); });
 	FEATURE_QUERY("islandSizes", "How the rigid solver's islands split by constraint count in the last buffer build: islands and constraints per size bucket (1, 2-4, 5-8, 9-16, 17-32, 33-64, 65 or more), the island total, the largest island's constraints and the most colour classes one takes. Shows which solve kernel suits the islands.",
 		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->IslandSizesJson(); });
-	FEATURE_QUERY("physicsHealth", "After nifPhysicsProbe has finished: each armor and cloak the scan found physics files for, with the worst health among them (working, repaired or broken) and the files; what colours the Test crowd lists.",
+	FEATURE_QUERY("physicsHealth", "After nifPhysicsProbe has finished: each armor, cloak and wig the scan found physics files for, with the worst health among them (working, repaired or broken), the files, the hover stats the lists show and, for those not working, the report a mod author would be sent; what colours the Test crowd lists.",
 		[](const Feature* a_self, const json&) -> json { return const_cast<SmpPhysicsFeature*>(static_cast<const SmpPhysicsFeature*>(a_self))->PhysicsHealthJson(); });
 	FEATURE_COMMAND("claimTallyReset", "Clear the claim tally, then run reevaluate to count every actor's meshes again.",
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->ResetClaimTally(); });
@@ -933,6 +1018,53 @@ std::vector<SmpPhysics::Health> SmpPhysicsFeature::ItemHealths(const std::vector
 	return result;
 }
 
+std::vector<int> SmpPhysicsFeature::ItemBoneCounts(const std::vector<std::vector<std::string>>& a_itemFiles)
+{
+	std::vector<int> counts;
+	counts.reserve(a_itemFiles.size());
+	for (const std::vector<std::string>& files : a_itemFiles) {
+		std::size_t bones = 0;
+		for (const std::string& file : files) {
+			if (const auto parsed = GetParsedRig(file); parsed && parsed->status == SmpPhysics::ParseStatus::Ok)
+				bones += parsed->rig.bones.size();
+		}
+		counts.push_back(static_cast<int>(bones));
+	}
+	return counts;
+}
+
+std::string SmpPhysicsFeature::ItemStatsText(RE::FormID a_armor)
+{
+	return FilesStatsText(NifProbe::XmlPaths(a_armor));
+}
+
+std::string SmpPhysicsFeature::FilesStatsText(const std::vector<std::string>& a_files)
+{
+	if (!NifProbe::Generation())
+		return {};
+	std::vector<SmpPhysics::FileStats> stats;
+	for (const std::string& path : a_files) {
+		SmpPhysics::FileStats file;
+		file.file = path;
+		file.health = ItemHealths({ { path } }).front();
+		const auto parsed = GetParsedRig(path);
+		file.missing = parsed && parsed->reason == SmpPhysics::kMissingFileReason;
+		if (parsed && parsed->status == SmpPhysics::ParseStatus::Ok) {
+			file.read = true;
+			file.bones = parsed->rig.bones.size();
+			file.dynamic = static_cast<std::size_t>(std::ranges::count_if(parsed->rig.bones, [](const SmpPhysics::RigBone& a_bone) { return !a_bone.kinematic; }));
+			file.joints = parsed->rig.joints.size() + parsed->rig.additionalJoints.size();
+		}
+		{
+			const std::scoped_lock lock(stateMutex);
+			if (const auto found = claimTrims.find(SmpPhysics::PathKey(path)); found != claimTrims.end())
+				file.claim = found->second;
+		}
+		stats.push_back(std::move(file));
+	}
+	return SmpPhysics::FormatItemStats(stats);
+}
+
 std::string SmpPhysicsFeature::ItemReportText(RE::FormID a_armor)
 {
 	const auto* armor = RE::TESForm::LookupByID<RE::TESObjectARMO>(a_armor);
@@ -951,6 +1083,8 @@ std::string SmpPhysicsFeature::ItemReportText(RE::FormID a_armor)
 	const std::vector<SmpPhysics::RepairLog::FileReport> reports = repairLog.Take();
 	for (const std::string& path : files) {
 		text += "File: " + path + '\n';
+		if (const auto parsed = GetParsedRig(path); parsed->status != SmpPhysics::ParseStatus::Ok)
+			text += (parsed->reason == SmpPhysics::kMissingFileReason ? std::string("Missing: no file at that path") : "Not read: " + parsed->reason) + '\n';
 		for (const SmpPhysics::RepairLog::FileReport& report : reports) {
 			if (key(report.file) == key(path))
 				text += SmpPhysics::RepairLog::Format(report) + '\n';
@@ -975,14 +1109,18 @@ json SmpPhysicsFeature::PhysicsHealthJson()
 {
 	static constexpr std::array<const char*, 4> kNames = { "none", "working", "repaired", "broken" };
 	json rows = json::array();
-	for (const auto& list : { TestBench::TestCrowd::ArmorForms(), TestBench::TestCrowd::CloakForms() }) {
+	for (const auto& list : { TestBench::TestCrowd::ArmorForms(), TestBench::TestCrowd::CloakForms(), SmpPhysics::CrowdWigs::WigForms() }) {
 		std::vector<std::vector<std::string>> files;
 		for (const RE::TESObjectARMO* armor : list)
 			files.push_back(NifProbe::XmlPaths(armor->GetFormID()));
 		const std::vector<SmpPhysics::Health> health = ItemHealths(files);
 		for (std::size_t index = 0; index < list.size(); ++index) {
-			if (health[index] != SmpPhysics::Health::None)
-				rows.push_back({ { "name", list[index]->GetName() }, { "formId", list[index]->GetFormID() }, { "health", kNames[static_cast<std::size_t>(health[index])] }, { "files", files[index] } });
+			if (health[index] == SmpPhysics::Health::None)
+				continue;
+			json row = { { "name", list[index]->GetName() }, { "formId", list[index]->GetFormID() }, { "health", kNames[static_cast<std::size_t>(health[index])] }, { "files", files[index] }, { "stats", ItemStatsText(list[index]->GetFormID()) } };
+			if (health[index] != SmpPhysics::Health::Working)
+				row["report"] = ItemReportText(list[index]->GetFormID());
+			rows.push_back(std::move(row));
 		}
 	}
 	return { { "items", std::move(rows) } };
@@ -1254,6 +1392,7 @@ RE::BSEventNotifyControl SmpPhysicsFeature::FrameSyncListener::ProcessEvent(
 	TracyGpu::NextFrame();
 	try {
 		feature.crowdWigs.Tick();
+		feature.hairTarget.Tick(feature.gamePaused.load(std::memory_order_relaxed), feature.crowdWigs);
 		feature.StepClaims();
 		feature.RecordBoneFrame();
 	} catch (const std::exception& error) {
@@ -1476,6 +1615,8 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 	}
 
 	SmpPhysics::SmpRig rig = DropMissingBones(a_context, skeleton, parsed->rig);
+	const std::size_t bonesInFile = parsed->rig.bones.size();
+	const std::size_t bonesOnSkeleton = rig.bones.size();
 	std::string topologyReason;
 	if (!SmpPhysics::NormalizeRigTopology(rig, topologyReason)) {
 		RecordDecline(path, topologyReason);
@@ -1532,7 +1673,11 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 		return false;
 	}
 	std::string rigReason;
-	if (!SmpPhysics::ValidateRig(rig, rigReason) || restPose.size() != boneCount ||
+	if (!SmpPhysics::ValidateRig(rig, rigReason)) {
+		RecordDecline(path, rigReason);
+		return false;
+	}
+	if (restPose.size() != boneCount ||
 		!std::all_of(restPose.begin(), restPose.end(), [](const SmpPhysics::Transform& a_pose) { return SmpPhysics::IsFiniteTransform(a_pose); })) {
 		RecordDecline(path, "the rest pose is not usable by the solver");
 		return false;
@@ -1595,12 +1740,13 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 		// A token hdtSMP64 reuses must not leave the GPU backend holding the previous rig for it.
 		gpuSolver.RemoveClaim(a_token);
 		gpuSkinning.RemoveClaim(a_token);
+		claimTrims[SmpPhysics::PathKey(path)].Add(boneCount);
 		if (claim.cloth)
 			RegisterClothMeshes(claim.actorFormID, claim.cardGeometries);
 		claims.insert_or_assign(a_token, std::move(claim));
 	}
-	logger::info("{} Claimed '{}' for token {} ({} bones, {} dynamic, {} additional joints, {} collision spheres, {} of {} start inside a collider and are exempt, {} colliders, {} fitted, {} defaulted) in {} ms",
-		kLogPrefix, path, a_token, boneCount, dynamicCount, additionalJoints, sphereCount,
+	logger::info("{} Claimed '{}' for token {} ({} of the file's {} bones kept, {} missing from the skeleton, {} in groups no joint holds; {} dynamic, {} extra joints, {} collision spheres, {} of {} start inside a collider and are exempt, {} colliders, {} fitted, {} defaulted) in {} ms",
+		kLogPrefix, path, a_token, boneCount, bonesInFile, bonesInFile - bonesOnSkeleton, bonesOnSkeleton - boneCount, dynamicCount, additionalJoints, sphereCount,
 		exemptSpheres, sphereCount, colliderCount, collision.fitted, collision.defaulted,
 		std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - claimStart).count());
 	if (collision.retargetBehind > 0) {
@@ -1937,6 +2083,66 @@ void SmpPhysicsFeature::WearWig(int a_index)
 {
 	if (auto* task = SKSE::GetTaskInterface())
 		task->AddTask([this, a_index] { crowdWigs.WearNow(TestBench::GetCrowd(), a_index); });
+}
+
+namespace
+{
+	RE::Actor* HairTargetActor(std::uint32_t a_formID)
+	{
+		return a_formID ? RE::TESForm::LookupByID<RE::Actor>(a_formID) : RE::PlayerCharacter::GetSingleton();
+	}
+}
+
+void SmpPhysicsFeature::WearOnTarget(SmpPhysics::TargetItem a_item, int a_index)
+{
+	if (auto* task = SKSE::GetTaskInterface()) {
+		task->AddTask([this, a_item, a_index] {
+			auto* actor = HairTargetActor(hairTarget.FormID());
+			if (!actor || a_index < 0)
+				return;
+			const auto index = static_cast<std::size_t>(a_index);
+			switch (a_item) {
+			case SmpPhysics::TargetItem::Armor:
+				TestBench::GetCrowd().DressArmorOn(*actor, index);
+				break;
+			case SmpPhysics::TargetItem::Cloak:
+				TestBench::GetCrowd().DressCloakOn(*actor, index);
+				break;
+			default:
+				crowdWigs.WearOn(*actor, a_index);
+			}
+		});
+	}
+}
+
+void SmpPhysicsFeature::ApplyTargetHairColor(std::string a_color)
+{
+	if (auto* task = SKSE::GetTaskInterface())
+		task->AddTask([this, color = std::move(a_color)] {
+			if (auto* actor = HairTargetActor(hairTarget.FormID()))
+				crowdWigs.SetActorHairColorNow(TestBench::GetCrowd(), *actor, color);
+		});
+}
+
+void SmpPhysicsFeature::RestoreTarget(SmpPhysics::TargetItem a_item)
+{
+	if (auto* task = SKSE::GetTaskInterface()) {
+		task->AddTask([this, a_item] {
+			auto* actor = HairTargetActor(hairTarget.FormID());
+			if (!actor)
+				return;
+			switch (a_item) {
+			case SmpPhysics::TargetItem::Armor:
+				TestBench::GetCrowd().RestoreActor(*actor);
+				break;
+			case SmpPhysics::TargetItem::Cloak:
+				TestBench::GetCrowd().TakeOffCloaks(*actor);
+				break;
+			default:
+				crowdWigs.TakeOff(*actor);
+			}
+		});
+	}
 }
 
 void SmpPhysicsFeature::SetBodyContactProbe(const json& a_args)

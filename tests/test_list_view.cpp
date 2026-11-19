@@ -7,6 +7,8 @@
 
 using SettingsUi::RowVisible;
 using SettingsUi::ShouldScroll;
+using SettingsUi::Sort;
+using SettingsUi::SortedOrder;
 using SettingsUi::StepVisible;
 
 namespace
@@ -57,10 +59,55 @@ TEST_CASE("Stepping stays put when no row is visible", "[ui][listview]")
 	CHECK(StepVisible({}, "", 0, states, -1, 1) == -1);
 }
 
+TEST_CASE("Stepping follows the order the list shows its rows in", "[ui][listview]")
+{
+	const std::vector<int> states;
+	const std::vector<int> order{ 2, 0, 3, 1 };
+	CHECK(StepVisible(kNames, "", 0, states, 2, 1, order) == 0);
+	CHECK(StepVisible(kNames, "", 0, states, 0, 1, order) == 3);
+	CHECK(StepVisible(kNames, "", 0, states, 1, 1, order) == 2);
+	CHECK(StepVisible(kNames, "", 0, states, 2, -1, order) == 1);
+	CHECK(StepVisible(kNames, "braid", 0, states, 2, 1, order) == 0);
+	CHECK(StepVisible(kNames, "", 0, states, -1, 1, order) == 2);
+	CHECK(StepVisible(kNames, "", 0, states, 0, 1, std::vector<int>{ 1, 0 }) == 1);
+}
+
 TEST_CASE("A list scrolls to a changed selection except one the user just clicked", "[ui][listview]")
 {
 	CHECK(ShouldScroll(5, 2, -1));
 	CHECK_FALSE(ShouldScroll(5, 2, 5));
 	CHECK_FALSE(ShouldScroll(2, 2, -1));
 	CHECK(ShouldScroll(7, 2, 5));
+}
+
+TEST_CASE("The natural sort leaves a list as it is", "[ui][listview]")
+{
+	CHECK(SortedOrder(Sort::Natural, kNames, {}).empty());
+}
+
+TEST_CASE("Sorting by name ignores case and runs either way", "[ui][listview]")
+{
+	const std::vector<std::string> names{ "beta", "Alpha", "delta", "Gamma" };
+
+	CHECK(SortedOrder(Sort::NameAscending, names, {}) == std::vector<int>{ 1, 0, 2, 3 });
+	CHECK(SortedOrder(Sort::NameDescending, names, {}) == std::vector<int>{ 3, 2, 0, 1 });
+}
+
+TEST_CASE("Sorting by physics health puts the worst or the ones with physics first and keeps ties in order", "[ui][listview]")
+{
+	const std::vector<int> states{ 0, 1, 3, 2, 0, 3 };
+	const std::vector<std::string> names{ "a", "b", "c", "d", "e", "f" };
+
+	CHECK(SortedOrder(Sort::WorstFirst, names, states) == std::vector<int>{ 2, 5, 3, 1, 0, 4 });
+	CHECK(SortedOrder(Sort::HasPhysicsFirst, names, states) == std::vector<int>{ 1, 2, 3, 5, 0, 4 });
+	CHECK(SortedOrder(Sort::WorstFirst, names, std::vector<int>{ 0, 2 }) == std::vector<int>{ 1, 0, 2, 3, 4, 5 });
+}
+
+TEST_CASE("Sorting by bones puts the most or the fewest first and rows with none last", "[ui][listview]")
+{
+	const std::vector<std::string> names{ "a", "b", "c", "d", "e" };
+	const std::vector<int> bones{ 0, 50, 200, 50, 10 };
+
+	CHECK(SortedOrder(Sort::MostBones, names, {}, bones) == std::vector<int>{ 2, 1, 3, 4, 0 });
+	CHECK(SortedOrder(Sort::FewestBones, names, {}, bones) == std::vector<int>{ 4, 1, 3, 2, 0 });
 }
