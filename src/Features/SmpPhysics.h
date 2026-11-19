@@ -296,6 +296,19 @@ private:
 		SmpPhysicsFeature& feature;
 	};
 
+	/** @brief Tells the hair target which character the crosshair is on. */
+	class CrosshairListener final : public RE::BSTEventSink<SKSE::CrosshairRefEvent>
+	{
+	public:
+		explicit CrosshairListener(SmpPhysicsFeature& a_feature) noexcept :
+			feature(a_feature) {}
+
+		RE::BSEventNotifyControl ProcessEvent(const SKSE::CrosshairRefEvent* a_event, RE::BSTEventSource<SKSE::CrosshairRefEvent>*) override;
+
+	private:
+		SmpPhysicsFeature& feature;
+	};
+
 	/** @brief The collision proxies built for one claim, and how many of them had to fall back on a default. */
 	struct ClaimCollision
 	{
@@ -680,6 +693,7 @@ private:
 	MeshOwner meshOwner{ *this };
 	FrameListener frameListener{ *this };
 	FrameSyncListener frameSyncListener{ *this };
+	CrosshairListener crosshairListener{ *this };
 	SmpPhysics::CrowdWigs crowdWigs;  ///< What this feature adds to the test crowd.
 	SmpPhysics::HairTarget hairTarget;
 };

@@ -5,6 +5,7 @@
 #include "smp/HairTargetDetail.h"
 #include "smp/HairTargetPick.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -51,10 +52,12 @@ namespace SmpPhysics
 	{
 	public:
 		/**
-		 * @brief Samples the console selection and the crosshair, and ranks the wigs against a new target a little each frame until done.
+		 * @brief While the UI reads the view, takes the console selection and ranks the wigs against a new target a little each frame until done; otherwise does nothing.
 		 * @details A target that wears a wig is matched by that wig, not by the hair head part the wig hides; a_wigs tells which wig is its own.
 		 */
-		void Tick(bool a_menuOpen, const CrowdWigs& a_wigs);
+		void Tick(const CrowdWigs& a_wigs);
+		/** @brief Remembers the character the crosshair is on, 0 for none. Called from the crosshair event, so it costs nothing while nobody looks at the target. */
+		void NoteCrosshair(std::uint32_t a_formID);
 		/** @brief Pins a_source as the target; false when it has no character. */
 		bool Pin(HairTargetSource a_source);
 		/** @brief Lets the console selection set the target again. */
@@ -75,5 +78,9 @@ namespace SmpPhysics
 		bool ranking{};
 		HairTargetDetail matched;  ///< The matched fields of the last ranking result.
 		std::chrono::steady_clock::time_point sampledAt{};
+		std::chrono::steady_clock::time_point detailAt{};
+		std::uint32_t detailFor{ UINT32_MAX };
+		HairTargetDetail wearing;                                        ///< What the target wore at detailAt.
+		mutable std::atomic<std::chrono::steady_clock::rep> viewedAt{};  ///< When the UI last read the view; nothing is ranked while it is not being read.
 	};
 }

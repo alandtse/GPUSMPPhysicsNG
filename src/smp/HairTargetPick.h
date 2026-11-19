@@ -28,16 +28,11 @@ namespace SmpPhysics
 		std::uint32_t crosshair{};
 	};
 
-	/** @brief What the game shows now: the selected console reference and the crosshair's character, 0 for none, and whether a menu is open. */
-	struct HairTargetSamples
-	{
-		std::uint32_t console{};
-		std::uint32_t crosshair{};
-		bool menuOpen{};
-	};
+	/** @brief Takes a new console selection, 0 for none; a_pick follows it unless pinned. */
+	void UpdatePick(HairTargetPick& a_pick, std::uint32_t a_console);
 
-	/** @brief Takes a new console selection and remembers the crosshair's character while no menu is open; a_pick follows the console unless pinned. */
-	void UpdatePick(HairTargetPick& a_pick, const HairTargetSamples& a_samples);
+	/** @brief Remembers the character the crosshair is on; none, as when a menu opens, keeps the last. */
+	void NoteCrosshair(HairTargetPick& a_pick, std::uint32_t a_crosshair);
 
 	/** @brief Pins a_source as the target; false, changing nothing, when it has no character to pin. */
 	bool PinPick(HairTargetPick& a_pick, HairTargetSource a_source);
