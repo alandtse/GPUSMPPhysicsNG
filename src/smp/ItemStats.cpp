@@ -14,6 +14,8 @@ namespace SmpPhysics
 
 		std::string LineOf(const FileStats& a_file)
 		{
+			if (a_file.missing)
+				return a_file.file + ": missing";
 			std::string line = std::format("{}: {}", a_file.file, kHealthNames[static_cast<std::size_t>(a_file.health)]);
 			if (!a_file.read)
 				return line + ", not read";

@@ -257,13 +257,15 @@ namespace
 		visit(a_model);
 	}
 
+	constexpr const char* kFileNotOpened = "the physics file could not be opened";
+
 	SmpPhysics::ParseResult ReadPhysicsFile(const std::string& a_path)
 	{
 		SmpPhysics::ParseResult result;
 
 		RE::BSResourceNiBinaryStream stream(a_path);
 		if (!stream.good()) {
-			result.reason = "the physics file could not be opened";
+			result.reason = kFileNotOpened;
 			return result;
 		}
 
@@ -1044,7 +1046,9 @@ std::string SmpPhysicsFeature::FilesStatsText(const std::vector<std::string>& a_
 		SmpPhysics::FileStats file;
 		file.file = path;
 		file.health = ItemHealths({ { path } }).front();
-		if (const auto parsed = GetParsedRig(path); parsed && parsed->status == SmpPhysics::ParseStatus::Ok) {
+		const auto parsed = GetParsedRig(path);
+		file.missing = parsed && parsed->reason == kFileNotOpened;
+		if (parsed && parsed->status == SmpPhysics::ParseStatus::Ok) {
 			file.read = true;
 			file.bones = parsed->rig.bones.size();
 			file.dynamic = static_cast<std::size_t>(std::ranges::count_if(parsed->rig.bones, [](const SmpPhysics::RigBone& a_bone) { return !a_bone.kinematic; }));
@@ -1079,7 +1083,7 @@ std::string SmpPhysicsFeature::ItemReportText(RE::FormID a_armor)
 	for (const std::string& path : files) {
 		text += "File: " + path + '\n';
 		if (const auto parsed = GetParsedRig(path); parsed->status != SmpPhysics::ParseStatus::Ok)
-			text += "Not read: " + parsed->reason + '\n';
+			text += (parsed->reason == kFileNotOpened ? std::string("Missing: no file at that path") : "Not read: " + parsed->reason) + '\n';
 		for (const SmpPhysics::RepairLog::FileReport& report : reports) {
 			if (key(report.file) == key(path))
 				text += SmpPhysics::RepairLog::Format(report) + '\n';

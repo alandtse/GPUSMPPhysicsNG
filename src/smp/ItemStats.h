@@ -31,7 +31,8 @@ namespace SmpPhysics
 	{
 		std::string file;
 		Health health{};
-		bool read{};  ///< The file parsed; the counts below mean something.
+		bool missing{};  ///< Nothing exists at the path; the line says so instead of giving a health.
+		bool read{};     ///< The file parsed; the counts below mean something.
 		std::size_t bones{};
 		std::size_t dynamic{};
 		std::size_t joints{};

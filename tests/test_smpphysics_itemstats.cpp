@@ -53,6 +53,16 @@ TEST_CASE("A file that was not read gives no counts", "[smpphysics][itemstats]")
 	CHECK(FormatItemStats({ &file, 1 }) == "x.xml: broken, not read");
 }
 
+TEST_CASE("A file that does not exist is called missing, not broken", "[smpphysics][itemstats]")
+{
+	FileStats file;
+	file.file = "a/gone.xml";
+	file.health = Health::Broken;
+	file.missing = true;
+
+	CHECK(FormatItemStats({ &file, 1 }) == "a/gone.xml: missing");
+}
+
 TEST_CASE("Only the first files are listed", "[smpphysics][itemstats]")
 {
 	std::vector<FileStats> files(6);
