@@ -16,6 +16,7 @@
 #include "Utils/HiggsInterface.h"
 #include "Utils/MathUtils.h"
 #include "Utils/StringUtils.h"
+#include "Utils/TestBench/ItemRows.h"
 #include "Utils/TestBench/TestCrowd.h"
 #include "d3d/TracyGpu.h"
 #include "engine/ReadyWeaponGate.h"
@@ -355,8 +356,11 @@ void SmpPhysicsFeature::RegisterUxActions()
 			const auto before = self->settings;
 			json merged = self->settings;
 			merged.update(a_args, true);
-			if (a_args.contains("developerMode") && a_args["developerMode"].is_boolean())
+			if (a_args.contains("developerMode") && a_args["developerMode"].is_boolean()) {
 				globals::state->developerMode = a_args["developerMode"].get<bool>();
+				if (!globals::state->developerMode)
+					TestBench::GetCrowd().SetIncludePlayer(false);
+			}
 			self->LoadSettings(merged);
 			if (before.Enabled != self->settings.Enabled || before.ClaimHeadParts != self->settings.ClaimHeadParts || before.ClaimArmor != self->settings.ClaimArmor || before.CollisionEnabled != self->settings.CollisionEnabled)
 				self->ReevaluateAllActors();
@@ -416,6 +420,17 @@ void SmpPhysicsFeature::RegisterUxActions()
 			for (const SmpPhysics::HairColorChoice& color : SmpPhysics::TestCrowdHairColors())
 				rows.push_back({ { "name", std::string(color.name) }, { "formId", color.formId } });
 			return rows;
+		});
+	FEATURE_COMMAND("setTestCrowdWig", "Put a wig on every test character standing now, and on the player while stripTestCrowd's includePlayer is on. Args: name (string, case-insensitive part of an entry of testCrowdWigs; the first match is worn) or index (number, an entry of testCrowdWigs). Read the outcome from testCrowdReport.",
+		[](Feature* a_self, const json& a_args) {
+			static_cast<SmpPhysicsFeature*>(a_self)->WearWig(TestBench::ItemIndexFromArgs(a_args, SmpPhysics::CrowdWigs::WigNames()));
+		});
+	FEATURE_QUERY("testCrowdWigs", "List the wigs the test crowd can wear, with their index for setTestCrowdWig, and which one was worn last (worn is -1 for none). Args: filter (string, case-insensitive part of the name, default none), limit (number, default 100).",
+		[](const Feature* a_self, const json& a_args) -> json {
+			json result;
+			result["worn"] = static_cast<const SmpPhysicsFeature*>(a_self)->crowdWigs.WornIndex();
+			result["wigs"] = TestBench::ItemRows(SmpPhysics::CrowdWigs::WigNames(), SmpPhysics::CrowdWigs::WigForms(), a_args);
+			return result;
 		});
 	FEATURE_COMMAND("restoreTestCrowdHairColors", "Put back the natural hair colour of every base setTestCrowdHairColor changed, so each test character can be compared with its own colour again, and refresh the characters standing now. Read the outcome from testCrowdReport.",
 		[](Feature* a_self, const json&) {
@@ -1883,6 +1898,12 @@ void SmpPhysicsFeature::ApplyCulling()
 	});
 	for (std::size_t index = budget; index < live.size(); ++index)
 		live[index].claim->culledByBudget = true;
+}
+
+void SmpPhysicsFeature::WearWig(int a_index)
+{
+	if (auto* task = SKSE::GetTaskInterface())
+		task->AddTask([this, a_index] { crowdWigs.WearNow(TestBench::GetCrowd(), a_index); });
 }
 
 void SmpPhysicsFeature::SetBodyContactProbe(const json& a_args)
