@@ -9,6 +9,7 @@
 #include "Utils/StringUtils.h"
 #include "Utils/TestBench/TestCrowd.h"
 #include "smp/NifPhysicsScan.h"
+#include "smp/PathKey.h"
 #include "smp/XmlAudit.h"
 
 #include <algorithm>
@@ -69,6 +70,16 @@ namespace NifProbe
 		SmpPhysics::XmlAudit audit;
 		std::size_t xmlOnDisk = 0;
 		std::atomic<std::uint32_t> generation{ 0 };
+
+		/** @brief Appends the paths of a_more that a_paths does not hold yet, comparing them regardless of case and slash style. */
+		void AddNew(std::vector<std::string>& a_paths, const std::vector<std::string>& a_more)
+		{
+			for (const std::string& path : a_more) {
+				const std::string key = SmpPhysics::PathKey(path);
+				if (std::ranges::none_of(a_paths, [&key](const std::string& a_held) { return SmpPhysics::PathKey(a_held) == key; }))
+					a_paths.push_back(path);
+			}
+		}
 
 		std::string ReadHeader(const std::string& a_model, bool& a_found)
 		{
@@ -249,10 +260,19 @@ namespace NifProbe
 		for (const Hit& hit : hits) {
 			if (hit.formID != a_armor)
 				continue;
-			for (const std::string& path : hit.xml) {
-				if (std::ranges::find(paths, path) == paths.end())
-					paths.push_back(path);
-			}
+			AddNew(paths, hit.xml);
+		}
+		return paths;
+	}
+
+	std::vector<std::string> XmlPathsOfModel(std::string_view a_model)
+	{
+		std::vector<std::string> paths;
+		const std::string wanted = SmpPhysics::PathKey(a_model);
+		const std::scoped_lock lock(mutex);
+		for (const Hit& hit : hits) {
+			if (SmpPhysics::PathKey(hit.model) == wanted)
+				AddNew(paths, hit.xml);
 		}
 		return paths;
 	}

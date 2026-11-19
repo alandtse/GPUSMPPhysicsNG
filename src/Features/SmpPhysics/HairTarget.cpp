@@ -127,6 +127,7 @@ namespace SmpPhysics
 			detail.matchedModel = matched.matchedModel;
 			detail.triangles = matched.triangles;
 			view.detail = FormatHairTargetDetail(detail);
+			view.matchedModel = matched.matchedModel;
 		}
 		if (rank)
 			Rank(target, wig);

@@ -25,6 +25,7 @@
 #include "smp/CardVertices.h"
 #include "smp/GpuViews.h"
 #include "smp/HairPartModel.h"
+#include "smp/PathKey.h"
 #include "smp/SceneParent.h"
 
 #include <algorithm>
@@ -554,8 +555,14 @@ void SmpPhysicsFeature::RegisterUxActions()
 			}
 			HairLook::Rank(args);
 		});
-	FEATURE_QUERY("hairTarget", "The character whose hair is matched and swapped: formId (0 for the player), text, status while the wigs are being ranked, which sources exist (hasConsole for a prid selection, hasCrosshair) whether one is pinned, and wearing: its hair head part with the mesh that stands for it and each worn armor in a hair or head slot; detail: the hover text.",
-		[](const Feature* a_self, const json&) -> json { return HairTargetJson(static_cast<const SmpPhysicsFeature*>(a_self)->HairTargetState()); });
+	FEATURE_QUERY("hairTarget", "The character whose hair is matched and swapped: formId (0 for the player), text, status while the wigs are being ranked, which sources exist (hasConsole for a prid selection, hasCrosshair) whether one is pinned, and wearing: its hair head part with the mesh that stands for it and each worn armor in a hair or head slot; detail and physics: the hover text.",
+		[](const Feature* a_self, const json&) -> json {
+			auto* self = const_cast<SmpPhysicsFeature*>(static_cast<const SmpPhysicsFeature*>(a_self));
+			const SmpPhysics::HairTargetView view = self->HairTargetState();
+			json result = HairTargetJson(view);
+			result["physics"] = view.matchedModel.empty() ? std::string() : self->FilesStatsText(NifProbe::XmlPathsOfModel(view.matchedModel));
+			return result;
+		});
 	FEATURE_COMMAND("setHairTarget", "Choose whose hair is matched and swapped. Args: source (string: player, console for the reference selected with prid, crosshair for the character last looked at, or auto to let the console selection set it again).",
 		[](Feature* a_self, const json& a_args) {
 			auto* self = static_cast<SmpPhysicsFeature*>(a_self);
@@ -1025,15 +1032,15 @@ std::vector<int> SmpPhysicsFeature::ItemBoneCounts(const std::vector<std::vector
 
 std::string SmpPhysicsFeature::ItemStatsText(RE::FormID a_armor)
 {
+	return FilesStatsText(NifProbe::XmlPaths(a_armor));
+}
+
+std::string SmpPhysicsFeature::FilesStatsText(const std::vector<std::string>& a_files)
+{
 	if (!NifProbe::Generation())
 		return {};
-	const auto key = [](const std::string& a_path) {
-		std::string normal = Util::ToLowerAscii(a_path);
-		std::ranges::replace(normal, '/', '\\');
-		return normal;
-	};
 	std::vector<SmpPhysics::FileStats> stats;
-	for (const std::string& path : NifProbe::XmlPaths(a_armor)) {
+	for (const std::string& path : a_files) {
 		SmpPhysics::FileStats file;
 		file.file = path;
 		file.health = ItemHealths({ { path } }).front();
@@ -1045,7 +1052,7 @@ std::string SmpPhysicsFeature::ItemStatsText(RE::FormID a_armor)
 		}
 		{
 			const std::scoped_lock lock(stateMutex);
-			if (const auto found = claimTrims.find(key(path)); found != claimTrims.end())
+			if (const auto found = claimTrims.find(SmpPhysics::PathKey(path)); found != claimTrims.end())
 				file.claim = found->second;
 		}
 		stats.push_back(std::move(file));
@@ -1721,9 +1728,7 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 		// A token hdtSMP64 reuses must not leave the GPU backend holding the previous rig for it.
 		gpuSolver.RemoveClaim(a_token);
 		gpuSkinning.RemoveClaim(a_token);
-		std::string trimKey = Util::ToLowerAscii(path);
-		std::ranges::replace(trimKey, '/', '\\');
-		claimTrims[std::move(trimKey)].Add(boneCount);
+		claimTrims[SmpPhysics::PathKey(path)].Add(boneCount);
 		if (claim.cloth)
 			RegisterClothMeshes(claim.actorFormID, claim.cardGeometries);
 		claims.insert_or_assign(a_token, std::move(claim));

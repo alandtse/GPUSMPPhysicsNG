@@ -419,22 +419,20 @@ namespace
 	}
 
 	/** @brief Choosing whose hair the wig list matches and where a wig goes: the target, what it is, and the sources to pick it from. */
-	/** @brief A colour box and the button that applies it: a name from the hair colours, or Natural for the character's own. */
-	std::vector<Row> HairColourRows(int* a_index, const char* a_pickTip, const char* a_applyTip, std::function<void(const std::string&)> a_apply)
+	/** @brief A colour box that applies its pick at once: a name from the hair colours, or Natural for the character's own. */
+	Row HairColourRow(int* a_index, const char* a_tooltip, std::function<void(const std::string&)> a_apply)
 	{
-		return {
-			Pick("Colour", a_pickTip, a_index, [] {
+		return Pick(
+			"Hair colour", a_tooltip, a_index, [] {
 				std::vector<std::string> names{ "Natural" };
 				for (const SmpPhysics::HairColorChoice& color : SmpPhysics::TestCrowdHairColors())
 					names.emplace_back(color.name);
-				return names;
-			}),
-			Button("Apply", a_applyTip, [a_index, apply = std::move(a_apply)] {
+				return names; },
+			[a_index, apply = std::move(a_apply)] {
 				const auto& colors = SmpPhysics::TestCrowdHairColors();
 				const bool picked = *a_index > 0 && *a_index <= static_cast<int>(colors.size());
 				apply(picked ? std::string(colors[static_cast<std::size_t>(*a_index - 1)].name) : std::string{});
-			})
-		};
+			});
 	}
 
 	int targetHairColor = 0;
@@ -446,7 +444,17 @@ namespace
 			const SmpPhysics::HairTargetView view = Instance().HairTargetState();
 			return view.status.empty() ? view.text : std::format("{}  ({}: {} of {})", view.text, view.status, view.progress.first, view.progress.second);
 		});
-		row.tooltipFn = [] { return Instance().HairTargetState().detail; };
+		row.tooltipFn = [cache = std::make_shared<std::pair<std::chrono::steady_clock::time_point, std::string>>()] {
+			const auto now = std::chrono::steady_clock::now();
+			if (now - cache->first < std::chrono::seconds(1))
+				return cache->second;
+			const SmpPhysics::HairTargetView view = Instance().HairTargetState();
+			std::string text = view.detail;
+			if (const std::string files = view.matchedModel.empty() ? std::string() : Instance().FilesStatsText(NifProbe::XmlPathsOfModel(view.matchedModel)); !files.empty())
+				text += "\nPhysics of that mesh:\n" + files;
+			*cache = { now, std::move(text) };
+			return cache->second;
+		};
 		return row;
 	}
 
@@ -465,8 +473,6 @@ namespace
 			Button("Me", "Matches hair to and dresses you.", pin(SmpPhysics::HairTargetSource::Player), true),
 			Button("Auto", "Lets the console selection choose again; with none, it is you.", [] { Instance().UnpinHairTarget(); }, true), Text([] { return std::string("Select someone with prid in the console, or look at them and open this menu. Wigs are listed closest first to their hair, or to the wig they wear."); })
 		};
-		std::vector<Row> colour = HairColourRows(&targetHairColor, "Sets the target's hair colour; a worn wig takes it. Every character made from the same base changes too. Natural puts their own back.", "Applies the chosen colour to the target and rebuilds their 3D.", [](const std::string& a_color) { Instance().ApplyTargetHairColor(a_color); });
-		rows.insert(rows.end(), std::make_move_iterator(colour.begin()), std::make_move_iterator(colour.end()));
 		return rows;
 	}
 
@@ -551,6 +557,9 @@ namespace
 		add(KindRows(ArmorKind(), "Armors", "Copy report for the selected armor", "Every playable body armor. Click one to see its physics and copy a report for its mod author.", &pickerChoices.armor, showing(0)));
 		add(KindRows(CloakKind(), "Cloaks", "Copy report for the selected cloak", "Every cloak and cape. Click one to see its physics and copy a report for its mod author.", &pickerChoices.cloak, showing(1)));
 		add(KindRows(WigKind(), "Wigs", "Copy report for the selected wig", "Every wig, the hair-slot armors hair mods add. Click one to see its physics and copy a report for its mod author.", &pickerChoices.wig, showing(2)));
+		Row colour = HairColourRow(&targetHairColor, "Sets the target's hair colour at once; a worn wig takes it. Every character made from the same base changes too. Natural puts their own back.", [](const std::string& a_color) { Instance().ApplyTargetHairColor(a_color); });
+		colour.shown = showing(2);
+		rows.push_back(std::move(colour));
 		return rows;
 	}
 
@@ -675,12 +684,12 @@ void PluginUi::Register()
 	physicsModel.showFooter = false;
 	physicsModel.rows = Join(
 		{ Text([] { return std::string("Finds which armors and cloaks carry physics and whether their files work, without dressing anyone."); }),
-			Button("Scan for physics", "Reads every armor's, cloak's and head part's models for physics data and checks each physics file, then lists physics files nothing uses. Takes a few seconds.", [] { NifProbe::Start(); }),
+			Button("Rescan physics", "Reads every armor's, cloak's and head part's models for physics data and checks each physics file, then lists physics files nothing uses. A scan runs when a list first opens; this runs it again after you change your mods.", [] { NifProbe::Start(); }),
 			Text([] {
 				const auto [done, total] = NifProbe::Progress();
 				if (NifProbe::Running())
 					return std::format("Scanning: {} of {}", done, total);
-				return NifProbe::Generation() ? std::string("Green [OK]: no file problems detected. Amber [REPAIRED]: repaired and used. Red [FAULT]: file fault. Plain: no physics found.") : std::string("Not scanned yet."); }) },
+				return NifProbe::Generation() ? std::string("Green [OK]: no file problems detected. Amber [REPAIRED]: repaired and used. Red [FAULT]: file fault. Plain: no physics found.") : std::string("Scanning starts when a list opens."); }) },
 		Join(HairTargetRows(), ItemPicker()));
 
 	auto& choices = crowdChoices;
@@ -724,7 +733,7 @@ void PluginUi::Register()
 				 Button("Stop and freeze", "Stops the animation.", [] { RunCrowdCommand("playTestCrowdAnimation", { { "idle", "ResetRoot" } }); }, true),
 				 Header("Hair colour"),
 			 },
-			HairColourRows(&choices.hairColor, "Sets the hair colour of every base the crowd is made from.", "Applies the chosen colour and refreshes the characters standing.", [&feature](const std::string& a_color) { feature.ApplyCrowdHairColor(a_color); })));
+			std::vector<Row>{ HairColourRow(&choices.hairColor, "Sets the hair colour of every base the crowd is made from, and refreshes the characters standing.", [&feature](const std::string& a_color) { feature.ApplyCrowdHairColor(a_color); }) }));
 
 	developerModel.title = "Developer";
 	developerModel.onSave = model.onSave;

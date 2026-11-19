@@ -18,6 +18,9 @@ namespace NifProbe
 	/** @brief The physics xml paths the last scan found in an armor's models, empty when none. */
 	[[nodiscard]] std::vector<std::string> XmlPaths(RE::FormID a_armor);
 
+	/** @brief The physics xml paths the last scan found in the model a_model (a path under Meshes, in any case with either slash), empty when none. */
+	[[nodiscard]] std::vector<std::string> XmlPathsOfModel(std::string_view a_model);
+
 	/** @brief An armor, cloak or head part whose model names a physics file that matches a search. */
 	struct Match
 	{

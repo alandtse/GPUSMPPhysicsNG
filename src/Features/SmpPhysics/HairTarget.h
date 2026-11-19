@@ -29,7 +29,8 @@ namespace SmpPhysics
 		std::uint32_t formID{};  ///< 0 for the player.
 		std::string text;
 		std::string status;
-		std::string detail;  ///< The hover text: what was matched and what the target wears on its head.
+		std::string matchedModel;  ///< The mesh of the hair the ranking compared, empty before a ranking.
+		std::string detail;        ///< The hover text: what was matched and what the target wears on its head.
 		std::vector<int> order;
 		std::vector<std::string> badges;
 		std::pair<std::size_t, std::size_t> progress{};

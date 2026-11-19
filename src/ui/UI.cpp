@@ -53,7 +53,7 @@ namespace SettingsUi
 			if (row.hideLabel)
 				Tip(row.tooltip);
 			const std::string filter = Util::SearchKey(row.filterText.data());
-			if (!filter.empty() && !row.scanAsked && row.onShowFiltered) {
+			if (!row.scanAsked && row.onShowFiltered) {
 				row.scanAsked = true;
 				row.onShowFiltered();
 			}

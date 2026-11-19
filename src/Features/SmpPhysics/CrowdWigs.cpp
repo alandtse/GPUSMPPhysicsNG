@@ -358,6 +358,7 @@ namespace SmpPhysics
 				naturalColors.try_emplace(baseId, base->headRelatedData->hairColor);
 			base->SetHairColor(color);
 		}
+		a_actor.UpdateHairColor();
 		a_actor.DoReset3D(true);
 		a_crowd.SetReport(a_color.empty() ? "Put back the target's own hair colour." : std::format("Set the target's hair colour to {}.", a_color));
 	}

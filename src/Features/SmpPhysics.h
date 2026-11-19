@@ -201,6 +201,8 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] std::string ItemReportText(RE::FormID a_armor);
 	/** @brief A few short lines for hovering an item: each physics file's health and size, and how many bones its claims kept. Empty before a scan. Game thread only. */
 	[[nodiscard]] std::string ItemStatsText(RE::FormID a_armor);
+	/** @brief The hover lines for the physics files in a_files, as ItemStatsText gives for an item; empty before a scan. */
+	[[nodiscard]] std::string FilesStatsText(const std::vector<std::string>& a_files);
 	/** @brief Puts the wig at a_index of CrowdWigs::WigForms() on the crowd and, while it is included, the player; runs on the game thread. */
 	void WearWig(int a_index);
 	/** @brief The character whose hair is matched and swapped, and the wigs ranked by their match to its hair. */
