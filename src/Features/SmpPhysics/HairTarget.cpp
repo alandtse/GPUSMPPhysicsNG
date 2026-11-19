@@ -16,6 +16,7 @@ namespace SmpPhysics
 		constexpr double kRankBudgetMs = 6.0;
 		constexpr std::uint32_t kPlayerFormID = 0x14;
 		constexpr std::size_t kMaxRanked = 500;
+		constexpr auto kViewedWindow = std::chrono::seconds(1);
 
 		/** @brief The form ID of the actor behind a_handle, 0 for none or for the player. */
 		std::uint32_t ActorFormID(const RE::ObjectRefHandle& a_handle)
@@ -72,9 +73,11 @@ namespace SmpPhysics
 		return detail;
 	}
 
-	void HairTarget::Tick(bool a_menuOpen, const CrowdWigs& a_wigs)
+	void HairTarget::Tick(const CrowdWigs& a_wigs)
 	{
 		const auto now = std::chrono::steady_clock::now();
+		if (now.time_since_epoch().count() - viewedAt.load(std::memory_order_relaxed) >= std::chrono::duration_cast<std::chrono::steady_clock::duration>(kViewedWindow).count())
+			return;
 		{
 			const std::scoped_lock lock(mutex);
 			if (!ranking && rankedFor == pick.formID && now - sampledAt < kSamplePeriod)
@@ -82,13 +85,7 @@ namespace SmpPhysics
 		}
 		sampledAt = now;
 
-		HairTargetSamples samples;
-		samples.menuOpen = a_menuOpen;
-		samples.console = ActorFormID(RE::Console::GetSelectedRefHandle());
-		if (!a_menuOpen) {
-			if (const auto* picker = RE::CrosshairPickData::GetSingleton())
-				samples.crosshair = ActorFormID(picker->GetActiveTarget());
-		}
+		const std::uint32_t console = ActorFormID(RE::Console::GetSelectedRefHandle());
 		std::uint32_t target;
 		RE::FormID wig;
 		bool rank;
@@ -98,7 +95,7 @@ namespace SmpPhysics
 				if (id && !RE::TESForm::LookupByID<RE::Actor>(id))
 					ForgetPick(pick, id);
 			}
-			UpdatePick(pick, samples);
+			UpdatePick(pick, console);
 			view.hasConsole = pick.console != 0;
 			view.hasCrosshair = pick.crosshair != 0;
 			view.pinned = pick.pinned;
@@ -121,7 +118,12 @@ namespace SmpPhysics
 				view.text = std::format("Target: {} ({})", NameOf(target), SourceName(pick.source));
 			}
 			rank = ranking;
-			HairTargetDetail detail = HairWearingOf(actor);
+			if (now - detailAt >= kSamplePeriod || detailFor != target) {
+				detailAt = now;
+				detailFor = target;
+				wearing = HairWearingOf(actor);
+			}
+			HairTargetDetail detail = wearing;
 			detail.matchedName = matched.matchedName;
 			detail.matchedByWig = matched.matchedByWig;
 			detail.matchedModel = matched.matchedModel;
@@ -177,6 +179,12 @@ namespace SmpPhysics
 		ranking = false;
 	}
 
+	void HairTarget::NoteCrosshair(std::uint32_t a_formID)
+	{
+		const std::scoped_lock lock(mutex);
+		SmpPhysics::NoteCrosshair(pick, a_formID);
+	}
+
 	bool HairTarget::Pin(HairTargetSource a_source)
 	{
 		const std::scoped_lock lock(mutex);
@@ -191,6 +199,7 @@ namespace SmpPhysics
 
 	HairTargetView HairTarget::View() const
 	{
+		viewedAt.store(std::chrono::steady_clock::now().time_since_epoch().count(), std::memory_order_relaxed);
 		const std::scoped_lock lock(mutex);
 		HairTargetView copy = view;
 		if (copy.text.empty())

@@ -9,7 +9,7 @@ using namespace SmpPhysics;
 TEST_CASE("The player is the target until something is selected", "[smpphysics][hairtargetpick]")
 {
 	HairTargetPick pick;
-	UpdatePick(pick, {});
+	UpdatePick(pick, 0);
 
 	CHECK(pick.source == HairTargetSource::Player);
 	CHECK(pick.formID == 0);
@@ -18,7 +18,7 @@ TEST_CASE("The player is the target until something is selected", "[smpphysics][
 TEST_CASE("A new console selection becomes the target and a selection that has not changed does not", "[smpphysics][hairtargetpick]")
 {
 	HairTargetPick pick;
-	UpdatePick(pick, { 0x1A67F, 0, false });
+	UpdatePick(pick, 0x1A67F);
 	CHECK(pick.source == HairTargetSource::Console);
 	CHECK(pick.formID == 0x1A67F);
 
@@ -27,15 +27,15 @@ TEST_CASE("A new console selection becomes the target and a selection that has n
 	CHECK(pick.formID == 0x1A67F);
 
 	CHECK(PinPick(pick, HairTargetSource::Player));
-	UpdatePick(pick, { 0x1A67F, 0, false });
+	UpdatePick(pick, 0x1A67F);
 	CHECK(pick.formID == 0);
 }
 
 TEST_CASE("Clearing the console selection returns an unpinned target to the player", "[smpphysics][hairtargetpick]")
 {
 	HairTargetPick pick;
-	UpdatePick(pick, { 0x1A67F, 0, false });
-	UpdatePick(pick, { 0, 0, false });
+	UpdatePick(pick, 0x1A67F);
+	UpdatePick(pick, 0);
 
 	CHECK(pick.source == HairTargetSource::Player);
 	CHECK(pick.formID == 0);
@@ -44,24 +44,27 @@ TEST_CASE("Clearing the console selection returns an unpinned target to the play
 TEST_CASE("A pinned source is not taken over by a new console selection", "[smpphysics][hairtargetpick]")
 {
 	HairTargetPick pick;
-	UpdatePick(pick, { 0x1A67F, 0x13BAB, false });
+	UpdatePick(pick, 0x1A67F);
+	NoteCrosshair(pick, 0x13BAB);
 	REQUIRE(PinPick(pick, HairTargetSource::Crosshair));
-	UpdatePick(pick, { 0x1C0DA, 0x13BAB, false });
+	UpdatePick(pick, 0x1C0DA);
+	NoteCrosshair(pick, 0x13BAB);
 
 	CHECK(pick.source == HairTargetSource::Crosshair);
 	CHECK(pick.formID == 0x13BAB);
 	CHECK(pick.console == 0x1C0DA);
 }
 
-TEST_CASE("The crosshair's character is remembered only while no menu is open", "[smpphysics][hairtargetpick]")
+TEST_CASE("The crosshair's character is kept when it leaves the crosshair", "[smpphysics][hairtargetpick]")
 {
 	HairTargetPick pick;
-	UpdatePick(pick, { 0, 0x13BAB, false });
-	UpdatePick(pick, { 0, 0x1C0DA, true });
-	UpdatePick(pick, { 0, 0, false });
+	NoteCrosshair(pick, 0x13BAB);
+	NoteCrosshair(pick, 0);
 
 	CHECK(pick.crosshair == 0x13BAB);
 	CHECK(pick.formID == 0);
+	NoteCrosshair(pick, 0x1C0DA);
+	CHECK(pick.crosshair == 0x1C0DA);
 }
 
 TEST_CASE("Pinning a source with no character changes nothing", "[smpphysics][hairtargetpick]")
@@ -78,7 +81,8 @@ TEST_CASE("Pinning a source with no character changes nothing", "[smpphysics][ha
 TEST_CASE("A character that is gone is forgotten and a target on it falls back to the player", "[smpphysics][hairtargetpick]")
 {
 	HairTargetPick pick;
-	UpdatePick(pick, { 0x1A67F, 0x1A67F, false });
+	UpdatePick(pick, 0x1A67F);
+	NoteCrosshair(pick, 0x1A67F);
 	REQUIRE(PinPick(pick, HairTargetSource::Console));
 	ForgetPick(pick, 0x1A67F);
 

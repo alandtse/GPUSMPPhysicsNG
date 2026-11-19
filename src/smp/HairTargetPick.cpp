@@ -4,20 +4,24 @@
 
 namespace SmpPhysics
 {
-	void UpdatePick(HairTargetPick& a_pick, const HairTargetSamples& a_samples)
+	void UpdatePick(HairTargetPick& a_pick, std::uint32_t a_console)
 	{
-		if (a_samples.console != a_pick.console) {
-			a_pick.console = a_samples.console;
-			if (!a_pick.pinned && a_samples.console) {
+		if (a_console != a_pick.console) {
+			a_pick.console = a_console;
+			if (!a_pick.pinned && a_console) {
 				a_pick.source = HairTargetSource::Console;
-				a_pick.formID = a_samples.console;
+				a_pick.formID = a_console;
 			} else if (!a_pick.pinned && a_pick.source == HairTargetSource::Console) {
 				a_pick.source = HairTargetSource::Player;
 				a_pick.formID = 0;
 			}
 		}
-		if (!a_samples.menuOpen && a_samples.crosshair)
-			a_pick.crosshair = a_samples.crosshair;
+	}
+
+	void NoteCrosshair(HairTargetPick& a_pick, std::uint32_t a_crosshair)
+	{
+		if (a_crosshair)
+			a_pick.crosshair = a_crosshair;
 	}
 
 	bool PinPick(HairTargetPick& a_pick, HairTargetSource a_source)

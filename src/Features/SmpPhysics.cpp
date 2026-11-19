@@ -336,6 +336,8 @@ void SmpPhysicsFeature::OnPluginMessage(const SKSE::MessagingInterface::Message*
 	smpInterface->addMeshOwner(&meshOwner, hdt::MeshOwnerInfo{ "GPUSMPPhysicsNG", 0 });
 	smpInterface->addFrameListener(&frameListener);
 	smpInterface->addFrameSyncListener(&frameSyncListener);
+	if (auto* crosshairSource = SKSE::GetCrosshairRefEventSource())
+		crosshairSource->AddEventSink(&crosshairListener);
 	{
 		const std::scoped_lock lock(stateMutex);
 		linkedInterface = smpInterface;
@@ -1392,12 +1394,20 @@ RE::BSEventNotifyControl SmpPhysicsFeature::FrameSyncListener::ProcessEvent(
 	TracyGpu::NextFrame();
 	try {
 		feature.crowdWigs.Tick();
-		feature.hairTarget.Tick(feature.gamePaused.load(std::memory_order_relaxed), feature.crowdWigs);
+		feature.hairTarget.Tick(feature.crowdWigs);
 		feature.StepClaims();
 		feature.RecordBoneFrame();
 	} catch (const std::exception& error) {
 		logger::error("{} the frame step failed: {}", kLogPrefix, error.what());
 	}
+	return RE::BSEventNotifyControl::kContinue;
+}
+
+RE::BSEventNotifyControl SmpPhysicsFeature::CrosshairListener::ProcessEvent(const SKSE::CrosshairRefEvent* a_event, RE::BSTEventSource<SKSE::CrosshairRefEvent>*)
+{
+	const auto* actor = a_event && a_event->crosshairRef ? a_event->crosshairRef->As<RE::Actor>() : nullptr;
+	if (actor && !actor->IsPlayerRef())
+		feature.hairTarget.NoteCrosshair(actor->GetFormID());
 	return RE::BSEventNotifyControl::kContinue;
 }
 
