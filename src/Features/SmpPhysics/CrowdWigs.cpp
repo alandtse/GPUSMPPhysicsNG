@@ -178,9 +178,14 @@ namespace SmpPhysics
 
 	void CrowdWigs::Restore(RE::Actor& a_actor)
 	{
+		wornIndex.store(-1, std::memory_order_relaxed);
+		ShowBakedHair(a_actor);
+	}
+
+	void CrowdWigs::ShowBakedHair(RE::Actor& a_actor)
+	{
 		const RE::ObjectRefHandle handle = a_actor.GetHandle();
 		std::erase_if(watches, [&](const BakedHairWatch& a_watch) { return a_watch.handle == handle; });
-		wornIndex.store(-1, std::memory_order_relaxed);
 		auto* root = a_actor.Get3D();
 		if (!root)
 			return;
@@ -219,6 +224,25 @@ namespace SmpPhysics
 		return names;
 	}
 
+	bool CrowdWigs::WearOn(RE::Actor& a_actor, int a_index)
+	{
+		const std::vector<RE::TESObjectARMO*>& wigs = WigForms();
+		if (a_index < 0 || static_cast<std::size_t>(a_index) >= wigs.size())
+			return false;
+		Wear(a_actor, *wigs[static_cast<std::size_t>(a_index)]);
+		return true;
+	}
+
+	void CrowdWigs::TakeOff(RE::Actor& a_actor)
+	{
+		const auto worn = a_actor.GetInventory([](RE::TESBoundObject& a_object) { return IsWig(a_object); });
+		for (const auto& [object, entry] : worn) {
+			if (object && entry.second && entry.second->IsWorn())
+				TestBench::GetCrowd().TakeBack(a_actor, *object);
+		}
+		ShowBakedHair(a_actor);
+	}
+
 	void CrowdWigs::WearNow(TestBench::TestCrowd& a_crowd, int a_index)
 	{
 		const std::vector<RE::TESObjectARMO*>& wigs = WigForms();
@@ -231,7 +255,7 @@ namespace SmpPhysics
 		chosen.assign(1, wig);
 		const std::vector<RE::Actor*> targets = a_crowd.OutfitTargets();
 		for (RE::Actor* actor : targets)
-			Wear(*actor, *wig);
+			WearOn(*actor, a_index);
 		a_crowd.SetReport(std::format("{} characters wear the wig {} ({} of {}).", targets.size(), wig->GetName(), a_index + 1, wigs.size()));
 	}
 
