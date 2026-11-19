@@ -5,6 +5,7 @@
 
 #include "Globals.h"
 #include "Utils/ActorUtils.h"
+#include "Utils/ArmorNames.h"
 #include "Utils/MathUtils.h"
 
 #include <algorithm>
@@ -393,13 +394,29 @@ namespace TestBench
 		}
 	}
 
+	void TestCrowd::Give(RE::Actor& a_actor, RE::TESBoundObject& a_object)
+	{
+		if (!a_actor.GetInventoryCounts([&a_object](RE::TESBoundObject& a_candidate) { return &a_candidate == &a_object; }).contains(&a_object)) {
+			a_actor.AddObjectToContainer(&a_object, nullptr, 1, nullptr);
+			added.Note(a_actor.GetFormID(), a_object.GetFormID());
+		}
+		Equip(a_actor, a_object);
+	}
+
+	void TestCrowd::TakeBack(RE::Actor& a_actor, RE::TESBoundObject& a_object)
+	{
+		Unequip(a_actor, a_object);
+		if (added.Take(a_actor.GetFormID(), a_object.GetFormID()))
+			a_actor.RemoveItem(&a_object, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+	}
+
 	void TestCrowd::RestoreActor(RE::Actor& a_actor)
 	{
 		const auto found = outfits.find(a_actor.GetFormID());
 		if (found == outfits.end())
 			return;
 		if (found->second.cycled)
-			Unequip(a_actor, *found->second.cycled);
+			TakeBack(a_actor, *found->second.cycled);
 		for (RE::TESBoundObject* object : found->second.taken)
 			Equip(a_actor, *object);
 		outfits.erase(found);
@@ -433,8 +450,16 @@ namespace TestBench
 			SetReport("Load a save first: there is no player to dress.");
 			return;
 		}
-		includePlayer.store(a_include, std::memory_order_relaxed);
+		const bool wasIncluded = includePlayer.exchange(a_include, std::memory_order_relaxed);
 		if (a_include) {
+			if (!wasIncluded) {
+				playerWorn.clear();
+				const auto inventory = player->GetInventory([](RE::TESBoundObject& a_object) { return a_object.Is(RE::FormType::Armor, RE::FormType::Weapon); });
+				for (const auto& [object, entry] : inventory) {
+					if (object && entry.second && entry.second->IsWorn())
+						playerWorn.push_back(object->GetFormID());
+				}
+			}
 			const int worn = armorIndex.load(std::memory_order_relaxed);
 			if (worn >= 0)
 				DressArmorNow(static_cast<std::size_t>(worn));
@@ -446,8 +471,21 @@ namespace TestBench
 		}
 		RestoreActor(*player);
 		if (cloak)
-			Unequip(*player, *cloak);
-		SetReport("The outfit controls leave the player alone again; the player's own outfit is back on.");
+			TakeBack(*player, *cloak);
+		for (CrowdHooks* hook : hooks)
+			hook->Restore(*player);
+		for (const RE::FormID item : added.TakeAll(player->GetFormID())) {
+			if (auto* object = RE::TESForm::LookupByID<RE::TESBoundObject>(item)) {
+				Unequip(*player, *object);
+				player->RemoveItem(object, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+			}
+		}
+		for (const RE::FormID item : playerWorn) {
+			if (auto* object = RE::TESForm::LookupByID<RE::TESBoundObject>(item))
+				Equip(*player, *object);
+		}
+		playerWorn.clear();
+		SetReport("The outfit controls leave the player alone again; what they added is removed and the player's own outfit is back on.");
 	}
 
 	void TestCrowd::SetStrippedNow(bool a_stripped)
@@ -471,11 +509,7 @@ namespace TestBench
 		const std::scoped_lock lock(mutex);
 		if (names.size() != armors.size()) {
 			names.clear();
-			std::unordered_map<std::string, std::size_t> uses;
-			for (const RE::TESObjectARMO* armor : armors)
-				++uses[armor->GetName()];
-			for (const RE::TESObjectARMO* armor : armors)
-				names.emplace_back(uses[armor->GetName()] > 1 ? std::format("{} [{:08X}]", armor->GetName(), armor->GetFormID()) : std::string(armor->GetName()));
+			names = Util::ItemNamesOf(armors);
 		}
 		return names;
 	}
@@ -498,11 +532,7 @@ namespace TestBench
 		const std::scoped_lock lock(mutex);
 		if (names.size() != cloaks.size()) {
 			names.clear();
-			std::unordered_map<std::string, std::size_t> uses;
-			for (const RE::TESObjectARMO* armor : cloaks)
-				++uses[armor->GetName()];
-			for (const RE::TESObjectARMO* armor : cloaks)
-				names.emplace_back(uses[armor->GetName()] > 1 ? std::format("{} [{:08X}]", armor->GetName(), armor->GetFormID()) : std::string(armor->GetName()));
+			names = Util::ItemNamesOf(cloaks);
 		}
 		return names;
 	}
@@ -517,9 +547,7 @@ namespace TestBench
 	{
 		if (!cloak)
 			return;
-		if (!a_actor.GetInventoryCounts([this](RE::TESBoundObject& a_object) { return &a_object == cloak; }).contains(cloak))
-			a_actor.AddObjectToContainer(cloak, nullptr, 1, nullptr);
-		Equip(a_actor, *cloak);
+		Give(a_actor, *cloak);
 	}
 
 	void TestCrowd::SelectCloakNow(int a_index)
@@ -531,7 +559,7 @@ namespace TestBench
 		cloakIndex.store(chosen ? a_index : -1, std::memory_order_relaxed);
 		for (RE::Actor* actor : OutfitTargets()) {
 			if (previous && previous != chosen)
-				Unequip(*actor, *previous);
+				TakeBack(*actor, *previous);
 			DressCloak(*actor);
 		}
 		SetReport(chosen ? std::format("Test characters wear the cloak {} ({} of {}).", chosen->GetName(), a_index + 1, cloaks.size()) : (cloaks.empty() ? "No cloak or cape is loaded." : "Took the cloak off the test characters."));
@@ -568,10 +596,9 @@ namespace TestBench
 		for (RE::Actor* actor : OutfitTargets()) {
 			Outfit& outfit = outfits[actor->GetFormID()];
 			if (outfit.cycled)
-				Unequip(*actor, *outfit.cycled);
+				TakeBack(*actor, *outfit.cycled);
 			StripActor(*actor);
-			actor->AddObjectToContainer(armor, nullptr, 1, nullptr);
-			Equip(*actor, *armor);
+			Give(*actor, *armor);
 			outfits[actor->GetFormID()].cycled = armor;
 		}
 		SetReport(std::format("Test characters wear {} ({} of {}).", armor->GetName(), a_index + 1, armors.size()));
