@@ -19,6 +19,13 @@ namespace SmpPhysics
 		return path;
 	}
 
+	bool XmlPathMatches(std::string_view a_path, std::string_view a_needle)
+	{
+		std::string needle = Util::ToLowerAscii(a_needle);
+		std::ranges::replace(needle, '/', '\\');
+		return !needle.empty() && NormalizeXmlPath(a_path).find(needle) != std::string::npos;
+	}
+
 	std::vector<std::string> ParseDefaultBbpFiles(std::string_view a_xml)
 	{
 		std::vector<std::string> files;

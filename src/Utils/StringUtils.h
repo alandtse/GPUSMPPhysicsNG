@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -34,5 +35,12 @@ namespace Util
 		return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char ca, char cb) {
 			return std::tolower(static_cast<unsigned char>(ca)) == std::tolower(static_cast<unsigned char>(cb));
 		});
+	}
+
+	/** @brief A path with forward slashes as UTF-8; generic_string() throws on a name the system code page cannot hold. */
+	inline std::string PathUtf8(const std::filesystem::path& a_path)
+	{
+		const std::u8string text = a_path.generic_u8string();
+		return { reinterpret_cast<const char*>(text.data()), text.size() };
 	}
 }

@@ -18,6 +18,7 @@ namespace logger = SKSE::log;
 #include "SKSEMenuFramework.h"
 
 #include "Utils/StringUtils.h"
+#include "ui/ListSearch.h"
 #include "ui/UiModel.h"
 
 namespace SettingsUi
@@ -47,6 +48,18 @@ namespace SettingsUi
 			ImGuiMCP::SetNextItemWidth(kWidth);
 			ImGuiMCP::InputTextWithHint(("##gsp_filter_" + row.label).c_str(), "Filter", row.filterText.data(), row.filterText.size());
 			const std::string filter = Util::ToLowerAscii(row.filterText.data());
+			if (!filter.empty() && !row.scanAsked && row.onShowFiltered) {
+				row.scanAsked = true;
+				row.onShowFiltered();
+			}
+			if (row.progressFn) {
+				const auto [done, total] = row.progressFn();
+				if (total) {
+					const std::string text = std::format("Scanning physics files: {} of {}", done, total);
+					ImGuiMCP::ProgressBar(ScanFraction(done, total), { kWidth, 0.0f }, text.c_str());
+				}
+			}
+			const std::vector<std::string> files = row.itemFilesFn ? row.itemFilesFn() : std::vector<std::string>{};
 			std::vector<int> status;
 			if (row.itemStatusFn) {
 				status = row.itemStatusFn();
@@ -66,7 +79,7 @@ namespace SettingsUi
 				for (std::size_t index = 0; index < row.items.size(); ++index) {
 					const std::string& name = row.items[index];
 					constexpr const char* kStateTags[] = { "", "  [OK]", "  [REPAIRED]", "  [FAULT]" };
-					if (!filter.empty() && Util::ToLowerAscii(name).find(filter) == std::string::npos)
+					if (!filter.empty() && SearchText(name, index < files.size() ? files[index] : std::string_view{}).find(filter) == std::string::npos)
 						continue;
 					const int state = std::clamp(statusOf(index), 0, kMaxItemState);
 					if ((row.showMode == 1 && state == 0) || (row.showMode == 2 && state < 2))

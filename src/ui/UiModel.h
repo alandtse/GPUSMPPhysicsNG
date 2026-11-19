@@ -42,6 +42,12 @@ namespace SettingsUi
 		int showMode{};                                     ///< Which items a List with itemStatusFn shows: 0 all, 1 with physics, 2 needing attention.
 		std::array<char, 64> filterText{};                  ///< What a List's filter box holds.
 		int lastSelected{ -2 };                             ///< The item a List last scrolled to.
+		/** @brief A List's physics file paths per item, in the order of items; the filter box matches them as well as the names. */
+		std::function<std::vector<std::string>()> itemFilesFn;
+		/** @brief A List shows a progress bar while this reports a total above zero: what is done of what. */
+		std::function<std::pair<std::size_t, std::size_t>()> progressFn;
+		/** @brief Whether the filter box has already asked for the data its filter needs. */
+		bool scanAsked{};
 		bool sameLine{};
 		float minimum{};
 		float maximum{};

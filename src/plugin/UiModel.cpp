@@ -181,6 +181,32 @@ namespace
 		};
 	}
 
+	/** @brief Each item's physics file paths, joined, for a list's filter to match; empty before a scan. a_skip leading entries have no item. */
+	std::function<std::vector<std::string>()> ItemFiles(std::function<std::vector<RE::TESObjectARMO*>()> a_forms, std::size_t a_skip)
+	{
+		struct Cache
+		{
+			std::uint32_t generation{};
+			std::vector<std::string> values;
+		};
+		return [forms = std::move(a_forms), a_skip, cache = std::make_shared<Cache>()] {
+			const std::uint32_t generation = NifProbe::Generation();
+			if (!generation)
+				return std::vector<std::string>{};
+			if (cache->generation == generation)
+				return cache->values;
+			cache->values.assign(a_skip, std::string{});
+			for (const RE::TESObjectARMO* item : forms()) {
+				std::string joined;
+				for (const std::string& path : NifProbe::XmlPaths(item->GetFormID()))
+					joined += path + '\n';
+				cache->values.push_back(std::move(joined));
+			}
+			cache->generation = generation;
+			return cache->values;
+		};
+	}
+
 	/** @brief The report for the item a list has selected, refreshed at most once a second; empty before a scan or when it has no physics. a_skip leading entries have no item. */
 	std::function<std::string()> SelectedItemReport(std::function<std::vector<RE::TESObjectARMO*>()> a_forms, const int* a_index, int a_skip)
 	{
@@ -250,6 +276,8 @@ namespace
 
 	Row WithHealth(Row a_row, std::function<std::vector<RE::TESObjectARMO*>()> a_forms, std::size_t a_skip)
 	{
+		a_row.itemFilesFn = ItemFiles(a_forms, a_skip);
+		a_row.progressFn = [] { return NifProbe::Running() ? NifProbe::Progress() : std::pair<std::size_t, std::size_t>{}; };
 		a_row.itemStatusFn = HealthColours(std::move(a_forms), a_skip);
 		a_row.onShowFiltered = [] {
 			if (!NifProbe::Generation() && !NifProbe::Running())

@@ -6,6 +6,7 @@
 #include "RE/B/BSResourceNiBinaryStream.h"
 #include "RE/T/TESObjectARMA.h"
 #include "RE/T/TESObjectARMO.h"
+#include "Utils/StringUtils.h"
 #include "Utils/TestBench/TestCrowd.h"
 #include "smp/NifPhysicsScan.h"
 #include "smp/XmlAudit.h"
@@ -114,7 +115,7 @@ namespace NifProbe
 						continue;
 					if (ReadWhole(path, kSystemSniffBytes).find("<system") == std::string::npos)
 						continue;
-					found.push_back(path.generic_string().substr(kDataPrefixLength));
+					found.push_back(Util::PathUtf8(path).substr(kDataPrefixLength));
 				}
 				error.clear();
 			}
@@ -218,7 +219,8 @@ namespace NifProbe
 		worker.thread = std::thread([scan = std::move(targets)]() mutable {
 			try {
 				Run(std::move(scan));
-			} catch (const std::exception&) {
+			} catch (const std::exception& error) {
+				logger::error("[GPU SMP Physics] The physics scan stopped: {}", error.what());
 				running.store(false, std::memory_order_release);
 			}
 		});
@@ -253,6 +255,22 @@ namespace NifProbe
 			}
 		}
 		return paths;
+	}
+
+	std::vector<Match> Find(std::string_view a_needle)
+	{
+		std::vector<Match> matches;
+		const std::scoped_lock lock(mutex);
+		for (const Hit& hit : hits) {
+			std::vector<std::string> files;
+			for (const std::string& path : hit.xml) {
+				if (SmpPhysics::XmlPathMatches(path, a_needle))
+					files.push_back(path);
+			}
+			if (!files.empty())
+				matches.push_back({ hit.armor, hit.formID, hit.model, std::move(files) });
+		}
+		return matches;
 	}
 
 	json XmlAuditResult()

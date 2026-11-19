@@ -39,3 +39,11 @@ TEST_CASE("Empty input gives an empty audit and unterminated tags are safe", "[s
 	CHECK(ParseDefaultBbpFiles("<map file=\"a").empty());
 	CHECK(ParseDefaultBbpFiles("<map ").empty());
 }
+
+TEST_CASE("A search text matches a physics file path in any case with either slash", "[smpphysics][xmlaudit]")
+{
+	CHECK(XmlPathMatches("meshes\\armor\\[d] BDOr\\Hair\\COM\\PHW205andPKOW25\\PHW205andPKOW25.xml", "phw205andpkow25"));
+	CHECK(XmlPathMatches("meshes\\armor\\[d] BDOr\\Hair\\COM\\PHW205andPKOW25\\PHW205andPKOW25.xml", "COM/phw205"));
+	CHECK_FALSE(XmlPathMatches("meshes\\armor\\a.xml", "phw205"));
+	CHECK_FALSE(XmlPathMatches("meshes\\armor\\a.xml", ""));
+}
