@@ -2,6 +2,7 @@
 
 #include "CrowdWigs.h"
 #include "engine/HairLook.h"
+#include "smp/HairPartModel.h"
 
 #include <algorithm>
 #include <format>
@@ -42,6 +43,33 @@ namespace SmpPhysics
 				return "you";
 			}
 		}
+	}
+
+	HairTargetDetail HairWearingOf(RE::Actor* a_actor)
+	{
+		using Slot = RE::BGSBipedObjectForm::BipedObjectSlot;
+		HairTargetDetail detail;
+		if (!a_actor)
+			return detail;
+		auto* base = const_cast<RE::TESNPC*>(a_actor->GetActorBase());
+		if (const RE::BGSHeadPart* part = base ? base->GetCurrentHeadPartByType(RE::BGSHeadPart::HeadPartType::kHair) : nullptr) {
+			std::vector<std::string> extras;
+			for (const RE::BGSHeadPart* extra : part->extraParts)
+				extras.emplace_back(extra && extra->GetModel() ? extra->GetModel() : "");
+			detail.hairPart = std::string(part->GetFormEditorID());
+			detail.hairPartModel = HairPartModel(part->GetModel() ? part->GetModel() : "", extras);
+			detail.extraParts = extras.size();
+		}
+		const auto worn = a_actor->GetInventory([](RE::TESBoundObject& a_object) {
+			const auto* armor = a_object.As<RE::TESObjectARMO>();
+			return armor && (armor->HasPartOf(Slot::kHair) || armor->HasPartOf(Slot::kLongHair) || armor->HasPartOf(Slot::kHead));
+		});
+		for (const auto& [object, entry] : worn) {
+			const auto* armor = object ? object->As<RE::TESObjectARMO>() : nullptr;
+			if (armor && entry.second && entry.second->IsWorn())
+				detail.worn.push_back({ armor->GetName(), armor->HasPartOf(Slot::kHair) || armor->HasPartOf(Slot::kLongHair), armor->HasPartOf(Slot::kHead) });
+		}
+		return detail;
 	}
 
 	void HairTarget::Tick(bool a_menuOpen, const CrowdWigs& a_wigs)
@@ -93,6 +121,12 @@ namespace SmpPhysics
 				view.text = std::format("Target: {} ({})", NameOf(target), SourceName(pick.source));
 			}
 			rank = ranking;
+			HairTargetDetail detail = HairWearingOf(actor);
+			detail.matchedName = matched.matchedName;
+			detail.matchedByWig = matched.matchedByWig;
+			detail.matchedModel = matched.matchedModel;
+			detail.triangles = matched.triangles;
+			view.detail = FormatHairTargetDetail(detail);
 		}
 		if (rank)
 			Rank(target, wig);
@@ -115,6 +149,13 @@ namespace SmpPhysics
 		view.progress = { considered - std::min(considered, pending), considered };
 		const std::string hair = result.contains("target") ? result["target"].value("name", std::string{}) : std::string{};
 		const bool wearsWig = result.contains("target") && result["target"].value("wig", false);
+		matched = {};
+		if (result.contains("target")) {
+			matched.matchedName = hair;
+			matched.matchedByWig = wearsWig;
+			matched.matchedModel = result["target"].value("model", std::string{});
+			matched.triangles = result["target"].contains("shape") ? result["target"]["shape"].value("triangles", std::size_t{}) : 0;
+		}
 		view.text = std::format("Target: {} ({}), {} {}", NameOf(a_formID), SourceName(pick.source), wearsWig ? "wearing" : "hair", hair.empty() ? "unknown" : hair);
 		if (pending)
 			return;

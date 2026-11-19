@@ -69,6 +69,12 @@ namespace SmpPhysics
 		void SetHairColorNow(TestBench::TestCrowd& a_crowd, const std::string& a_color);
 
 		/**
+		 * @brief Sets a_actor's own base to a_color, an empty one putting its natural colour back, and rebuilds its 3D so a worn wig takes it.
+		 * @details Every character made from the same base changes too. Game thread only. The outcome goes to the crowd's report.
+		 */
+		void SetActorHairColorNow(TestBench::TestCrowd& a_crowd, RE::Actor& a_actor, const std::string& a_color);
+
+		/**
 		 * @brief Puts back the natural hair colour of every base SetHairColorNow changed, then refreshes the characters standing now.
 		 * @details Game thread only. The outcome goes to the crowd's report.
 		 */

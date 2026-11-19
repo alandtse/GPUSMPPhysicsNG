@@ -419,6 +419,37 @@ namespace
 	}
 
 	/** @brief Choosing whose hair the wig list matches and where a wig goes: the target, what it is, and the sources to pick it from. */
+	/** @brief A colour box and the button that applies it: a name from the hair colours, or Natural for the character's own. */
+	std::vector<Row> HairColourRows(int* a_index, const char* a_pickTip, const char* a_applyTip, std::function<void(const std::string&)> a_apply)
+	{
+		return {
+			Pick("Colour", a_pickTip, a_index, [] {
+				std::vector<std::string> names{ "Natural" };
+				for (const SmpPhysics::HairColorChoice& color : SmpPhysics::TestCrowdHairColors())
+					names.emplace_back(color.name);
+				return names;
+			}),
+			Button("Apply", a_applyTip, [a_index, apply = std::move(a_apply)] {
+				const auto& colors = SmpPhysics::TestCrowdHairColors();
+				const bool picked = *a_index > 0 && *a_index <= static_cast<int>(colors.size());
+				apply(picked ? std::string(colors[static_cast<std::size_t>(*a_index - 1)].name) : std::string{});
+			})
+		};
+	}
+
+	int targetHairColor = 0;
+
+	/** @brief The target's line; hovering it shows which hair was matched and what the target wears on its head. */
+	Row TargetLine()
+	{
+		Row row = Text([] {
+			const SmpPhysics::HairTargetView view = Instance().HairTargetState();
+			return view.status.empty() ? view.text : std::format("{}  ({}: {} of {})", view.text, view.status, view.progress.first, view.progress.second);
+		});
+		row.tooltipFn = [] { return Instance().HairTargetState().detail; };
+		return row;
+	}
+
 	std::vector<Row> HairTargetRows()
 	{
 		const auto pin = [](SmpPhysics::HairTargetSource a_source) { return [a_source] { Instance().PinHairTarget(a_source); }; };
@@ -426,17 +457,17 @@ namespace
 		console.enabled = [] { return Instance().HairTargetState().hasConsole; };
 		Row crosshair = Button("Crosshair target", "Matches hair to and dresses the character you last looked at before opening this menu.", pin(SmpPhysics::HairTargetSource::Crosshair), true);
 		crosshair.enabled = [] { return Instance().HairTargetState().hasCrosshair; };
-		return {
+		std::vector<Row> rows{
 			Header("Target"),
-			Text([] {
-				const SmpPhysics::HairTargetView view = Instance().HairTargetState();
-				return view.status.empty() ? view.text : std::format("{}  ({}: {} of {})", view.text, view.status, view.progress.first, view.progress.second);
-			}),
+			TargetLine(),
 			std::move(console),
 			std::move(crosshair),
 			Button("Me", "Matches hair to and dresses you.", pin(SmpPhysics::HairTargetSource::Player), true),
 			Button("Auto", "Lets the console selection choose again; with none, it is you.", [] { Instance().UnpinHairTarget(); }, true), Text([] { return std::string("Select someone with prid in the console, or look at them and open this menu. Wigs are listed closest first to their hair, or to the wig they wear."); })
 		};
+		std::vector<Row> colour = HairColourRows(&targetHairColor, "Sets the target's hair colour; a worn wig takes it. Every character made from the same base changes too. Natural puts their own back.", "Applies the chosen colour to the target and rebuilds their 3D.", [](const std::string& a_color) { Instance().ApplyTargetHairColor(a_color); });
+		rows.insert(rows.end(), std::make_move_iterator(colour.begin()), std::make_move_iterator(colour.end()));
+		return rows;
 	}
 
 	/** @brief Buttons that put the picked item on the target alone or take it off, and one that puts it on the test characters. */
@@ -674,11 +705,11 @@ void PluginUi::Register()
 									 },
 									HairTargetRows()),
 							   ItemPicker()),
-		std::vector<Row>{
-			Header("Animation"),
-			Check("Animate on spawn (characters' AI runs)", "Off, test characters spawn frozen.", &choices.animateOnSpawn, [&choices] { TestBench::GetCrowd().SetAnimateOnSpawn(choices.animateOnSpawn); }),
-			Check("Loop the animation", "Plays the animation again each time it ends.", &choices.loopAnimation, [&choices] { RunCrowdCommand("setTestCrowdLoop", { { "enabled", choices.loopAnimation } }); }),
-			Browse("Idle", "The idle animation to play on every test character.", &choices.idle, [] {
+		Join(std::vector<Row>{
+				 Header("Animation"),
+				 Check("Animate on spawn (characters' AI runs)", "Off, test characters spawn frozen.", &choices.animateOnSpawn, [&choices] { TestBench::GetCrowd().SetAnimateOnSpawn(choices.animateOnSpawn); }),
+				 Check("Loop the animation", "Plays the animation again each time it ends.", &choices.loopAnimation, [&choices] { RunCrowdCommand("setTestCrowdLoop", { { "enabled", choices.loopAnimation } }); }),
+				 Browse("Idle", "The idle animation to play on every test character.", &choices.idle, [] {
 			const auto idles = TestBench::IdleCache::Snapshot();
 			if (idles.empty())
 				return std::vector<std::string>{};
@@ -686,23 +717,14 @@ void PluginUi::Register()
 			for (const TestBench::IdleChoice& idle : idles)
 				names.push_back(idle.editorId);
 			return names; }, {}, {}),
-			Button("Play on test characters", "Plays the chosen idle on everyone standing, and on each one spawned later.", [&choices] {
+				 Button("Play on test characters", "Plays the chosen idle on everyone standing, and on each one spawned later.", [&choices] {
 			const auto idles = TestBench::IdleCache::Snapshot();
 			const bool picked = choices.idle > 0 && choices.idle <= static_cast<int>(idles.size());
 			RunCrowdCommand("playTestCrowdAnimation", { { "idle", picked ? idles[static_cast<std::size_t>(choices.idle - 1)].editorId : std::string{} } }); }),
-			Button("Stop and freeze", "Stops the animation.", [] { RunCrowdCommand("playTestCrowdAnimation", { { "idle", "ResetRoot" } }); }, true),
-			Header("Hair colour"),
-			Pick("Colour", "Sets the hair colour of every base the crowd is made from.", &choices.hairColor, [] {
-			std::vector<std::string> names{ "Natural" };
-			for (const SmpPhysics::HairColorChoice& color : SmpPhysics::TestCrowdHairColors())
-				names.emplace_back(color.name);
-			return names; }),
-			Button("Apply", "Applies the chosen colour and refreshes the characters standing.", [&feature, &choices] {
-			const auto& colors = SmpPhysics::TestCrowdHairColors();
-			const bool picked = choices.hairColor > 0 && choices.hairColor <= static_cast<int>(colors.size());
-			const std::string color = picked ? std::string(colors[static_cast<std::size_t>(choices.hairColor - 1)].name) : std::string{};
-			feature.ApplyCrowdHairColor(color); }),
-		});
+				 Button("Stop and freeze", "Stops the animation.", [] { RunCrowdCommand("playTestCrowdAnimation", { { "idle", "ResetRoot" } }); }, true),
+				 Header("Hair colour"),
+			 },
+			HairColourRows(&choices.hairColor, "Sets the hair colour of every base the crowd is made from.", "Applies the chosen colour and refreshes the characters standing.", [&feature](const std::string& a_color) { feature.ApplyCrowdHairColor(a_color); })));
 
 	developerModel.title = "Developer";
 	developerModel.onSave = model.onSave;

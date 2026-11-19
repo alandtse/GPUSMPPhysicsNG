@@ -184,6 +184,8 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] UiStatus GetUiStatus() const;
 	/** @brief Sets the test crowd's hair colour from the game thread, or puts back the natural colours when a_color is empty. */
 	void ApplyCrowdHairColor(std::string a_color);
+	/** @brief Sets the hair target's hair colour (an empty name puts its own back) on the game thread; a worn wig takes it. */
+	void ApplyTargetHairColor(std::string a_color);
 	/** @brief The live claims and the files switched off for testing, one row each, for the Claims page. */
 	[[nodiscard]] std::vector<ClaimRow> GetClaimRows() const;
 	/** @brief Offers, takes and declines by mesh kind, and the decline reasons ranked by the (actor, file) pairs they hold back. */

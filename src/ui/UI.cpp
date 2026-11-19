@@ -231,6 +231,8 @@ namespace SettingsUi
 					break;
 				case Row::Kind::Note:
 					ImGuiMCP::TextDisabled("%s", (row.textFn ? row.textFn() : row.label).c_str());
+					if (row.tooltipFn && ImGuiMCP::IsItemHovered())
+						Tip(row.tooltipFn());
 					break;
 				case Row::Kind::Button:
 					if (row.sameLine)

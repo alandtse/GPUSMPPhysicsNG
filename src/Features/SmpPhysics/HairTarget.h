@@ -2,6 +2,7 @@
 
 #include "CrowdWigs.h"
 #include "smp/HairMatchOrder.h"
+#include "smp/HairTargetDetail.h"
 #include "smp/HairTargetPick.h"
 
 #include <chrono>
@@ -28,6 +29,7 @@ namespace SmpPhysics
 		std::uint32_t formID{};  ///< 0 for the player.
 		std::string text;
 		std::string status;
+		std::string detail;  ///< The hover text: what was matched and what the target wears on its head.
 		std::vector<int> order;
 		std::vector<std::string> badges;
 		std::pair<std::size_t, std::size_t> progress{};
@@ -35,6 +37,9 @@ namespace SmpPhysics
 		bool hasCrosshair{};
 		bool pinned{};
 	};
+
+	/** @brief What a_actor wears on its head: its hair head part and each worn armor in a hair or head slot. Game thread only; a_actor may be null. */
+	[[nodiscard]] HairTargetDetail HairWearingOf(RE::Actor* a_actor);
 
 	/**
 	 * @brief The character whose hair the user matches and swaps, found from the console selection and the crosshair, and the wigs ranked by
@@ -67,6 +72,7 @@ namespace SmpPhysics
 		RE::FormID rankedWig{};                 ///< The wig that stood for the target's hair in that ranking, 0 for none.
 		RE::FormID rankedHair{};                ///< The hair head part the target had in that ranking, 0 for none; a new one, as a change of sex brings, ranks again.
 		bool ranking{};
+		HairTargetDetail matched;  ///< The matched fields of the last ranking result.
 		std::chrono::steady_clock::time_point sampledAt{};
 	};
 }
