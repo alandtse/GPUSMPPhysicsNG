@@ -12,15 +12,9 @@ namespace SmpPhysics
 	{
 		constexpr std::array<const char*, 4> kHealthNames = { "no physics", "works", "repaired", "broken" };
 
-		std::string LeafOf(const std::string& a_path)
-		{
-			const std::size_t slash = a_path.find_last_of("\\/");
-			return slash == std::string::npos ? a_path : a_path.substr(slash + 1);
-		}
-
 		std::string LineOf(const FileStats& a_file)
 		{
-			std::string line = std::format("{}: {}", LeafOf(a_file.file), kHealthNames[static_cast<std::size_t>(a_file.health)]);
+			std::string line = std::format("{}: {}", a_file.file, kHealthNames[static_cast<std::size_t>(a_file.health)]);
 			if (!a_file.read)
 				return line + ", not read";
 			line += std::format(", {} bones ({} dynamic), {} joints", a_file.bones, a_file.dynamic, a_file.joints);
