@@ -195,6 +195,10 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] std::vector<std::pair<std::string, std::string>> GetRepairReports() const;
 	/** @brief Text to send an item's mod author: its name, plugin, physics files and what is wrong with each; empty when the scan found no files. Game thread only. */
 	[[nodiscard]] std::string ItemReportText(RE::FormID a_armor);
+	/** @brief Puts the wig at a_index of CrowdWigs::WigForms() on the crowd and, while it is included, the player; runs on the game thread. */
+	void WearWig(int a_index);
+	/** @brief The entry of CrowdWigs::WigForms() worn last, or -1 for none. */
+	[[nodiscard]] int WornWigIndex() const noexcept { return crowdWigs.WornIndex(); }
 	/** @brief The rigid solver's island size summary, for the devbench islandSizes query. */
 	[[nodiscard]] json IslandSizesJson() const;
 	/** @brief The scan's armors and cloaks with their worst health, for the devbench physicsHealth query. Game thread only. */

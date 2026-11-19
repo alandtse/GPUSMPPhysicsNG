@@ -7,6 +7,7 @@
 #include "Utils/StringUtils.h"
 #include "Utils/TestBench/CrowdPool.h"
 #include "Utils/TestBench/IdleCache.h"
+#include "Utils/TestBench/ItemRows.h"
 #include "Utils/TestBench/TestCrowd.h"
 #include "Utils/TestBench/TestCrowdLayout.h"
 
@@ -20,8 +21,6 @@ using json = nlohmann::json;
 
 namespace
 {
-	constexpr int kDefaultListLimit = 100;  ///< Entries a list query returns when it gives no limit.
-
 	json TestCrowdJson(const TestBench::TestCrowd& a_crowd)
 	{
 		json result;
@@ -70,38 +69,26 @@ void TestBench::RegisterUxActions()
 		[](const json& a_args) { TestBench::GetCrowd().SetIncludePlayer(a_args.value("enabled", true)); });
 	TOOL_COMMAND(kOwnerName, "cycleTestCrowdArmor", "Dress every test character in the next or previous playable body armor, with weapons and other gear off and what hooks keep left on, to compare armor types. Args: step (number, default 1; -1 goes back). Read the armor worn from testCrowdReport.",
 		[](const json& a_args) { TestBench::GetCrowd().CycleArmor(a_args.value("step", 1)); });
-	TOOL_COMMAND(kOwnerName, "setTestCrowdArmor", "Dress every test character in one playable body armor by name, so a run can use a chosen outfit. Args: name (string, case-insensitive part of an armor's name; the first match is worn).",
+	TOOL_COMMAND(kOwnerName, "setTestCrowdArmor", "Dress every test character in one playable body armor, so a run can use a chosen outfit. Args: name (string, case-insensitive part of an entry of testCrowdArmors; the first match is worn) or index (number, an entry of testCrowdArmors).",
 		[](const json& a_args) {
-			const std::string name = Util::ToLowerAscii(a_args.value("name", std::string{}));
-			const auto& names = TestBench::TestCrowd::ArmorNames();
-			const auto match = std::find_if(names.begin(), names.end(), [&](const std::string& a_name) { return Util::ToLowerAscii(a_name).find(name) != std::string::npos; });
-			if (!name.empty() && match != names.end())
-				TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(match - names.begin()));
+			const int index = TestBench::ItemIndexFromArgs(a_args, TestBench::TestCrowd::ArmorNames());
+			if (index >= 0)
+				TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(index));
 		});
 	TOOL_COMMAND(kOwnerName, "setTestCrowdCloak", "Put a cloak or cape on every test character standing now, and on each one spawned later; it is a layer of its own that stays on through stripping and armor changes. Args: name (string, case-insensitive part of an entry of testCrowdCloaks; the first match is worn), index (number, an entry of testCrowdCloaks), or neither / index -1 to take the cloak off. Read the outcome from testCrowdReport.",
-		[](const json& a_args) {
-			int index = a_args.value("index", -1);
-			const std::string name = Util::ToLowerAscii(a_args.value("name", std::string{}));
-			if (!name.empty()) {
-				const auto& names = TestBench::TestCrowd::CloakNames();
-				const auto match = std::find_if(names.begin(), names.end(), [&](const std::string& a_name) { return Util::ToLowerAscii(a_name).find(name) != std::string::npos; });
-				index = match != names.end() ? static_cast<int>(match - names.begin()) : -1;
-			}
-			TestBench::GetCrowd().SelectCloak(index);
-		});
+		[](const json& a_args) { TestBench::GetCrowd().SelectCloak(TestBench::ItemIndexFromArgs(a_args, TestBench::TestCrowd::CloakNames())); });
 	TOOL_QUERY(kOwnerName, "testCrowdCloaks", "List the cloaks and capes the test crowd can wear, with their index for setTestCrowdCloak, and which one it wears now (worn is -1 for none). Args: filter (string, case-insensitive part of the name, default none), limit (number, default 100).",
 		[](const json& a_args) -> json {
-			const std::string filter = Util::ToLowerAscii(a_args.value("filter", std::string{}));
-			const std::size_t limit = static_cast<std::size_t>(std::max(a_args.value("limit", kDefaultListLimit), 1));
-			json rows = json::array();
-			const auto& names = TestBench::TestCrowd::CloakNames();
-			for (std::size_t index = 0; index < names.size() && rows.size() < limit; ++index) {
-				if (filter.empty() || Util::ToLowerAscii(names[index]).find(filter) != std::string::npos)
-					rows.push_back({ { "index", index }, { "name", names[index] } });
-			}
 			json result;
 			result["worn"] = TestBench::GetCrowd().WornCloakIndex();
-			result["cloaks"] = rows;
+			result["cloaks"] = TestBench::ItemRows(TestBench::TestCrowd::CloakNames(), TestBench::TestCrowd::CloakForms(), a_args);
+			return result;
+		});
+	TOOL_QUERY(kOwnerName, "testCrowdArmors", "List the playable body armors the test crowd can wear, with their index for setTestCrowdArmor, and which one it wears now (worn is -1 for none). Args: filter (string, case-insensitive part of the name, default none), limit (number, default 100).",
+		[](const json& a_args) -> json {
+			json result;
+			result["worn"] = TestBench::GetCrowd().WornArmorIndex();
+			result["armors"] = TestBench::ItemRows(TestBench::TestCrowd::ArmorNames(), TestBench::TestCrowd::ArmorForms(), a_args);
 			return result;
 		});
 	TOOL_COMMAND(kOwnerName, "playTestCrowdAnimation", "Play an idle animation on every test character standing now, and on each one spawned later, to test a feature on moving characters; the default is a Cicero idle. Args: idle (string, an editor ID from testCrowdAnimations; ResetRoot stops; empty plays the default). Read how many played from testCrowdReport.",
@@ -111,7 +98,7 @@ void TestBench::RegisterUxActions()
 	TOOL_QUERY(kOwnerName, "testCrowdAnimations", "List the game's idle animations by editor ID with the event that plays each; paired animations are left out. Args: filter (string, case-insensitive part of the editor ID, default none), limit (number, default 100).",
 		[](const json& a_args) -> json {
 			const std::string filter = Util::ToLowerAscii(a_args.value("filter", std::string{}));
-			const std::size_t limit = static_cast<std::size_t>(std::max(a_args.value("limit", kDefaultListLimit), 1));
+			const std::size_t limit = static_cast<std::size_t>(std::max(a_args.value("limit", TestBench::kDefaultListLimit), 1));
 			json rows = json::array();
 			for (const TestBench::IdleChoice& idle : TestBench::IdleCache::Snapshot()) {
 				if (rows.size() >= limit)
