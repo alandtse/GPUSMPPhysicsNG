@@ -23,6 +23,7 @@
 #include "engine/ReadyWeaponGate.h"
 #include "plugin/Settings.h"
 #include "smp/CardVertices.h"
+#include "smp/ClaimPolicy.h"
 #include "smp/GpuViews.h"
 #include "smp/HairPartModel.h"
 #include "smp/PathKey.h"
@@ -257,15 +258,13 @@ namespace
 		visit(a_model);
 	}
 
-	constexpr const char* kFileNotOpened = "the physics file could not be opened";
-
 	SmpPhysics::ParseResult ReadPhysicsFile(const std::string& a_path)
 	{
 		SmpPhysics::ParseResult result;
 
 		RE::BSResourceNiBinaryStream stream(a_path);
 		if (!stream.good()) {
-			result.reason = kFileNotOpened;
+			result.reason = std::string(SmpPhysics::kMissingFileReason);
 			return result;
 		}
 
@@ -997,22 +996,24 @@ std::vector<SmpPhysics::Health> SmpPhysicsFeature::ItemHealths(const std::vector
 			declined.emplace(key(entry.first), entry.second);
 	}
 
-	std::map<std::string, SmpPhysics::Health> byFile;
+	std::map<std::string, SmpPhysics::FileHealth> byFile;
 	std::vector<SmpPhysics::Health> result;
 	result.reserve(a_itemFiles.size());
 	for (const std::vector<std::string>& files : a_itemFiles) {
-		SmpPhysics::Health worst = SmpPhysics::Health::None;
+		std::vector<SmpPhysics::FileHealth> states;
 		for (const std::string& file : files) {
 			const std::string fileKey = key(file);
 			auto found = byFile.find(fileKey);
 			if (found == byFile.end()) {
 				const auto parsed = GetParsedRig(file);
 				const auto reason = declined.find(fileKey);
-				found = byFile.emplace(fileKey, SmpPhysics::ClassifyFile(parsed->status == SmpPhysics::ParseStatus::Ok, parsed->reason, repaired.contains(fileKey) || !parsed->warnings.empty(), reason != declined.end() ? std::string_view(reason->second) : std::string_view{})).first;
+				const bool parsedOk = parsed->status == SmpPhysics::ParseStatus::Ok;
+				const SmpPhysics::Health health = SmpPhysics::ClassifyFile(parsedOk, parsed->reason, repaired.contains(fileKey) || !parsed->warnings.empty(), reason != declined.end() ? std::string_view(reason->second) : std::string_view{});
+				found = byFile.emplace(fileKey, SmpPhysics::FileHealth{ health, !parsedOk && parsed->reason == SmpPhysics::kMissingFileReason }).first;
 			}
-			worst = SmpPhysics::Worse(worst, found->second);
+			states.push_back(found->second);
 		}
-		result.push_back(worst);
+		result.push_back(SmpPhysics::ClassifyItem(states));
 	}
 	return result;
 }
@@ -1047,7 +1048,7 @@ std::string SmpPhysicsFeature::FilesStatsText(const std::vector<std::string>& a_
 		file.file = path;
 		file.health = ItemHealths({ { path } }).front();
 		const auto parsed = GetParsedRig(path);
-		file.missing = parsed && parsed->reason == kFileNotOpened;
+		file.missing = parsed && parsed->reason == SmpPhysics::kMissingFileReason;
 		if (parsed && parsed->status == SmpPhysics::ParseStatus::Ok) {
 			file.read = true;
 			file.bones = parsed->rig.bones.size();
@@ -1083,7 +1084,7 @@ std::string SmpPhysicsFeature::ItemReportText(RE::FormID a_armor)
 	for (const std::string& path : files) {
 		text += "File: " + path + '\n';
 		if (const auto parsed = GetParsedRig(path); parsed->status != SmpPhysics::ParseStatus::Ok)
-			text += (parsed->reason == kFileNotOpened ? std::string("Missing: no file at that path") : "Not read: " + parsed->reason) + '\n';
+			text += (parsed->reason == SmpPhysics::kMissingFileReason ? std::string("Missing: no file at that path") : "Not read: " + parsed->reason) + '\n';
 		for (const SmpPhysics::RepairLog::FileReport& report : reports) {
 			if (key(report.file) == key(path))
 				text += SmpPhysics::RepairLog::Format(report) + '\n';
@@ -1465,10 +1466,10 @@ bool SmpPhysicsFeature::ResolveRigNodes(const hdt::IMeshClaimContext& a_context,
 		}
 		if (sceneParent != parentNode) {
 			repairLog.Record(a_path, std::format("'{}' hangs under '{}' in the skeleton but its joint is to '{}'", a_rig.bones[static_cast<std::size_t>(joint.child)].name, sceneParent->name.c_str(), a_rig.bones[static_cast<std::size_t>(joint.parent)].name),
-				"accepted it; the rest pose comes from the scene graph and the joint still binds the physics parent");
+				"used the skeleton's pose and kept the joint to the file's parent");
 		} else if (childNode->parent != parentNode) {
 			repairLog.Record(a_path, std::format("'{}' hangs under '{}', a node hdtSMP64 added when it merged the armor, not directly under '{}' as the file says", a_rig.bones[static_cast<std::size_t>(joint.child)].name, childNode->parent ? childNode->parent->name.c_str() : "nothing", a_rig.bones[static_cast<std::size_t>(joint.parent)].name),
-				"accepted it and simulated the bone from where the scene graph puts it");
+				"simulated the bone from where the skeleton puts it");
 		}
 	}
 	return true;
@@ -1572,6 +1573,7 @@ void SmpPhysicsFeature::InstallClaimCollision(Claim& a_claim, ClaimCollision& a_
 	a_claim.collisionDrivers = std::move(a_collision.drivers);
 	a_claim.hairMeshNames = std::move(a_collision.hairMeshNames);
 	a_claim.bodySignature = a_collision.bodySignature;
+	a_claim.modelName = std::move(a_collision.modelName);
 	a_claim.collisionActive = true;
 }
 
@@ -1641,12 +1643,18 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 	}
 
 	ClaimCollision collision;
+	bool collisionDropped = false;
 	if (hasCollisionShapes) {
 		std::string collisionReason;
 		if (!BuildClaimCollision(a_context, rig, nodes, restPose, collision, collisionReason)) {
 			RegisterBodyShapes(a_context, path, collision.bodyShapes);
-			RecordDecline(path, collisionReason);
-			return false;
+			if (!SmpPhysics::MayClaimWithoutCollision(collision.noCollisionGeometry, static_cast<int>(dynamicCount))) {
+				RecordDecline(path, collisionReason);
+				return false;
+			}
+			logger::info("{} '{}': {}, so it runs without collision", kLogPrefix, path, collisionReason);
+			collision = ClaimCollision{};
+			collisionDropped = true;
 		}
 	}
 
@@ -1692,7 +1700,7 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 	auto* actor = a_context.getActor();
 	claim.token = a_token;
 	claim.headPart = a_context.getKind() == hdt::MeshKind::HeadPart;
-	claim.cloth = IsClothClaim(a_context);
+	claim.cloth = !collisionDropped && IsClothClaim(a_context);
 	ReadViewRules(claim);
 	claim.actorFormID = actor ? actor->GetFormID() : 0;
 	claim.physicsFile = path;
@@ -1720,7 +1728,7 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 	claim.sphereCount = collision.sphereCount;
 	claim.exemptSphereCount = collision.exemptSpheres;
 	claim.colliderCount = static_cast<int>(collision.colliders.size());
-	if (hasCollisionShapes)
+	if (hasCollisionShapes && !collisionDropped)
 		InstallClaimCollision(claim, collision);
 
 	const int additionalJoints = claim.additionalJointCount;
@@ -1760,7 +1768,7 @@ std::shared_ptr<const SmpPhysics::ParseResult> SmpPhysicsFeature::GetParsedRig(c
 	auto parsed = std::make_shared<SmpPhysics::ParseResult>(ReadPhysicsFile(a_path));
 	for (const std::string& warning : parsed->warnings) {
 		logger::warn("{} '{}': {}", kLogPrefix, a_path, warning);
-		repairLog.Record(a_path, warning, "repaired it and used the file");
+		repairLog.Record(a_path, warning, {});
 	}
 
 	const std::scoped_lock lock(stateMutex);
@@ -1851,7 +1859,7 @@ void SmpPhysicsFeature::RecordDecline(const std::string& a_file, const std::stri
 	if (shouldLog)
 		logger::info("{} Declined '{}': {}", kLogPrefix, a_file, a_reason);
 	if (SmpPhysics::RepairLog::IsFileFault(a_reason))
-		repairLog.Record(a_file, a_reason, "declined the file, so hdtSMP64 simulates it");
+		repairLog.Record(a_file, a_reason, a_reason == SmpPhysics::kMissingFileReason ? "nothing to simulate; hdtSMP64 skips a missing file too" : "not simulated here; hdtSMP64 simulates it instead");
 }
 
 void SmpPhysicsFeature::ReleaseMesh(std::uint64_t a_token)

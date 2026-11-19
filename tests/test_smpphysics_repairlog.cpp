@@ -47,7 +47,17 @@ TEST_CASE("A report reads as text for the file's author", "[smpphysics][repairlo
 	const std::string text = RepairLog::Format(log.Take()[0]);
 	CHECK(text.find("meshes/a/dress.xml") != std::string::npos);
 	CHECK(text.find("1. linearUpperLimit x is empty") != std::string::npos);
-	CHECK(text.find("read it as 0") != std::string::npos);
+	CHECK(text.find("-> read it as 0") != std::string::npos);
+	CHECK(text.find("What GPU SMP Physics did") == std::string::npos);
+}
+
+TEST_CASE("A problem with no action has no action line", "[smpphysics][repairlog]")
+{
+	RepairLog log;
+	log.Record("a.xml", "x is empty and keeps its default", {});
+	const std::string text = RepairLog::Format(log.Take()[0]);
+	CHECK(text.find("1. x is empty and keeps its default") != std::string::npos);
+	CHECK(text.find("->") == std::string::npos);
 }
 
 TEST_CASE("Settings and machine declines are not the file's fault", "[smpphysics][repairlog]")
@@ -56,4 +66,14 @@ TEST_CASE("Settings and machine declines are not the file's fault", "[smpphysics
 	CHECK_FALSE(RepairLog::IsFileFault("the GPU solver is not available: no device"));
 	CHECK_FALSE(RepairLog::IsFileFault("none of the hair meshes 'collision body' is below the actor"));
 	CHECK(RepairLog::IsFileFault("bone 'X' has no node below the skeleton"));
+}
+
+TEST_CASE("Solver limits and a scene without the mesh are not the file's fault", "[smpphysics][repairlog]")
+{
+	CHECK_FALSE(RepairLog::IsFileFault("the rigid claim needs more constraint rows or colours than the solver holds"));
+	CHECK_FALSE(RepairLog::IsFileFault("the rig needs 900 solver slots, past the 512 one claim may take"));
+	CHECK_FALSE(RepairLog::IsFileFault("a chain has more bones than the compute solver serves"));
+	CHECK_FALSE(RepairLog::IsFileFault("none of the hair meshes 'MaleHeadCollision' is below the actor"));
+	CHECK_FALSE(RepairLog::IsFileFault("the mesh has no skeleton node"));
+	CHECK(RepairLog::IsFileFault("no hair spheres could be built for 'Head' (3 of 12 skin bones matched a rig bone)"));
 }

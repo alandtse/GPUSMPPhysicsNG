@@ -179,7 +179,7 @@ namespace SmpPhysics::RigidGpu
 	inline constexpr std::uint32_t kRowsPerConstraint{ kRowsPerAxis * kAxisSlots };
 
 	/** @brief The colour classes one island's constraints may take; a step that needs more falls back to the exact kernel. */
-	inline constexpr std::uint32_t kMaxColors{ 32 };
+	inline constexpr std::uint32_t kMaxColors{ 64 };
 
 	/** @brief Per-axis configuration bits, mirroring the shader's kAxis* constants. */
 	inline constexpr std::uint32_t kAxisSpring{ 1u };

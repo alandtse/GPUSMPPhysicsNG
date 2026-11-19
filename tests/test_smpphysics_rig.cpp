@@ -946,6 +946,115 @@ TEST_CASE("A bone's surface mask follows the collide tags of its shape and spare
 	CHECK(AllowedSurfaceMask(nullptr, surfaces) == 0xFFFFFFFFu);
 }
 
+namespace
+{
+	std::string SpringRigXml(std::string_view a_flag)
+	{
+		std::string body = R"XML(
+		<bone name="Head"><mass>0</mass></bone>
+		<bone name="Hair01"><mass>0.01</mass><inertia x="1" y="1" z="1"/></bone>
+		<generic-constraint bodyA="Hair01" bodyB="Head">
+			<enableAngularSprings>)XML";
+		body.append(a_flag);
+		body.append("</enableAngularSprings></generic-constraint>");
+		return WrapSystem(body);
+	}
+}
+
+TEST_CASE("A boolean element reads 1 and 0 as hdtSMP64 does", "[SmpPhysics]")
+{
+	const ParseResult enabled = ParseSmpXml(SpringRigXml("1"));
+	REQUIRE(enabled.status == ParseStatus::Ok);
+	REQUIRE(enabled.rig.joints.size() == 1);
+	CHECK(enabled.rig.joints[0].angularSpringsEnabled);
+
+	const ParseResult disabled = ParseSmpXml(SpringRigXml("0"));
+	REQUIRE(disabled.status == ParseStatus::Ok);
+	CHECK_FALSE(disabled.rig.joints[0].angularSpringsEnabled);
+
+	CHECK(ParseSmpXml(SpringRigXml("yes")).status != ParseStatus::Ok);
+}
+
+TEST_CASE("A UTF-8 byte order mark before the XML prolog is skipped", "[SmpPhysics]")
+{
+	const std::string bare = WrapSystem(R"XML(<bone name="Head"><mass>0</mass></bone>)XML");
+	const ParseResult withMark = ParseSmpXml("\xEF\xBB\xBF" + bare);
+	CHECK(withMark.status == ParseStatus::Ok);
+	CHECK(withMark.rig.bones.size() == ParseSmpXml(bare).rig.bones.size());
+}
+
+TEST_CASE("wind-effect in a collision shape is accepted without a warning", "[SmpPhysics]")
+{
+	const ParseResult result = ParseSmpXml(WrapSystem(R"XML(
+		<bone name="Head"><mass>0</mass></bone>
+		<per-triangle-shape name="Body">
+			<wind-effect>0</wind-effect>
+			<margin>0.5</margin>
+		</per-triangle-shape>
+		<per-triangle-shape name="Head">
+			<wind-effect>0</wind-effect>
+		</per-triangle-shape>
+	)XML"));
+
+	REQUIRE(result.status == ParseStatus::Ok);
+	REQUIRE(result.rig.collision.triangleShapes.size() == 2);
+	CHECK(result.rig.collision.triangleShapes[0].margin == Approx(0.5f));
+	CHECK(result.warnings.empty());
+}
+
+TEST_CASE("A shape element hdtSMP64 reads but this plugin does not model still declines the file", "[SmpPhysics]")
+{
+	const ParseResult result = ParseSmpXml(WrapSystem(R"XML(
+		<bone name="Head"><mass>0</mass></bone>
+		<per-triangle-shape name="Body">
+			<can-collide-with-bone>Head</can-collide-with-bone>
+		</per-triangle-shape>
+	)XML"));
+
+	CHECK(result.status == ParseStatus::Unsupported);
+}
+
+TEST_CASE("A joint between two kinematic bones is dropped", "[smpphysics][rig]")
+{
+	const ParseResult result = ParseSmpXml(WrapSystem(R"XML(
+		<bone name="Spine"><mass>0</mass></bone>
+		<bone name="Gravity00"/>
+		<bone name="Gravity01"><mass>5</mass><inertia x="8" y="8" z="8"/></bone>
+		<generic-constraint bodyA="Gravity00" bodyB="Spine"/>
+		<generic-constraint bodyA="Gravity01" bodyB="Gravity00"/>
+	)XML"));
+
+	REQUIRE(result.status == ParseStatus::Ok);
+	REQUIRE(result.rig.joints.size() == 1);
+	CHECK(result.rig.bones[static_cast<std::size_t>(result.rig.joints[0].child)].name == "Gravity01");
+	CHECK(result.warnings.empty());
+}
+
+TEST_CASE("A kinematic bone written as a joint's child anchors the dynamic bone it is joined to", "[smpphysics][rig]")
+{
+	const ParseResult result = ParseSmpXml(WrapSystem(R"XML(
+		<bone name="Spine"><mass>0</mass></bone>
+		<bone name="Hair01"><mass>1</mass><inertia x="1" y="1" z="1"/></bone>
+		<bone name="Pinned"><mass>0</mass></bone>
+		<bone name="Breast"><mass>1</mass><inertia x="1" y="1" z="1"/></bone>
+		<generic-constraint bodyA="Hair01" bodyB="Spine"/>
+		<generic-constraint bodyA="Pinned" bodyB="Hair01"/>
+		<generic-constraint bodyA="Pinned" bodyB="Breast"/>
+	)XML"));
+
+	REQUIRE(result.status == ParseStatus::Ok);
+	const auto name = [&result](int a_bone) { return result.rig.bones[static_cast<std::size_t>(a_bone)].name; };
+	REQUIRE(result.rig.joints.size() == 2);
+	CHECK(name(result.rig.joints[0].child) == "Hair01");
+	CHECK_FALSE(result.rig.joints[0].reversed);
+	CHECK(name(result.rig.joints[1].child) == "Breast");
+	CHECK(name(result.rig.joints[1].parent) == "Pinned");
+	CHECK(result.rig.joints[1].reversed);
+	REQUIRE(result.rig.additionalJoints.size() == 1);
+	CHECK(name(result.rig.additionalJoints[0].child) == "Hair01");
+	CHECK(result.rig.additionalJoints[0].reversed);
+}
+
 TEST_CASE("A rig is not refused for its bone count", "[smpphysics][rig]")
 {
 	SmpRig rig;

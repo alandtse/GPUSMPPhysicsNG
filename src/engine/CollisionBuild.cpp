@@ -1,5 +1,6 @@
 #include "Features/SmpPhysics.h"
 #include "smp/CardVertices.h"
+#include "smp/ClaimPolicy.h"
 #include "smp/RestRetarget.h"
 
 #include "RE/A/Actor.h"
@@ -19,6 +20,7 @@
 #include <array>
 #include <cctype>
 #include <cfloat>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -1110,8 +1112,10 @@ bool SmpPhysicsFeature::ResolveCollisionInputs(CollisionBuildState& s, std::stri
 	}
 	if (hairShape == nullptr) {
 		a_reason = std::format("none of the hair meshes {} is below the actor", triedShapes);
-		if (shapes.vertexShapes.empty())
+		if (shapes.vertexShapes.empty()) {
 			a_collision.bodyShapes = shapes.triangleShapes;
+			a_collision.noCollisionGeometry = true;
+		}
 		return false;
 	}
 
@@ -1329,6 +1333,8 @@ bool SmpPhysicsFeature::BuildHairSpheres(CollisionBuildState& s, std::string& a_
 	if (a_collision.sphereCount == 0) {
 		a_reason = std::format("no hair spheres could be built for '{}' ({} of {} skin bones matched a rig bone)", hairShape->name,
 			mappedSkinBones, totalSkinBones);
+		a_collision.noCollisionGeometry = SmpPhysics::HasNoCollisionGeometry(mappedSkinBones, a_collision.sphereCount);
+		a_collision.bodyShapes = a_rig.collision.triangleShapes;
 		return false;
 	}
 
@@ -1443,8 +1449,10 @@ void SmpPhysicsFeature::BuildBodyProxies(CollisionBuildState& s) const
 	for (const RigShape& shape : shapes.triangleShapes)
 		scan.hairNames.push_back(shape.name);
 	if (RE::NiAVObject* model = a_context.getModel()) {
-		if (const char* modelName = model->name.c_str())
+		if (const char* modelName = model->name.c_str()) {
 			scan.hairNames.emplace_back(modelName);
+			a_collision.modelName = modelName;
+		}
 	}
 	BodyScanResult scanned;
 	ScanBody(scan, scanned);
@@ -1870,8 +1878,32 @@ bool SmpPhysicsFeature::WornMeshesChanged(Claim& a_claim, float a_frameDelta)
 	std::uint64_t signature = scanned.signature;
 	if (settings.ClothCollision && !a_claim.cloth && a_claim.parsed && !a_claim.parsed->rig.collision.vertexShapes.empty())
 		signature = HashClothMeshes(a_claim.actorFormID, signature);
+
+	const bool attached = a_claim.modelName.empty() || root->GetObjectByName(RE::BSFixedString(a_claim.modelName.c_str())) != nullptr;
+	switch (SmpPhysics::NextBaselineStep(a_claim.bodySignatureSettled, attached, a_claim.settleChecks)) {
+	case SmpPhysics::BaselineStep::Wait:
+		++a_claim.settleChecks;
+		return false;
+	case SmpPhysics::BaselineStep::Adopt:
+		a_claim.bodySignature = signature;
+		a_claim.bodySignatureSettled = true;
+		return false;
+	case SmpPhysics::BaselineStep::Compare:
+		break;
+	}
 	if (signature == a_claim.bodySignature)
 		return false;
+
+	const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+	const SmpPhysics::RefitGuard::Decision decision = refitGuard.Admit(a_claim.actorFormID, now);
+	if (!decision.allowed)
+		return false;
+	if (decision.streak >= SmpPhysics::kRefitWarnStreak) {
+		logger::warn("[GPU SMP Physics] '{}': the worn meshes of actor {:08X} changed again, refit {} in a row; refits back off up to {:.0f} s",
+			a_claim.physicsFile, a_claim.actorFormID, decision.streak + 1, SmpPhysics::kRefitBackoffMaxSeconds);
+	}
+	logger::debug("[GPU SMP Physics] '{}': worn meshes changed (signature {:016X} was {:016X}), asking hdtSMP64 to reload actor {:08X}",
+		a_claim.physicsFile, signature, a_claim.bodySignature, a_claim.actorFormID);
 
 	// The signature is adopted whether or not the caller manages to re-run claiming, so one equipment change
 	// cannot ask hdtSMP64 to reload the actor again on every frame the meshes stay different from the proxies.

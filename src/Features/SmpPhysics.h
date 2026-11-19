@@ -13,6 +13,7 @@
 #include "smp/CollisionOverride.h"
 #include "smp/ItemStats.h"
 #include "smp/PhysicsHealth.h"
+#include "smp/RefitGuard.h"
 #include "smp/RepairLog.h"
 #include "smp/SelfWindShelter.h"
 #include "smp/SkinnedSurface.h"
@@ -315,6 +316,8 @@ private:
 		std::vector<RE::NiPointer<RE::NiAVObject>> drivers;  ///< the nodes the colliders are expressed in
 		std::vector<std::string> hairMeshNames;              ///< the meshes the rig's own shapes name, which are never body
 		std::uint64_t bodySignature{};                       ///< hashes the worn meshes the colliders were measured from
+		std::string modelName;                               ///< the claimed model's root, which the actor has once the meshes are attached
+		bool noCollisionGeometry{};                          ///< the rig's meshes gave no collision geometry, so it may run without collision
 		int sphereCount{};
 		int exemptSpheres{};  ///< of sphereCount, the ones that start inside a collider
 		int fitted{};
@@ -351,6 +354,9 @@ private:
 		std::vector<std::string> hairMeshNames;                       ///< The meshes the rig's own shapes name, which are never body.
 		std::uint64_t bodySignature{};                                ///< Hashes the worn meshes the proxies were measured from.
 		double refitCheckElapsed{};                                   ///< Seconds since the worn meshes were last hashed.
+		std::string modelName;                                        ///< The claimed model's root; empty when the claim has none.
+		bool bodySignatureSettled{};                                  ///< bodySignature was taken with the model attached, so a different scan is a change.
+		int settleChecks{};                                           ///< Scans that found the model not attached yet.
 		std::vector<SmpPhysics::Transform> driverWorld;               ///< This frame's world transform of each driver.
 		SmpPhysics::GpuRig::CollisionData gpuCollision;               ///< The same proxies packed for the compute shader.
 		std::vector<std::vector<SmpPhysics::BoneSphere>> spheres;     ///< The collision spheres of each rig bone, in the bone's frame.
@@ -622,6 +628,7 @@ private:
 	json windProbeResult = json::object();
 	mutable std::mutex stateMutex;  ///< Guards everything below, and nothing is called into hdtSMP64 while it is held.
 	std::string linkStatus;
+	SmpPhysics::RefitGuard refitGuard;  ///< Spaces out the soft reloads each actor asks for.
 	hdt::PluginInterface* linkedInterface{};
 	hdt::PluginInterface* seenInterface{};  ///< Keeps a repeated startup message from relinking or re-warning.
 	hdt::PluginInterface::Version interfaceVersion{};
