@@ -254,8 +254,7 @@ namespace
 	/** @brief Shows a list closest to the hair target's hair first, with each item's distance after its name. */
 	Row WithHairMatch(Row a_row)
 	{
-		a_row.orderFn = [] { return Instance().HairTargetState().order; };
-		a_row.itemBadgeFn = [] { return Instance().HairTargetState().badges; };
+		a_row.sorts.push_back({ "Closest to hair target", [] { return Instance().HairTargetState().order; }, [] { return Instance().HairTargetState().badges; } });
 		return a_row;
 	}
 

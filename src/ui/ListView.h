@@ -1,9 +1,12 @@
 #pragma once
 
 #include <algorithm>
+#include <cctype>
+#include <numeric>
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace SettingsUi
 {
@@ -43,6 +46,46 @@ namespace SettingsUi
 				return index;
 		}
 		return a_current;
+	}
+
+	/** @brief The orders every list can show its rows in besides the ones a row adds. */
+	enum class Sort
+	{
+		Natural,
+		NameAscending,
+		NameDescending,
+		WorstFirst,      ///< Rows with a broken physics file first, then repaired, then working, then those with none.
+		HasPhysicsFirst  ///< Rows with physics before those without.
+	};
+
+	/**
+	 * @brief The row indexes in the order a_sort shows them, empty for the natural order; ties keep the natural order.
+	 * @param a_states Each row's state as RowVisible takes it, shorter than a_names for rows with none.
+	 */
+	[[nodiscard]] inline std::vector<int> SortedOrder(Sort a_sort, std::span<const std::string> a_names, std::span<const int> a_states)
+	{
+		if (a_sort == Sort::Natural)
+			return {};
+		const auto state = [&](int a_index) { return static_cast<std::size_t>(a_index) < a_states.size() ? a_states[static_cast<std::size_t>(a_index)] : 0; };
+		const auto lessName = [&](int a_left, int a_right) {
+			return std::ranges::lexicographical_compare(a_names[static_cast<std::size_t>(a_left)], a_names[static_cast<std::size_t>(a_right)],
+				[](unsigned char a_l, unsigned char a_r) { return std::tolower(a_l) < std::tolower(a_r); });
+		};
+		std::vector<int> order(a_names.size());
+		std::iota(order.begin(), order.end(), 0);
+		std::ranges::stable_sort(order, [&](int a_left, int a_right) {
+			switch (a_sort) {
+			case Sort::NameAscending:
+				return lessName(a_left, a_right);
+			case Sort::NameDescending:
+				return lessName(a_right, a_left);
+			case Sort::WorstFirst:
+				return state(a_left) > state(a_right);
+			default:
+				return (state(a_left) != 0) > (state(a_right) != 0);
+			}
+		});
+		return order;
 	}
 
 	/**

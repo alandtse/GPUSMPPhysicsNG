@@ -70,10 +70,33 @@ namespace SettingsUi
 				if (row.showMode != before && row.showMode != 0 && row.onShowFiltered)
 					row.onShowFiltered();
 			}
-			std::vector<int> order = row.orderFn ? row.orderFn() : std::vector<int>{};
+			std::vector<std::string> sortLabels;
+			for (const SortChoice& choice : row.sorts)
+				sortLabels.push_back(choice.label);
+			for (const char* label : { "Default order", "Name A-Z", "Name Z-A" })
+				sortLabels.emplace_back(label);
+			if (row.itemStatusFn) {
+				sortLabels.emplace_back("Worst physics first");
+				sortLabels.emplace_back("With physics first");
+			}
+			std::string joinedSorts;
+			for (const std::string& label : sortLabels)
+				joinedSorts += label + '\0';
+			row.sortIndex = std::clamp(row.sortIndex, 0, static_cast<int>(sortLabels.size()) - 1);
+			ImGuiMCP::SetNextItemWidth(kWidth);
+			ImGuiMCP::Combo(("##gsp_sort_" + row.label).c_str(), &row.sortIndex, joinedSorts.c_str(), -1);
+			std::vector<int> order;
+			std::vector<std::string> badges;
+			if (static_cast<std::size_t>(row.sortIndex) < row.sorts.size()) {
+				const SortChoice& choice = row.sorts[static_cast<std::size_t>(row.sortIndex)];
+				order = choice.orderFn ? choice.orderFn() : std::vector<int>{};
+				badges = choice.badgeFn ? choice.badgeFn() : std::vector<std::string>{};
+			} else {
+				constexpr Sort kBuiltIn[] = { Sort::Natural, Sort::NameAscending, Sort::NameDescending, Sort::WorstFirst, Sort::HasPhysicsFirst };
+				order = SortedOrder(kBuiltIn[static_cast<std::size_t>(row.sortIndex) - row.sorts.size()], row.items, status);
+			}
 			if (order.size() != row.items.size())
 				order.clear();
-			const std::vector<std::string> badges = row.itemBadgeFn ? row.itemBadgeFn() : std::vector<std::string>{};
 			const auto statusOf = [&status](std::size_t a_index) { return a_index < status.size() ? status[a_index] : 0; };
 			const int selected = row.selectedFn ? row.selectedFn() : *row.intValue;
 			const bool scroll = ShouldScroll(selected, row.lastSelected, row.pickedIndex);

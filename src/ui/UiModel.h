@@ -11,6 +11,14 @@
 /** @brief What the settings page shows, as plain data so the page code needs neither the plugin's PCH nor its feature types. */
 namespace SettingsUi
 {
+	/** @brief An order a List can show its rows in besides the built-in ones, such as closest to a hair target. */
+	struct SortChoice
+	{
+		std::string label;
+		std::function<std::vector<int>()> orderFn;          ///< The item indexes in display order, read every frame; an order of another length is ignored.
+		std::function<std::vector<std::string>()> badgeFn;  ///< Text after each item's name, indexed by item, while this order is chosen.
+	};
+
 	struct Row
 	{
 		enum class Kind
@@ -50,10 +58,9 @@ namespace SettingsUi
 		std::function<std::pair<std::size_t, std::size_t>()> progressFn;
 		/** @brief Whether the filter box has already asked for the data its filter needs. */
 		bool scanAsked{};
-		/** @brief A List's item indexes in the order it shows them, read every frame; empty keeps the natural order. */
-		std::function<std::vector<int>()> orderFn;
-		/** @brief Text a List shows after each item's name, indexed by item and read every frame; an empty text adds nothing. */
-		std::function<std::vector<std::string>()> itemBadgeFn;
+		/** @brief Orders a List offers first, before its built-in ones; the first is the one the list opens with. */
+		std::vector<SortChoice> sorts;
+		int sortIndex{};  ///< The chosen order: an entry of sorts, then the built-in ones.
 		bool sameLine{};
 		float minimum{};
 		float maximum{};
