@@ -293,8 +293,11 @@ namespace SmpPhysics
 				watch.framesLeft = 0;
 				continue;
 			}
-			if (actor->Is3DLoaded() && HideBakedHair(*actor) > 0)
+			if (actor->Is3DLoaded() && HideBakedHair(*actor) > 0) {
 				watch.everHidden = true;
+				if (const auto* base = actor->GetActorBase(); base && naturalColors.contains(base->GetFormID()))
+					actor->UpdateHairColor();
+			}
 			if (--watch.framesLeft <= 0 && !watch.everHidden) {
 				const char* name = actor->GetName();
 				logger::info("[Test Crowd] {} ({:08X}): no baked hair was hidden in {} frames", name && *name ? name : "unnamed", actor->GetFormID(), kBakedHairWatchFrames);
