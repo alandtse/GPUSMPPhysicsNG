@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -49,4 +50,7 @@ namespace SmpPhysics
 
 	/** @brief Compares two descriptors; an empty one matches nothing, with a chamfer of the largest float. */
 	[[nodiscard]] HairMatch CompareHair(const HairDescriptor& a_left, const HairDescriptor& a_right);
+
+	/** @brief The slot of the heaviest weight among the eligible slots, or none when no eligible slot carries weight. */
+	[[nodiscard]] std::optional<std::size_t> StrongestEligibleSlot(std::span<const float> a_weights, std::span<const bool> a_eligible);
 }

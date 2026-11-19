@@ -94,6 +94,13 @@ namespace HairLook
 			return name.find("ground") != std::string::npos || name.find("collision") != std::string::npos;
 		}
 
+		/** @brief A model not attached to an actor keeps its physics bones at a resting pose that is not their bind pose, so only the skeleton's own bones can place a vertex. */
+		bool IsSkeletonBone(const RE::NiSkinInstance* a_skin, std::uint16_t a_index)
+		{
+			const RE::NiAVObject* bone = a_index < kMaxSkinBones && a_skin->bones ? a_skin->bones[a_index] : nullptr;
+			return bone && std::string_view(bone->name.c_str()).starts_with("NPC");
+		}
+
 		void AddGeometry(RE::BSGeometry* a_geometry, std::vector<SmpPhysics::HairTriangle>& a_out, std::vector<SmpPhysics::HairTriangle>& a_plain)
 		{
 			if (IsCollisionShape(a_geometry->name.c_str()))
@@ -113,7 +120,8 @@ namespace HairLook
 					RE::NiTransform transform;
 					if (a_bone < kMaxSkinBones && skin->skinData && skin->bones) {
 						const RE::NiAVObject* bone = skin->bones[a_bone];
-						transform = (bone ? ToRoot(bone) : RE::NiTransform{}) * skin->skinData->GetBoneDataSkinToBone(a_bone);
+						if (bone)
+							transform = ToRoot(bone) * skin->skinData->GetBoneDataSkinToBone(a_bone);
 					}
 					return boneToRoot.emplace(a_bone, transform).first->second;
 				};
@@ -140,11 +148,14 @@ namespace HairLook
 						RE::NiPoint3 point{ from[0], from[1], from[2] };
 						if (skinned && skin) {
 							const Util::SkinVertexBlock block = Util::ReadSkinVertexBlock(part.buffData->rawVertexData + static_cast<std::size_t>(vertex) * stride + skinOffset);
-							std::size_t strongest = 0;
-							for (std::size_t slot = 1; slot < Util::kSkinInfluences; ++slot)
-								strongest = block.weight[slot] > block.weight[strongest] ? slot : strongest;
-							if (block.paletteSlot[strongest] < part.numBones)
-								point = toRoot(part.bones[block.paletteSlot[strongest]]) * point;
+							std::array<bool, Util::kSkinInfluences> eligible{};
+							for (std::size_t slot = 0; slot < Util::kSkinInfluences; ++slot)
+								eligible[slot] = block.paletteSlot[slot] < part.numBones && IsSkeletonBone(skin, part.bones[block.paletteSlot[slot]]);
+							const auto strongest = SmpPhysics::StrongestEligibleSlot(block.weight, eligible);
+							if (strongest)
+								point = toRoot(part.bones[block.paletteSlot[*strongest]]) * point;
+							else if (part.numBones)
+								point = toRoot(part.bones[0]) * point;
 						}
 						positions[static_cast<std::size_t>(vertex) * 3] = point.x;
 						positions[static_cast<std::size_t>(vertex) * 3 + 1] = point.y;

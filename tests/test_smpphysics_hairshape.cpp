@@ -5,6 +5,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -107,4 +108,14 @@ TEST_CASE("A smaller version of a shape has a smaller area ratio", "[smpphysics]
 
 	CHECK(match.areaRatio == Approx(0.25f));
 	CHECK(match.boxOverlap < 0.5f);
+}
+
+TEST_CASE("The strongest eligible slot places a vertex, skipping bones that are not eligible", "[smpphysics][hairshape]")
+{
+	const std::array<float, 4> weights{ 0.1f, 0.6f, 0.3f, 0.0f };
+
+	CHECK(StrongestEligibleSlot(weights, std::array<bool, 4>{ true, true, true, true }) == 1);
+	CHECK(StrongestEligibleSlot(weights, std::array<bool, 4>{ true, false, true, true }) == 2);
+	CHECK(StrongestEligibleSlot(weights, std::array<bool, 4>{ false, false, false, true }) == std::nullopt);
+	CHECK(StrongestEligibleSlot(weights, std::array<bool, 4>{ false, false, false, false }) == std::nullopt);
 }

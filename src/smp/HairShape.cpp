@@ -204,4 +204,14 @@ namespace SmpPhysics
 		match.areaRatio = larger > 0.0f ? std::min(a_left.area, a_right.area) / larger : 0.0f;
 		return match;
 	}
+
+	std::optional<std::size_t> StrongestEligibleSlot(std::span<const float> a_weights, std::span<const bool> a_eligible)
+	{
+		std::optional<std::size_t> strongest;
+		for (std::size_t slot = 0; slot < std::min(a_weights.size(), a_eligible.size()); ++slot) {
+			if (a_eligible[slot] && a_weights[slot] > 0.0f && (!strongest || a_weights[slot] > a_weights[*strongest]))
+				strongest = slot;
+		}
+		return strongest;
+	}
 }
