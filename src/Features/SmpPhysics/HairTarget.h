@@ -62,7 +62,8 @@ namespace SmpPhysics
 		bool Pin(HairTargetSource a_source);
 		/** @brief Lets the console selection set the target again. */
 		void Unpin();
-		[[nodiscard]] HairTargetView View() const;
+		/** @brief What the UI shows; reading it keeps the target following the console selection, and a_ranking also asks for the wigs to be ranked. */
+		[[nodiscard]] HairTargetView View(bool a_ranking = false) const;
 		/** @brief The target's form ID, 0 for the player. */
 		[[nodiscard]] std::uint32_t FormID() const;
 
@@ -80,7 +81,8 @@ namespace SmpPhysics
 		std::chrono::steady_clock::time_point sampledAt{};
 		std::chrono::steady_clock::time_point detailAt{};
 		std::uint32_t detailFor{ UINT32_MAX };
-		HairTargetDetail wearing;                                        ///< What the target wore at detailAt.
-		mutable std::atomic<std::chrono::steady_clock::rep> viewedAt{};  ///< When the UI last read the view; nothing is ranked while it is not being read.
+		HairTargetDetail wearing;                                           ///< What the target wore at detailAt.
+		mutable std::atomic<std::chrono::steady_clock::rep> rankAskedAt{};  ///< When the UI last asked for a ranking.
+		mutable std::atomic<std::chrono::steady_clock::rep> viewedAt{};     ///< When the UI last read the view; nothing is ranked while it is not being read.
 	};
 }

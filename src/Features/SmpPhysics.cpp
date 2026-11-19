@@ -561,7 +561,7 @@ void SmpPhysicsFeature::RegisterUxActions()
 	FEATURE_QUERY("hairTarget", "The character whose hair is matched and swapped: formId (0 for the player), text, status while the wigs are being ranked, which sources exist (hasConsole for a prid selection, hasCrosshair) whether one is pinned, and wearing: its hair head part with the mesh that stands for it and each worn armor in a hair or head slot; detail and physics: the hover text.",
 		[](const Feature* a_self, const json&) -> json {
 			auto* self = const_cast<SmpPhysicsFeature*>(static_cast<const SmpPhysicsFeature*>(a_self));
-			const SmpPhysics::HairTargetView view = self->HairTargetState();
+			const SmpPhysics::HairTargetView view = self->HairTargetState(true);
 			json result = HairTargetJson(view);
 			result["physics"] = view.matchedModel.empty() ? std::string() : self->FilesStatsText(NifProbe::XmlPathsOfModel(view.matchedModel));
 			return result;
@@ -1783,6 +1783,7 @@ std::shared_ptr<const SmpPhysics::ParseResult> SmpPhysicsFeature::GetParsedRig(c
 
 	const std::scoped_lock lock(stateMutex);
 	const auto entry = parsedRigs.try_emplace(a_path, std::move(parsed));
+	healthChanges.fetch_add(1, std::memory_order_relaxed);
 	return entry.first->second;
 }
 
@@ -1866,8 +1867,10 @@ void SmpPhysicsFeature::RecordDecline(const std::string& a_file, const std::stri
 			shouldLog = true;
 		}
 	}
-	if (shouldLog)
+	if (shouldLog) {
+		healthChanges.fetch_add(1, std::memory_order_relaxed);
 		logger::info("{} Declined '{}': {}", kLogPrefix, a_file, a_reason);
+	}
 	if (SmpPhysics::RepairLog::IsFileFault(a_reason))
 		repairLog.Record(a_file, a_reason, a_reason == SmpPhysics::kMissingFileReason ? "nothing to simulate; hdtSMP64 skips a missing file too" : "not simulated here; hdtSMP64 simulates it instead");
 }

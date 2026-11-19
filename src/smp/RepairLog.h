@@ -1,6 +1,8 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -35,6 +37,9 @@ namespace SmpPhysics
 
 		void Reset();
 
+		/** @brief A number that changes whenever the log does, so a reader can tell when to look again. */
+		[[nodiscard]] std::uint32_t Revision() const noexcept { return revision.load(std::memory_order_relaxed); }
+
 		/** @brief A report as text to paste to the file's author. */
 		[[nodiscard]] static std::string Format(const FileReport& a_report);
 
@@ -43,6 +48,7 @@ namespace SmpPhysics
 
 	private:
 		mutable std::mutex mutex;
+		std::atomic<std::uint32_t> revision{};
 		std::vector<FileReport> reports;
 	};
 }

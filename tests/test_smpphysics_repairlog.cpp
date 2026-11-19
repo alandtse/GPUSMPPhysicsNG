@@ -77,3 +77,21 @@ TEST_CASE("Solver limits and a scene without the mesh are not the file's fault",
 	CHECK_FALSE(RepairLog::IsFileFault("the mesh has no skeleton node"));
 	CHECK(RepairLog::IsFileFault("no hair spheres could be built for 'Head' (3 of 12 skin bones matched a rig bone)"));
 }
+
+TEST_CASE("The log's revision changes only when the log does", "[smpphysics][repairlog]")
+{
+	RepairLog log;
+	const auto start = log.Revision();
+	log.Record("a.xml", "bad joint", "repaired");
+	const auto first = log.Revision();
+	log.Record("A.xml", "bad joint", "repaired");
+	log.Record("", "ignored", "");
+
+	CHECK(first != start);
+	CHECK(log.Revision() == first);
+	log.Record("a.xml", "another problem", "repaired");
+	CHECK(log.Revision() != first);
+	const auto beforeReset = log.Revision();
+	log.Reset();
+	CHECK(log.Revision() != beforeReset);
+}

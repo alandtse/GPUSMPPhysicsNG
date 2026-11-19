@@ -207,7 +207,10 @@ struct SmpPhysicsFeature final : Feature
 	/** @brief Puts the wig at a_index of CrowdWigs::WigForms() on the crowd and, while it is included, the player; runs on the game thread. */
 	void WearWig(int a_index);
 	/** @brief The character whose hair is matched and swapped, and the wigs ranked by their match to its hair. */
-	[[nodiscard]] SmpPhysics::HairTargetView HairTargetState() const { return hairTarget.View(); }
+	/** @brief The hair target as the UI shows it; a_ranking asks for the wigs to be ranked against its hair, which nothing else does. */
+	[[nodiscard]] SmpPhysics::HairTargetView HairTargetState(bool a_ranking = false) const { return hairTarget.View(a_ranking); }
+	/** @brief A number that changes whenever a physics file's health may have, so the lists recompute theirs only then. */
+	[[nodiscard]] std::uint32_t HealthRevision() const noexcept { return healthChanges.load(std::memory_order_relaxed) + repairLog.Revision(); }
 	/** @brief Pins a_source as the hair target; false when it has no character. */
 	bool PinHairTarget(SmpPhysics::HairTargetSource a_source) { return hairTarget.Pin(a_source); }
 	/** @brief Lets the console selection set the hair target again. */
@@ -693,6 +696,7 @@ private:
 	MeshOwner meshOwner{ *this };
 	FrameListener frameListener{ *this };
 	FrameSyncListener frameSyncListener{ *this };
+	std::atomic<std::uint32_t> healthChanges{};
 	CrosshairListener crosshairListener{ *this };
 	SmpPhysics::CrowdWigs crowdWigs;  ///< What this feature adds to the test crowd.
 	SmpPhysics::HairTarget hairTarget;

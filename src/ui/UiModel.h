@@ -48,7 +48,8 @@ namespace SettingsUi
 		std::function<std::string()> clipboardFn;           ///< A Button copies this text to the clipboard when pressed, and is greyed out while it is empty.
 		std::function<std::vector<int>()> itemStatusFn;     ///< A List's per-item state read every frame: 0 unknown, 1 working (green), 2 repaired (amber), 3 broken (red). Adds a Show filter.
 		std::function<void()> onActivated;                  ///< Runs when a List item is double-clicked, after that click has selected it.
-		std::function<void()> onShowFiltered;               ///< Runs once when a List first draws, and when its Show filter is switched away from All, so the data it filters by is gathered.
+		std::function<void()> onShowFiltered;               ///< Runs once when a sort that reads the scan is first chosen, and when the Show filter is switched away from All, so the data they use is gathered.
+		bool sortStarted{};                                 ///< Whether a List has been given its first sort, Name A-Z.
 		int showMode{};                                     ///< Which items a List with itemStatusFn shows: 0 all, 1 with physics, 2 needing attention.
 		std::array<char, 64> filterText{};                  ///< What a List's filter box holds.
 		int pickedIndex{ -1 };                              ///< The item the user last clicked in a List, so the list does not scroll under the cursor.
