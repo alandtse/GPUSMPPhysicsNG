@@ -204,10 +204,10 @@ struct SmpPhysicsFeature final : Feature
 	bool PinHairTarget(SmpPhysics::HairTargetSource a_source) { return hairTarget.Pin(a_source); }
 	/** @brief Lets the console selection set the hair target again. */
 	void UnpinHairTarget() { hairTarget.Unpin(); }
-	/** @brief Puts the wig at a_index of CrowdWigs::WigForms() on the hair target alone; runs on the game thread. */
-	void WearWigOnTarget(int a_index);
-	/** @brief Takes the wig off the hair target and shows its own hair again; runs on the game thread. */
-	void RestoreTargetHair();
+	/** @brief Puts the entry a_index of the lists of a_item (CrowdWigs::WigForms(), TestCrowd::ArmorForms(), CloakForms()) on the target alone; runs on the game thread. */
+	void WearOnTarget(SmpPhysics::TargetItem a_item, int a_index);
+	/** @brief Takes a_item off the target and puts back what it wore; for a wig, shows its own hair; runs on the game thread. */
+	void RestoreTarget(SmpPhysics::TargetItem a_item);
 	/** @brief The entry of CrowdWigs::WigForms() worn last, or -1 for none. */
 	[[nodiscard]] int WornWigIndex() const noexcept { return crowdWigs.WornIndex(); }
 	/** @brief The rigid solver's island size summary, for the devbench islandSizes query. */

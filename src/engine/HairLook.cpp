@@ -283,17 +283,25 @@ namespace HairLook
 		std::string sourceModel = a_args.value("model", std::string{});
 		std::string sourceName = sourceModel;
 		RE::FormID sourceArmor = 0;
+		bool wornWig = false;
 		if (sourceModel.empty() && a_args.contains("actorFormID")) {
 			const auto* actor = RE::TESForm::LookupByID<RE::Actor>(a_args.value("actorFormID", 0u));
 			auto* base = actor ? const_cast<RE::TESNPC*>(actor->GetActorBase()) : nullptr;
+			const auto* wig = RE::TESForm::LookupByID<RE::TESObjectARMO>(a_args.value("wigFormID", 0u));
 			RE::BGSHeadPart* hair = base ? base->GetCurrentHeadPartByType(RE::BGSHeadPart::HeadPartType::kHair) : nullptr;
-			if (!hair) {
+			if (base)
+				sex = base->GetSex() == RE::SEX::kFemale ? 1 : 0;
+			if (wig && !ModelOf(*wig, sex).empty()) {
+				sourceModel = ModelOf(*wig, sex);
+				sourceName = wig->GetName();
+				wornWig = true;
+			} else if (hair) {
+				sourceModel = hair->GetModel() ? hair->GetModel() : "";
+				sourceName = std::string(hair->GetFormEditorID());
+			} else {
 				Publish({ { "error", "that actor has no hair head part" } });
 				return;
 			}
-			sex = base->GetSex() == RE::SEX::kFemale ? 1 : 0;
-			sourceModel = hair->GetModel() ? hair->GetModel() : "";
-			sourceName = std::string(hair->GetFormEditorID());
 		} else if (sourceModel.empty() && a_args.contains("headPart")) {
 			const auto* part = RE::TESForm::LookupByEditorID<RE::BGSHeadPart>(a_args.value("headPart", std::string{}));
 			if (!part || !part->GetModel()) {
@@ -365,7 +373,7 @@ namespace HairLook
 				{ "boxOverlap", candidate.match.boxOverlap }, { "areaRatio", candidate.match.areaRatio },
 				{ "files", NifProbe::XmlPaths(candidate.armor->GetFormID()) } });
 		}
-		Publish({ { "target", { { "name", sourceName }, { "model", sourceModel }, { "shape", SummaryOf(*source.descriptor, source.triangles) } } },
+		Publish({ { "target", { { "name", sourceName }, { "wig", wornWig }, { "model", sourceModel }, { "shape", SummaryOf(*source.descriptor, source.triangles) } } },
 			{ "considered", considered }, { "compared", ranked.size() }, { "pending", pending }, { "failed", std::move(failed) }, { "elapsedMs", elapsedMs() },
 			{ "matches", std::move(rows) } });
 	}

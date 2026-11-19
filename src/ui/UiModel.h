@@ -65,6 +65,7 @@ namespace SettingsUi
 		float minimum{};
 		float maximum{};
 		const char* format{ "%.2f" };
+		std::function<bool()> shown;      ///< When set and false the row is not drawn at all, so rows can stand in for one another.
 		std::function<bool()> enabled;    ///< When set and false the control is drawn greyed out and cannot be edited.
 		std::function<void()> onChanged;  ///< Runs after the user edits the control; may be empty.
 	};

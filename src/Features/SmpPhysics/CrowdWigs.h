@@ -53,8 +53,12 @@ namespace SmpPhysics
 
 		/** @brief Puts the wig at a_index of WigForms() on a_actor alone, leaving the crowd's own choice as it is; false when there is no such wig. Game thread only. */
 		bool WearOn(RE::Actor& a_actor, int a_index);
-		/** @brief Takes the wig a_actor wears off and shows its own hair again. Game thread only. */
+		/** @brief Takes the wig a_actor wears off and shows its own hair again, or puts back the wig it wore before WearOn first changed it. Game thread only. */
 		void TakeOff(RE::Actor& a_actor);
+		/** @brief The wig a_actor wears now, or null. Game thread only. */
+		[[nodiscard]] static RE::TESObjectARMO* WornWig(RE::Actor& a_actor);
+		/** @brief The form ID of the wig that is a_actor's own look: the one it wore before WearOn first changed it, else the one it wears now; 0 for none. Game thread only. */
+		[[nodiscard]] RE::FormID NaturalWig(RE::Actor& a_actor) const;
 
 		/**
 		 * @brief Sets the hair colour of every base the crowd is made from, then refreshes the characters standing now.
@@ -85,6 +89,7 @@ namespace SmpPhysics
 		std::atomic<int> wornIndex{ -1 };                                 ///< Into WigForms() for the wig last worn, -1 for none. Written on the game thread.
 		std::size_t requested = 0;                                        ///< How many characters the last spawn asked for.
 		std::vector<BakedHairWatch> watches;                              ///< Game thread only.
+		std::unordered_map<RE::FormID, RE::FormID> naturalWigs;           ///< Each actor's own wig, 0 for none, recorded before WearOn first changed it. Game thread only.
 		std::unordered_map<RE::FormID, RE::BGSColorForm*> naturalColors;  ///< Each base's own hair colour, recorded before the first change. Game thread only.
 	};
 }

@@ -194,6 +194,8 @@ namespace SettingsUi
 				ImGuiMCP::TextWrapped("%s", status.c_str());
 			}
 			for (Row& row : model->rows) {
+				if (row.shown && !row.shown())
+					continue;
 				// The SMF API has no PushID, so each control's label carries its own unique suffix.
 				const std::string id = row.label + "##gsp_" + row.label;
 				bool changed = false;

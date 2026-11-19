@@ -110,6 +110,14 @@ namespace TestBench
 		void Give(RE::Actor& a_actor, RE::TESBoundObject& a_object);
 		/** @brief Unequips a_object, and removes it when Give put it in the inventory. */
 		void TakeBack(RE::Actor& a_actor, RE::TESBoundObject& a_object);
+		/** @brief Dresses a_actor alone in the body armor at a_index of ArmorNames(), with its other gear off; false when there is no such armor. Game thread only. */
+		bool DressArmorOn(RE::Actor& a_actor, std::size_t a_index);
+		/** @brief Puts the cloak at a_index of CloakNames() on a_actor alone, in place of any cloak it wears; false when there is no such cloak. Game thread only. */
+		bool DressCloakOn(RE::Actor& a_actor, std::size_t a_index);
+		/** @brief Takes off the cloaks of CloakNames() a_actor wears. Game thread only. */
+		void TakeOffCloaks(RE::Actor& a_actor);
+		/** @brief Takes off the armor DressArmorOn put on and puts back what it removed. Game thread only. */
+		void RestoreActor(RE::Actor& a_actor);
 		/** @brief Rebuilds the 3D of every character standing now, then lets the hooks redo what the rebuild undoes. */
 		void Refresh();
 		/** @brief Registers hooks a feature wants run for this crowd; they live as long as the feature. Call from the game thread at load. */
@@ -159,7 +167,6 @@ namespace TestBench
 		/** @return Whether a hook keeps this worn object on through stripping. */
 		[[nodiscard]] bool KeptByHooks(const RE::TESBoundObject& a_object) const;
 		void StripActor(RE::Actor& a_actor);
-		void RestoreActor(RE::Actor& a_actor);
 		void SetStrippedNow(bool a_stripped);
 		void SetIncludePlayerNow(bool a_include);
 		void CycleArmorNow(int a_step);

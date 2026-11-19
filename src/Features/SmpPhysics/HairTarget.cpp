@@ -44,7 +44,7 @@ namespace SmpPhysics
 		}
 	}
 
-	void HairTarget::Tick(bool a_menuOpen)
+	void HairTarget::Tick(bool a_menuOpen, const CrowdWigs& a_wigs)
 	{
 		const auto now = std::chrono::steady_clock::now();
 		{
@@ -62,6 +62,7 @@ namespace SmpPhysics
 				samples.crosshair = ActorFormID(picker->GetActiveTarget());
 		}
 		std::uint32_t target;
+		RE::FormID wig;
 		bool rank;
 		{
 			const std::scoped_lock lock(mutex);
@@ -75,8 +76,11 @@ namespace SmpPhysics
 			view.pinned = pick.pinned;
 			target = pick.formID;
 			view.formID = target;
-			if (rankedFor != target) {
+			auto* actor = RE::TESForm::LookupByID<RE::Actor>(target ? target : kPlayerFormID);
+			wig = actor ? a_wigs.NaturalWig(*actor) : 0;
+			if (rankedFor != target || rankedWig != wig) {
 				rankedFor = target;
+				rankedWig = wig;
 				ranking = true;
 				view.order.clear();
 				view.badges.clear();
@@ -87,15 +91,15 @@ namespace SmpPhysics
 			rank = ranking;
 		}
 		if (rank)
-			Rank(target);
+			Rank(target, wig);
 	}
 
-	void HairTarget::Rank(std::uint32_t a_formID)
+	void HairTarget::Rank(std::uint32_t a_formID, RE::FormID a_wig)
 	{
-		HairLook::Rank({ { "actorFormID", a_formID ? a_formID : kPlayerFormID }, { "top", kMaxRanked }, { "budgetMs", kRankBudgetMs }, { "physicsOnly", false } });
+		HairLook::Rank({ { "actorFormID", a_formID ? a_formID : kPlayerFormID }, { "wigFormID", a_wig }, { "top", kMaxRanked }, { "budgetMs", kRankBudgetMs }, { "physicsOnly", false } });
 		const json result = HairLook::Result();
 		const std::scoped_lock lock(mutex);
-		if (rankedFor != a_formID)
+		if (rankedFor != a_formID || rankedWig != a_wig)
 			return;
 		if (result.contains("error")) {
 			view.status = std::format("No hair match: {}", result["error"].get<std::string>());
@@ -106,7 +110,8 @@ namespace SmpPhysics
 		const std::size_t pending = result.value("pending", std::size_t{});
 		view.progress = { considered - std::min(considered, pending), considered };
 		const std::string hair = result.contains("target") ? result["target"].value("name", std::string{}) : std::string{};
-		view.text = std::format("Target: {} ({}), hair {}", NameOf(a_formID), SourceName(pick.source), hair.empty() ? "unknown" : hair);
+		const bool wearsWig = result.contains("target") && result["target"].value("wig", false);
+		view.text = std::format("Target: {} ({}), {} {}", NameOf(a_formID), SourceName(pick.source), wearsWig ? "wearing" : "hair", hair.empty() ? "unknown" : hair);
 		if (pending)
 			return;
 

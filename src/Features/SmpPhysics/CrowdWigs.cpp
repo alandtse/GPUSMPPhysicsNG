@@ -229,8 +229,27 @@ namespace SmpPhysics
 		const std::vector<RE::TESObjectARMO*>& wigs = WigForms();
 		if (a_index < 0 || static_cast<std::size_t>(a_index) >= wigs.size())
 			return false;
+		naturalWigs.try_emplace(a_actor.GetFormID(), NaturalWig(a_actor));
 		Wear(a_actor, *wigs[static_cast<std::size_t>(a_index)]);
 		return true;
+	}
+
+	RE::TESObjectARMO* CrowdWigs::WornWig(RE::Actor& a_actor)
+	{
+		const auto worn = a_actor.GetInventory([](RE::TESBoundObject& a_object) { return IsWig(a_object); });
+		for (const auto& [object, entry] : worn) {
+			if (object && entry.second && entry.second->IsWorn())
+				return object->As<RE::TESObjectARMO>();
+		}
+		return nullptr;
+	}
+
+	RE::FormID CrowdWigs::NaturalWig(RE::Actor& a_actor) const
+	{
+		if (const auto found = naturalWigs.find(a_actor.GetFormID()); found != naturalWigs.end())
+			return found->second;
+		const RE::TESObjectARMO* worn = WornWig(a_actor);
+		return worn ? worn->GetFormID() : 0;
 	}
 
 	void CrowdWigs::TakeOff(RE::Actor& a_actor)
@@ -241,6 +260,12 @@ namespace SmpPhysics
 				TestBench::GetCrowd().TakeBack(a_actor, *object);
 		}
 		ShowBakedHair(a_actor);
+		const auto own = naturalWigs.find(a_actor.GetFormID());
+		if (own == naturalWigs.end())
+			return;
+		if (auto* wig = own->second ? RE::TESForm::LookupByID<RE::TESObjectARMO>(own->second) : nullptr)
+			Wear(a_actor, *wig);
+		naturalWigs.erase(own);
 	}
 
 	void CrowdWigs::WearNow(TestBench::TestCrowd& a_crowd, int a_index)

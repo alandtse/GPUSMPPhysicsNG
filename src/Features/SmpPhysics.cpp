@@ -76,6 +76,25 @@ using namespace SmpPhysicsLimits;
 namespace
 {
 	/** @brief What NifProbe::Find has for a_file, with each match's index in the test crowd's armor and cloak lists. */
+	SmpPhysics::TargetItem TargetItemFromArgs(const json& a_args)
+	{
+		const std::string item = a_args.value("item", std::string("wig"));
+		return item == "armor" ? SmpPhysics::TargetItem::Armor : item == "cloak" ? SmpPhysics::TargetItem::Cloak :
+		                                                                           SmpPhysics::TargetItem::Wig;
+	}
+
+	std::vector<std::string> TargetItemNames(SmpPhysics::TargetItem a_item)
+	{
+		switch (a_item) {
+		case SmpPhysics::TargetItem::Armor:
+			return TestBench::TestCrowd::ArmorNames();
+		case SmpPhysics::TargetItem::Cloak:
+			return TestBench::TestCrowd::CloakNames();
+		default:
+			return SmpPhysics::CrowdWigs::WigNames();
+		}
+	}
+
 	json HairTargetJson(const SmpPhysics::HairTargetView& a_view)
 	{
 		json result{ { "formId", a_view.formID }, { "text", a_view.text }, { "status", a_view.status }, { "hasConsole", a_view.hasConsole }, { "hasCrosshair", a_view.hasCrosshair }, { "pinned", a_view.pinned },
@@ -514,6 +533,10 @@ void SmpPhysicsFeature::RegisterUxActions()
 				const std::uint32_t target = static_cast<SmpPhysicsFeature*>(a_self)->HairTargetState().formID;
 				args["actorFormID"] = target ? target : 0x14u;
 			}
+			if (args.contains("actorFormID") && !args.contains("wigFormID")) {
+				if (auto* actor = RE::TESForm::LookupByID<RE::Actor>(args["actorFormID"].get<std::uint32_t>()))
+					args["wigFormID"] = static_cast<SmpPhysicsFeature*>(a_self)->crowdWigs.NaturalWig(*actor);
+			}
 			HairLook::Rank(args);
 		});
 	FEATURE_QUERY("hairTarget", "The character whose hair is matched and swapped: formId (0 for the player), text, status while the wigs are being ranked, which sources exist (hasConsole for a prid selection, hasCrosshair) and whether one is pinned.",
@@ -531,12 +554,13 @@ void SmpPhysicsFeature::RegisterUxActions()
 			else if (source == "crosshair")
 				self->PinHairTarget(SmpPhysics::HairTargetSource::Crosshair);
 		});
-	FEATURE_COMMAND("wearWigOnTarget", "Put a wig on the hair target alone. Args: name (string, case-insensitive part of an entry of testCrowdWigs; the first match is worn) or index (number, an entry of testCrowdWigs).",
+	FEATURE_COMMAND("wearOnTarget", "Put an armor, cloak or wig on the target alone. Args: item (string: armor, cloak or wig; default wig), name (string, case-insensitive part of an entry of that kind's list, testCrowdArmors, testCrowdCloaks or testCrowdWigs; the first match is worn) or index (number, an entry of that list).",
 		[](Feature* a_self, const json& a_args) {
-			static_cast<SmpPhysicsFeature*>(a_self)->WearWigOnTarget(TestBench::ItemIndexFromArgs(a_args, SmpPhysics::CrowdWigs::WigNames()));
+			const SmpPhysics::TargetItem item = TargetItemFromArgs(a_args);
+			static_cast<SmpPhysicsFeature*>(a_self)->WearOnTarget(item, TestBench::ItemIndexFromArgs(a_args, TargetItemNames(item)));
 		});
-	FEATURE_COMMAND("restoreTargetHair", "Take the wig off the hair target and show its own hair again.",
-		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->RestoreTargetHair(); });
+	FEATURE_COMMAND("restoreTarget", "Take an armor, cloak or wig off the target and put back what it wore; a wig shows its own hair again. Args: item (string: armor, cloak or wig; default wig).",
+		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->RestoreTarget(TargetItemFromArgs(a_args)); });
 	FEATURE_QUERY("hairLookResult", "The outcome of the last hairLookRank: the target's shape, then the closest hairs with their chamfer distance (game units, lower is closer), the share of the shape farther than 15 units from the other (coverage), voxel overlap, bounding box overlap and area ratio.",
 		[](const Feature*, const json&) -> json { return HairLook::Result(); });
 	FEATURE_QUERY("islandSizes", "How the rigid solver's islands split by constraint count in the last buffer build: islands and constraints per size bucket (1, 2-4, 5-8, 9-16, 17-32, 33-64, 65 or more), the island total, the largest island's constraints and the most colour classes one takes. Shows which solve kernel suits the islands.",
@@ -1288,7 +1312,7 @@ RE::BSEventNotifyControl SmpPhysicsFeature::FrameSyncListener::ProcessEvent(
 	TracyGpu::NextFrame();
 	try {
 		feature.crowdWigs.Tick();
-		feature.hairTarget.Tick(feature.gamePaused.load(std::memory_order_relaxed));
+		feature.hairTarget.Tick(feature.gamePaused.load(std::memory_order_relaxed), feature.crowdWigs);
 		feature.StepClaims();
 		feature.RecordBoneFrame();
 	} catch (const std::exception& error) {
@@ -1975,22 +1999,45 @@ namespace
 	}
 }
 
-void SmpPhysicsFeature::WearWigOnTarget(int a_index)
+void SmpPhysicsFeature::WearOnTarget(SmpPhysics::TargetItem a_item, int a_index)
 {
 	if (auto* task = SKSE::GetTaskInterface()) {
-		task->AddTask([this, a_index] {
-			if (auto* actor = HairTargetActor(hairTarget.FormID()))
+		task->AddTask([this, a_item, a_index] {
+			auto* actor = HairTargetActor(hairTarget.FormID());
+			if (!actor || a_index < 0)
+				return;
+			const auto index = static_cast<std::size_t>(a_index);
+			switch (a_item) {
+			case SmpPhysics::TargetItem::Armor:
+				TestBench::GetCrowd().DressArmorOn(*actor, index);
+				break;
+			case SmpPhysics::TargetItem::Cloak:
+				TestBench::GetCrowd().DressCloakOn(*actor, index);
+				break;
+			default:
 				crowdWigs.WearOn(*actor, a_index);
+			}
 		});
 	}
 }
 
-void SmpPhysicsFeature::RestoreTargetHair()
+void SmpPhysicsFeature::RestoreTarget(SmpPhysics::TargetItem a_item)
 {
 	if (auto* task = SKSE::GetTaskInterface()) {
-		task->AddTask([this] {
-			if (auto* actor = HairTargetActor(hairTarget.FormID()))
+		task->AddTask([this, a_item] {
+			auto* actor = HairTargetActor(hairTarget.FormID());
+			if (!actor)
+				return;
+			switch (a_item) {
+			case SmpPhysics::TargetItem::Armor:
+				TestBench::GetCrowd().RestoreActor(*actor);
+				break;
+			case SmpPhysics::TargetItem::Cloak:
+				TestBench::GetCrowd().TakeOffCloaks(*actor);
+				break;
+			default:
 				crowdWigs.TakeOff(*actor);
+			}
 		});
 	}
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CrowdWigs.h"
 #include "smp/HairMatchOrder.h"
 #include "smp/HairTargetPick.h"
 
@@ -13,6 +14,14 @@
 
 namespace SmpPhysics
 {
+	/** @brief The kinds of item the target can wear. */
+	enum class TargetItem
+	{
+		Armor,
+		Cloak,
+		Wig
+	};
+
 	/** @brief What the UI shows of the hair target: who it is, how far the ranking of the wigs by their match to its hair has got, and that ranking. */
 	struct HairTargetView
 	{
@@ -35,8 +44,11 @@ namespace SmpPhysics
 	class HairTarget
 	{
 	public:
-		/** @brief Samples the console selection and the crosshair, and ranks the wigs against a new target a little each frame until done. */
-		void Tick(bool a_menuOpen);
+		/**
+		 * @brief Samples the console selection and the crosshair, and ranks the wigs against a new target a little each frame until done.
+		 * @details A target that wears a wig is matched by that wig, not by the hair head part the wig hides; a_wigs tells which wig is its own.
+		 */
+		void Tick(bool a_menuOpen, const CrowdWigs& a_wigs);
 		/** @brief Pins a_source as the target; false when it has no character. */
 		bool Pin(HairTargetSource a_source);
 		/** @brief Lets the console selection set the target again. */
@@ -46,12 +58,13 @@ namespace SmpPhysics
 		[[nodiscard]] std::uint32_t FormID() const;
 
 	private:
-		void Rank(std::uint32_t a_formID);
+		void Rank(std::uint32_t a_formID, RE::FormID a_wig);
 
 		mutable std::mutex mutex;
 		HairTargetPick pick;
 		HairTargetView view;
 		std::uint32_t rankedFor{ UINT32_MAX };  ///< The target the view's ranking is for, or is being made for.
+		RE::FormID rankedWig{};                 ///< The wig that stood for the target's hair in that ranking, 0 for none.
 		bool ranking{};
 		std::chrono::steady_clock::time_point sampledAt{};
 	};
