@@ -11,6 +11,7 @@
 #include "smp/ClaimTally.h"
 #include "smp/Collision.h"
 #include "smp/CollisionOverride.h"
+#include "smp/ItemStats.h"
 #include "smp/PhysicsHealth.h"
 #include "smp/RepairLog.h"
 #include "smp/SelfWindShelter.h"
@@ -196,6 +197,8 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] std::vector<std::pair<std::string, std::string>> GetRepairReports() const;
 	/** @brief Text to send an item's mod author: its name, plugin, physics files and what is wrong with each; empty when the scan found no files. Game thread only. */
 	[[nodiscard]] std::string ItemReportText(RE::FormID a_armor);
+	/** @brief A few short lines for hovering an item: each physics file's health and size, and how many bones its claims kept. Empty before a scan. Game thread only. */
+	[[nodiscard]] std::string ItemStatsText(RE::FormID a_armor);
 	/** @brief Puts the wig at a_index of CrowdWigs::WigForms() on the crowd and, while it is included, the player; runs on the game thread. */
 	void WearWig(int a_index);
 	/** @brief The character whose hair is matched and swapped, and the wigs ranked by their match to its hair. */
@@ -619,6 +622,7 @@ private:
 	std::unordered_map<std::uint64_t, Claim> claims;
 	std::unordered_map<std::string, std::shared_ptr<const SmpPhysics::ParseResult>> parsedRigs;
 	std::unordered_map<std::string, std::string> declinedFiles;
+	std::unordered_map<std::string, SmpPhysics::ClaimTrim> claimTrims;  ///< By normalized file path: how many of its bones its claims kept. Guarded by stateMutex.
 	SmpPhysics::ClaimTally claimTally;
 	std::vector<SmpPhysics::CollisionOverride> collisionOverrides;          ///< Debugging switches applied to each claim as it is built, guarded by stateMutex.
 	SmpPhysics::RepairLog repairLog;                                        ///< What was wrong in each physics file and what was done about it.

@@ -148,6 +148,8 @@ namespace SettingsUi
 						row.pickedIndex = static_cast<int>(index);
 						clicked = true;
 					}
+					if (row.itemTipFn && ImGuiMCP::IsItemHovered())
+						Tip(row.itemTipFn(static_cast<int>(index)));
 					if (row.onActivated && ImGuiMCP::IsItemHovered() && ImGuiMCP::IsMouseDoubleClicked(0))
 						row.onActivated();
 					if (coloured)

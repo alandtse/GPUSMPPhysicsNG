@@ -60,7 +60,8 @@ namespace SettingsUi
 		bool scanAsked{};
 		/** @brief Orders a List offers first, before its built-in ones; the first is the one the list opens with. */
 		std::vector<SortChoice> sorts;
-		int sortIndex{};  ///< The chosen order: an entry of sorts, then the built-in ones.
+		std::function<std::string(int)> itemTipFn;  ///< A List's tip for the item under the cursor, by item index; called only while one is hovered.
+		int sortIndex{};                            ///< The chosen order: an entry of sorts, then the built-in ones.
 		bool sameLine{};
 		float minimum{};
 		float maximum{};

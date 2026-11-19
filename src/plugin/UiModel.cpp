@@ -251,6 +251,35 @@ namespace
 		};
 	}
 
+	/** @brief The hover tip of a list of items: each item's physics files, their health and size, and what the last claim kept, refreshed at most once a second per item. */
+	std::function<std::string(int)> ItemTip(std::function<std::vector<RE::TESObjectARMO*>()> a_forms, int a_skip)
+	{
+		struct Cache
+		{
+			int index = -2;
+			std::uint32_t generation{};
+			std::chrono::steady_clock::time_point at{};
+			std::string text;
+		};
+		return [forms = std::move(a_forms), a_skip, cache = std::make_shared<Cache>()](int a_index) {
+			const int index = a_index - a_skip;
+			const std::uint32_t generation = NifProbe::Generation();
+			if (index < 0)
+				return std::string();
+			if (!generation)
+				return std::string("Scan for physics to see this item's files.");
+			const auto now = std::chrono::steady_clock::now();
+			if (cache->index == index && cache->generation == generation && now - cache->at < std::chrono::seconds(1))
+				return cache->text;
+			const std::vector<RE::TESObjectARMO*> items = forms();
+			cache->text = static_cast<std::size_t>(index) < items.size() ? Instance().ItemStatsText(items[static_cast<std::size_t>(index)]->GetFormID()) : std::string();
+			cache->index = index;
+			cache->generation = generation;
+			cache->at = now;
+			return cache->text;
+		};
+	}
+
 	/** @brief Shows a list closest to the hair target's hair first, with each item's distance after its name. */
 	Row WithHairMatch(Row a_row)
 	{
@@ -363,6 +392,7 @@ namespace
 		a_row.itemFilesFn = ItemFiles(scanned, a_skip);
 		a_row.progressFn = [] { return NifProbe::Running() ? NifProbe::Progress() : std::pair<std::size_t, std::size_t>{}; };
 		a_row.itemStatusFn = HealthColours(scanned, a_skip);
+		a_row.itemTipFn = ItemTip(scanned->forms, static_cast<int>(a_skip));
 		a_row.onShowFiltered = [] {
 			if (!NifProbe::Generation() && !NifProbe::Running())
 				NifProbe::Start();

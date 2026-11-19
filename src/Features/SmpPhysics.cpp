@@ -565,7 +565,7 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](const Feature*, const json&) -> json { return HairLook::Result(); });
 	FEATURE_QUERY("islandSizes", "How the rigid solver's islands split by constraint count in the last buffer build: islands and constraints per size bucket (1, 2-4, 5-8, 9-16, 17-32, 33-64, 65 or more), the island total, the largest island's constraints and the most colour classes one takes. Shows which solve kernel suits the islands.",
 		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->IslandSizesJson(); });
-	FEATURE_QUERY("physicsHealth", "After nifPhysicsProbe has finished: each armor, cloak and wig the scan found physics files for, with the worst health among them (working, repaired or broken), the files and, for those not working, the report a mod author would be sent; what colours the Test crowd lists.",
+	FEATURE_QUERY("physicsHealth", "After nifPhysicsProbe has finished: each armor, cloak and wig the scan found physics files for, with the worst health among them (working, repaired or broken), the files, the hover stats the lists show and, for those not working, the report a mod author would be sent; what colours the Test crowd lists.",
 		[](const Feature* a_self, const json&) -> json { return const_cast<SmpPhysicsFeature*>(static_cast<const SmpPhysicsFeature*>(a_self))->PhysicsHealthJson(); });
 	FEATURE_COMMAND("claimTallyReset", "Clear the claim tally, then run reevaluate to count every actor's meshes again.",
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->ResetClaimTally(); });
@@ -991,6 +991,36 @@ std::vector<SmpPhysics::Health> SmpPhysicsFeature::ItemHealths(const std::vector
 	return result;
 }
 
+std::string SmpPhysicsFeature::ItemStatsText(RE::FormID a_armor)
+{
+	if (!NifProbe::Generation())
+		return {};
+	const auto key = [](const std::string& a_path) {
+		std::string normal = Util::ToLowerAscii(a_path);
+		std::ranges::replace(normal, '/', '\\');
+		return normal;
+	};
+	std::vector<SmpPhysics::FileStats> stats;
+	for (const std::string& path : NifProbe::XmlPaths(a_armor)) {
+		SmpPhysics::FileStats file;
+		file.file = path;
+		file.health = ItemHealths({ { path } }).front();
+		if (const auto parsed = GetParsedRig(path); parsed && parsed->status == SmpPhysics::ParseStatus::Ok) {
+			file.read = true;
+			file.bones = parsed->rig.bones.size();
+			file.dynamic = static_cast<std::size_t>(std::ranges::count_if(parsed->rig.bones, [](const SmpPhysics::RigBone& a_bone) { return !a_bone.kinematic; }));
+			file.joints = parsed->rig.joints.size() + parsed->rig.additionalJoints.size();
+		}
+		{
+			const std::scoped_lock lock(stateMutex);
+			if (const auto found = claimTrims.find(key(path)); found != claimTrims.end())
+				file.claim = found->second;
+		}
+		stats.push_back(std::move(file));
+	}
+	return SmpPhysics::FormatItemStats(stats);
+}
+
 std::string SmpPhysicsFeature::ItemReportText(RE::FormID a_armor)
 {
 	const auto* armor = RE::TESForm::LookupByID<RE::TESObjectARMO>(a_armor);
@@ -1043,7 +1073,7 @@ json SmpPhysicsFeature::PhysicsHealthJson()
 		for (std::size_t index = 0; index < list.size(); ++index) {
 			if (health[index] == SmpPhysics::Health::None)
 				continue;
-			json row = { { "name", list[index]->GetName() }, { "formId", list[index]->GetFormID() }, { "health", kNames[static_cast<std::size_t>(health[index])] }, { "files", files[index] } };
+			json row = { { "name", list[index]->GetName() }, { "formId", list[index]->GetFormID() }, { "health", kNames[static_cast<std::size_t>(health[index])] }, { "files", files[index] }, { "stats", ItemStatsText(list[index]->GetFormID()) } };
 			if (health[index] != SmpPhysics::Health::Working)
 				row["report"] = ItemReportText(list[index]->GetFormID());
 			rows.push_back(std::move(row));
@@ -1659,6 +1689,9 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 		// A token hdtSMP64 reuses must not leave the GPU backend holding the previous rig for it.
 		gpuSolver.RemoveClaim(a_token);
 		gpuSkinning.RemoveClaim(a_token);
+		std::string trimKey = Util::ToLowerAscii(path);
+		std::ranges::replace(trimKey, '/', '\\');
+		claimTrims[std::move(trimKey)].Add(boneCount);
 		if (claim.cloth)
 			RegisterClothMeshes(claim.actorFormID, claim.cardGeometries);
 		claims.insert_or_assign(a_token, std::move(claim));
