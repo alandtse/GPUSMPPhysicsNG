@@ -215,6 +215,8 @@ namespace SmpPhysics
 		[[nodiscard]] std::optional<std::uint32_t> AllocateSlots(std::uint32_t a_needed);
 		void PlanCapacity(std::uint32_t a_slots);
 		void ReleaseSlots(std::uint32_t a_offset, std::uint32_t a_count);
+		/** @brief Resets a_count merged contacts from a_offset to none, so a bone the contact pass never writes reads as untouched. */
+		void ClearContacts(std::uint32_t a_offset, std::uint32_t a_count);
 		void UploadStatics();
 		void Fail(const char* a_reason);
 		bool EnsureSurfacePrepShaders();
