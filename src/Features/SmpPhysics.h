@@ -8,6 +8,7 @@
 #include "d3d/GpuSolver.h"
 #include "engine/DebugLines.h"
 #include "engine/GpuSkinning.h"
+#include "smp/BodyScanPacing.h"
 #include "smp/ClaimTally.h"
 #include "smp/Collision.h"
 #include "smp/CollisionOverride.h"
@@ -307,6 +308,20 @@ private:
 			feature(a_feature) {}
 
 		RE::BSEventNotifyControl ProcessEvent(const SKSE::CrosshairRefEvent* a_event, RE::BSTEventSource<SKSE::CrosshairRefEvent>*) override;
+
+	private:
+		SmpPhysicsFeature& feature;
+	};
+
+	/** @brief Wakes the body scan of an actor whose equipment or 3D has just changed. */
+	class BodyChangeListener final : public RE::BSTEventSink<RE::TESEquipEvent>, public RE::BSTEventSink<RE::TESObjectLoadedEvent>
+	{
+	public:
+		explicit BodyChangeListener(SmpPhysicsFeature& a_feature) noexcept :
+			feature(a_feature) {}
+
+		RE::BSEventNotifyControl ProcessEvent(const RE::TESEquipEvent* a_event, RE::BSTEventSource<RE::TESEquipEvent>*) override;
+		RE::BSEventNotifyControl ProcessEvent(const RE::TESObjectLoadedEvent* a_event, RE::BSTEventSource<RE::TESObjectLoadedEvent>*) override;
 
 	private:
 		SmpPhysicsFeature& feature;
@@ -644,7 +659,8 @@ private:
 	json windProbeResult = json::object();
 	mutable std::mutex stateMutex;  ///< Guards everything below, and nothing is called into hdtSMP64 while it is held.
 	std::string linkStatus;
-	SmpPhysics::RefitGuard refitGuard;  ///< Spaces out the soft reloads each actor asks for.
+	SmpPhysics::BodyScanWindows bodyScanWindows;  ///< The actors an equip or load event has just touched.
+	SmpPhysics::RefitGuard refitGuard;            ///< Spaces out the soft reloads each actor asks for.
 	hdt::PluginInterface* linkedInterface{};
 	hdt::PluginInterface* seenInterface{};  ///< Keeps a repeated startup message from relinking or re-warning.
 	hdt::PluginInterface::Version interfaceVersion{};
@@ -698,6 +714,7 @@ private:
 	FrameSyncListener frameSyncListener{ *this };
 	std::atomic<std::uint32_t> healthChanges{};
 	CrosshairListener crosshairListener{ *this };
+	BodyChangeListener bodyChangeListener{ *this };
 	SmpPhysics::CrowdWigs crowdWigs;  ///< What this feature adds to the test crowd.
 	SmpPhysics::HairTarget hairTarget;
 };
