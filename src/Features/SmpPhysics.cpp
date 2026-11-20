@@ -1,4 +1,4 @@
-#include "Features/SmpPhysics.h"
+﻿#include "Features/SmpPhysics.h"
 #include "Features/SmpPhysics/ClaimHandBack.h"
 #include "Features/SmpPhysics/ClaimPriority.h"
 #include "engine/HairLook.h"
@@ -936,6 +936,8 @@ void SmpPhysicsFeature::ApplyCrowdHairColor(std::string a_color)
 		task->AddTask([this, color = std::move(a_color)] {
 			if (color.empty())
 				crowdWigs.RestoreNaturalColorsNow(TestBench::GetCrowd());
+			else if (color == SmpPhysics::kCharacterColor)
+				crowdWigs.RestoreNaturalColorsNow(TestBench::GetCrowd(), true);
 			else
 				crowdWigs.SetHairColorNow(TestBench::GetCrowd(), color);
 		});

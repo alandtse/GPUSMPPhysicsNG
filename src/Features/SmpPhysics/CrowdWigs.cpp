@@ -423,7 +423,8 @@ namespace SmpPhysics
 		if (!base)
 			return;
 		const RE::FormID baseId = base->GetFormID();
-		if (a_color.empty()) {
+		const bool characterColor = a_color == kCharacterColor;
+		if (a_color.empty() || characterColor) {
 			if (const auto own = naturalColors.find(baseId); own != naturalColors.end()) {
 				base->SetHairColor(own->second);
 				naturalColors.erase(own);
@@ -438,19 +439,23 @@ namespace SmpPhysics
 				naturalColors.try_emplace(baseId, base->headRelatedData->hairColor);
 			base->SetHairColor(color);
 		}
-		if (!a_color.empty())
-			RecordAuthored(a_actor);
+		RecordAuthored(a_actor);
 		a_actor.UpdateHairColor();
 		a_actor.DoReset3D(true);
 		if (a_color.empty())
 			ScheduleRestore(a_actor);
 		else
 			ScheduleTint(a_actor);
-		a_crowd.SetReport(a_color.empty() ? "Put back the target's own hair colour." : std::format("Set the target's hair colour to {}.", a_color));
+		a_crowd.SetReport(a_color.empty() ? "Put the target's own hair colour back and left its wig as made." : characterColor ? "Put the target's own hair colour on it and on its wig." :
+																																 std::format("Set the target's hair colour to {}.", a_color));
 	}
 
 	void CrowdWigs::SetHairColorNow(TestBench::TestCrowd& a_crowd, const std::string& a_color)
 	{
+		if (a_color == kCharacterColor) {
+			RestoreNaturalColorsNow(a_crowd, true);
+			return;
+		}
 		auto* color = FindHairColor(a_color);
 		if (!color) {
 			a_crowd.SetReport(std::format("'{}' is not a hair colour: use a name from testCrowdHairColors or a hair colour form ID.", a_color));
@@ -470,7 +475,7 @@ namespace SmpPhysics
 		a_crowd.SetReport(std::format("Set the crowd's hair colour to {:08X} and refreshed {} characters.", color->GetFormID(), refreshed));
 	}
 
-	void CrowdWigs::RestoreNaturalColorsNow(TestBench::TestCrowd& a_crowd)
+	void CrowdWigs::RestoreNaturalColorsNow(TestBench::TestCrowd& a_crowd, bool a_wigsTakeCharacter)
 	{
 		std::size_t restored = 0;
 		for (const auto& [baseId, color] : naturalColors) {
@@ -481,9 +486,15 @@ namespace SmpPhysics
 			++restored;
 		}
 		naturalColors.clear();
-		const std::size_t refreshed = a_crowd.RefreshNow();
 		for (RE::Actor* actor : a_crowd.OutfitTargets())
-			ScheduleRestore(*actor);
+			RecordAuthored(*actor);
+		const std::size_t refreshed = a_crowd.RefreshNow();
+		for (RE::Actor* actor : a_crowd.OutfitTargets()) {
+			if (a_wigsTakeCharacter)
+				ScheduleTint(*actor);
+			else
+				ScheduleRestore(*actor);
+		}
 		a_crowd.SetReport(std::format("Restored the natural hair colours of {} characters' bases and refreshed {} characters.", restored, refreshed));
 	}
 }

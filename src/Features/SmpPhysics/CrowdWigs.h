@@ -13,6 +13,9 @@
 
 namespace SmpPhysics
 {
+	/** @brief The colour name that puts a character's own hair colour on its wig too; the empty name leaves the wig as made. */
+	inline constexpr const char* kCharacterColor = "@character";
+
 	/** @brief One node a character's baked hair draws, with what the actor's 3D has of it. */
 	struct BakedHairNode
 	{
@@ -76,9 +79,10 @@ namespace SmpPhysics
 
 		/**
 		 * @brief Puts back the natural hair colour of every base SetHairColorNow changed, then refreshes the characters standing now.
-		 * @details Game thread only. The outcome goes to the crowd's report.
+		 * @details Worn wigs go back to the colour their mesh was made with, or take the character's own colour when a_wigsTakeCharacter.
+		 *          Game thread only. The outcome goes to the crowd's report.
 		 */
-		void RestoreNaturalColorsNow(TestBench::TestCrowd& a_crowd);
+		void RestoreNaturalColorsNow(TestBench::TestCrowd& a_crowd, bool a_wigsTakeCharacter = false);
 
 	private:
 		/** @brief Remembers the colour each of a_actor's hair-tinted shapes holds, for the shapes not yet remembered, so Natural can write it back. */

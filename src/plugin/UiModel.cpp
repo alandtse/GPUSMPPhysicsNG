@@ -419,19 +419,20 @@ namespace
 	}
 
 	/** @brief Choosing whose hair the wig list matches and where a wig goes: the target, what it is, and the sources to pick it from. */
-	/** @brief A colour box that applies its pick at once: a name from the hair colours, or Natural for the character's own. */
+	/** @brief A colour box that applies its pick at once: a name from the hair colours, Wig default to leave a worn wig as made, or Character default to give it the character's own colour. */
 	Row HairColourRow(int* a_index, const char* a_tooltip, std::function<void(const std::string&)> a_apply)
 	{
 		return Pick(
 			"Hair colour", a_tooltip, a_index, [] {
-				std::vector<std::string> names{ "Natural" };
+				std::vector<std::string> names{ "Wig default", "Character default" };
 				for (const SmpPhysics::HairColorChoice& color : SmpPhysics::TestCrowdHairColors())
 					names.emplace_back(color.name);
 				return names; },
 			[a_index, apply = std::move(a_apply)] {
 				const auto& colors = SmpPhysics::TestCrowdHairColors();
-				const bool picked = *a_index > 0 && *a_index <= static_cast<int>(colors.size());
-				apply(picked ? std::string(colors[static_cast<std::size_t>(*a_index - 1)].name) : std::string{});
+				const bool picked = *a_index > 1 && *a_index <= static_cast<int>(colors.size()) + 1;
+				apply(picked ? std::string(colors[static_cast<std::size_t>(*a_index - 2)].name) : *a_index == 1 ? std::string(SmpPhysics::kCharacterColor) :
+																												  std::string{});
 			});
 	}
 
@@ -557,7 +558,7 @@ namespace
 		add(KindRows(ArmorKind(), "Armors", "Copy report for the selected armor", "Every playable body armor. Click one to see its physics and copy a report for its mod author.", &pickerChoices.armor, showing(0)));
 		add(KindRows(CloakKind(), "Cloaks", "Copy report for the selected cloak", "Every cloak and cape. Click one to see its physics and copy a report for its mod author.", &pickerChoices.cloak, showing(1)));
 		add(KindRows(WigKind(), "Wigs", "Copy report for the selected wig", "Every wig, the hair-slot armors hair mods add. Click one to see its physics and copy a report for its mod author.", &pickerChoices.wig, showing(2)));
-		Row colour = HairColourRow(&targetHairColor, "Sets the target's hair colour at once; a worn wig takes it. Every character made from the same base changes too. Natural puts their own back.", [](const std::string& a_color) { Instance().ApplyTargetHairColor(a_color); });
+		Row colour = HairColourRow(&targetHairColor, "Sets the target's hair colour at once; a worn wig takes it. Every character made from the same base changes too. Wig default leaves a wig as made; Character default gives it the character's own colour.", [](const std::string& a_color) { Instance().ApplyTargetHairColor(a_color); });
 		colour.shown = showing(2);
 		rows.push_back(std::move(colour));
 		return rows;
