@@ -176,7 +176,6 @@ namespace SmpPhysics
 		const RE::ObjectRefHandle handle = a_actor.GetHandle();
 		std::erase_if(watches, [&](const BakedHairWatch& a_watch) { return a_watch.handle == handle; });
 		watches.push_back({ handle, kBakedHairWatchFrames, false });
-		ScheduleTint(a_actor);
 	}
 
 	void CrowdWigs::Restore(RE::Actor& a_actor)
@@ -385,7 +384,8 @@ namespace SmpPhysics
 		}
 		a_actor.UpdateHairColor();
 		a_actor.DoReset3D(true);
-		ScheduleTint(a_actor);
+		if (!a_color.empty())
+			ScheduleTint(a_actor);
 		a_crowd.SetReport(a_color.empty() ? "Put back the target's own hair colour." : std::format("Set the target's hair colour to {}.", a_color));
 	}
 
@@ -422,8 +422,6 @@ namespace SmpPhysics
 		}
 		naturalColors.clear();
 		const std::size_t refreshed = a_crowd.RefreshNow();
-		for (RE::Actor* actor : a_crowd.OutfitTargets())
-			ScheduleTint(*actor);
 		a_crowd.SetReport(std::format("Restored the natural hair colours of {} characters' bases and refreshed {} characters.", restored, refreshed));
 	}
 }
