@@ -15,6 +15,29 @@ namespace SmpPhysics
 		Wig
 	};
 
+	/** @brief Who the item pickers' Put on and Take off reach; the values are the Apply to box's entries. */
+	enum class ApplyTo
+	{
+		Crowd = 0,   ///< Every test character.
+		Target = 1,  ///< The one character chosen under Target.
+		Nobody = 2   ///< Nobody: the lists only browse.
+	};
+
+	/** @brief The scope a box entry names; no box means the target, and an entry that is not one of the three means nobody, so a stray value never dresses anyone. */
+	[[nodiscard]] constexpr ApplyTo ApplyToOf(std::optional<int> a_pick) noexcept
+	{
+		if (!a_pick)
+			return ApplyTo::Target;
+		switch (*a_pick) {
+		case static_cast<int>(ApplyTo::Crowd):
+			return ApplyTo::Crowd;
+		case static_cast<int>(ApplyTo::Target):
+			return ApplyTo::Target;
+		default:
+			return ApplyTo::Nobody;
+		}
+	}
+
 	/** @brief The names of the crowd commands that dress and strip the test crowd: registered under these, and sent by the settings menu. */
 	namespace CrowdWearCommands
 	{

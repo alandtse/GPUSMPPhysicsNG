@@ -120,11 +120,10 @@ namespace
 		return a_row;
 	}
 
-	/** @brief Greys a row out while developer mode is off, since the debug overlay only draws with it on. */
+	/** @brief Hides a row while developer mode is off, since the debug overlay only draws with it on. */
 	Row NeedsDeveloperMode(Row a_row)
 	{
-		a_row.enabled = [inner = std::move(a_row.enabled)] { return globals::state->IsDeveloperMode() && (!inner || inner()); };
-		a_row.tooltip += " Needs developer mode.";
+		a_row.shown = [inner = std::move(a_row.shown)] { return globals::state->IsDeveloperMode() && (!inner || inner()); };
 		return a_row;
 	}
 
@@ -133,6 +132,14 @@ namespace
 		Row row;
 		row.kind = Row::Kind::Note;
 		row.textFn = std::move(a_text);
+		return row;
+	}
+
+	/** @brief The line that stands in for the debug overlay rows while developer mode is off. */
+	Row NotDeveloperNote()
+	{
+		Row row = Text([] { return std::string("Developer mode unlocks the debug overlay and the Armor physics and Test crowd pages."); });
+		row.shown = [] { return !globals::state->IsDeveloperMode(); };
 		return row;
 	}
 
@@ -473,8 +480,11 @@ namespace
 	}
 
 	/** @brief Which characters the pickers' Put on and Take off reach: the test characters (the default) or the target alone. */
-	inline constexpr int kApplyToCrowd = 0;
-	inline constexpr int kApplyToTarget = 1;
+	/** @brief The scope an Apply to box entry names; null, the Armor physics page's, is the target. */
+	SmpPhysics::ApplyTo ScopeOf(const int* a_scope)
+	{
+		return SmpPhysics::ApplyToOf(a_scope ? std::optional<int>(*a_scope) : std::nullopt);
+	}
 
 	/** @brief What the Test crowd page edits; the buttons turn it into the same commands devbench sends. */
 	struct CrowdChoices
@@ -519,11 +529,14 @@ namespace
 	std::vector<Row> WearRows(const ItemKind& a_kind, const int* a_index, const int* a_scope)
 	{
 		const auto picked = [&a_kind, a_index] { return *a_index - a_kind.skip >= 0; };
-		const auto onCrowd = [a_scope] { return a_scope && *a_scope == kApplyToCrowd; };
+		const auto onCrowd = [a_scope] { return ScopeOf(a_scope) == SmpPhysics::ApplyTo::Crowd; };
+		const auto dresses = [a_scope] { return ScopeOf(a_scope) != SmpPhysics::ApplyTo::Nobody; };
 		Row wear = Button("Put on", std::format("Puts the picked {} on the target alone, or on every test character (and you while Include the player is on) when Apply to says so. An item stays in a character's inventory in your save until you take it off.", a_kind.noun).c_str(),
 			[&a_kind, a_index, onCrowd] { ApplyWear(a_kind, false, *a_index - a_kind.skip, onCrowd()); });
-		wear.enabled = picked;
+		wear.enabled = [picked, dresses] { return picked() && dresses(); };
+		wear.shown = dresses;
 		Row take = Button("Take off", std::format("Takes the {} off the target or the test characters, as Apply to says, and puts back what they wore; a wig shows their own hair again.", a_kind.noun).c_str(), [&a_kind, onCrowd] { ApplyWear(a_kind, true, 0, onCrowd()); }, true);
+		take.shown = dresses;
 		return { std::move(wear), std::move(take) };
 	}
 
@@ -541,7 +554,7 @@ namespace
 		std::vector<Row> rows{ std::move(list), ItemCopy(a_copyLabel, a_kind.forms, a_index, a_kind.skip) };
 		rows.insert(rows.end(), std::make_move_iterator(wear.begin()), std::make_move_iterator(wear.end()));
 		for (Row& row : rows)
-			row.shown = a_shown;
+			row.shown = [own = std::move(row.shown), a_shown] { return a_shown() && (!own || own()); };
 		return rows;
 	}
 
@@ -573,12 +586,12 @@ namespace
 	} pickerChoices;
 
 	/** @brief Which characters the Test crowd page's pickers reach. */
-	int crowdScope = kApplyToCrowd;
+	int crowdScope = static_cast<int>(SmpPhysics::ApplyTo::Crowd);
 
 	/** @brief The Apply to box on the Test crowd page. */
 	Row ApplyToPick()
 	{
-		return Pick("Apply to", "Who the pickers below dress: every test character, or the target chosen under Target. Hair colour on the target is set here; the crowd's is under Hair colour.", &crowdScope, [] { return std::vector<std::string>{ "Test characters", "Target" }; });
+		return Pick("Apply to", "Who the pickers below dress: every test character, the target chosen under Target, or nobody, so the lists only browse. Hair colour on the target is set here; the crowd's is under Hair colour.", &crowdScope, [] { return std::vector<std::string>{ "Test characters", "Target", "Nobody (browse only)" }; });
 	}
 
 	/** @brief Marks every row as shown only while a_shown holds. */
@@ -599,7 +612,7 @@ namespace
 		add(KindRows(CloakKind(), "Cloaks", "Copy report for the selected cloak", "Every cloak and cape. Click one to see its physics and copy a report for its mod author.", &pickerChoices.cloak, a_scope, showing(1)));
 		add(KindRows(WigKind(), "Wigs", "Copy report for the selected wig", "Every wig, the hair-slot armors hair mods add. Click one to see its physics and copy a report for its mod author.", &pickerChoices.wig, a_scope, showing(2)));
 		Row colour = HairColourRow(&targetHairColor, "Sets the target's hair colour at once; a worn wig takes it. Every character made from the same base changes too. Natural puts their own back.", [](const std::string& a_color) { Instance().ApplyTargetHairColor(a_color); });
-		colour.shown = [showing = showing(2), a_scope] { return showing() && (!a_scope || *a_scope == kApplyToTarget); };
+		colour.shown = [showing = showing(2), a_scope] { return showing() && ScopeOf(a_scope) == SmpPhysics::ApplyTo::Target; };
 		rows.push_back(std::move(colour));
 		return rows;
 	}
@@ -753,7 +766,7 @@ void PluginUi::Register()
 									Text(WornCombo),
 									CopyCombo(),
 								},
-							   Join({ ApplyToPick() }, Join(ShownWhile(HairTargetRows(), [] { return crowdScope == kApplyToTarget; }), ItemPicker(&crowdScope)))),
+							   Join({ ApplyToPick() }, Join(ShownWhile(HairTargetRows(), [] { return ScopeOf(&crowdScope) == SmpPhysics::ApplyTo::Target; }), ItemPicker(&crowdScope)))),
 		Join(std::vector<Row>{
 				 Header("Animation"),
 				 Check("Animate on spawn (characters' AI runs)", "Off, test characters spawn frozen.", &choices.animateOnSpawn, [&choices] { TestBench::GetCrowd().SetAnimateOnSpawn(choices.animateOnSpawn); }),
@@ -786,6 +799,7 @@ void PluginUi::Register()
 				RunCrowdCommand("setTestCrowdIncludePlayer", { { "enabled", false } });
 			}
 		}),
+		NotDeveloperNote(),
 		NeedsDeveloperMode(VrOnly(Check("Show grab debug", "Draws the strands hands hold, those in reach, and the hair hands push.", &settings.ShowGrabDebug))),
 		NeedsDeveloperMode(Check("Show collider debug", "Outlines the head, body and armor proxies and other bodies' capsules that hair collides with.", &settings.ShowColliderDebug)),
 		NeedsDeveloperMode(Check("Show joint debug", "Draws each simulated bone from its parent, coloured by who simulates it: lime is the GPU, amber is claimed but not stepped, grey is inactive, purple is hdtSMP64 on the CPU. Orange marks stretched or squeezed joints.", &settings.ShowJointDebug)),
