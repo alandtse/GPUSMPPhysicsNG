@@ -1,5 +1,9 @@
 #include "CrowdWigs.h"
 
+#include "RE/B/BSLightingShaderMaterialHairTint.h"
+#include "RE/B/BSLightingShaderProperty.h"
+#include "RE/B/BSVisit.h"
+
 #include "Utils/ArmorNames.h"
 #include "Utils/StringUtils.h"
 
@@ -37,6 +41,22 @@ namespace SmpPhysics
 
 		constexpr int kTintWatchFrames = 240;  ///< How long a rebuilt actor is re-tinted for: a wig's 3D attaches some frames after the rebuild.
 		constexpr int kTintEveryFrames = 10;
+
+		/** @brief Calls a_fn with the shape's name and the hair tint colour of each hair-tinted shape in a_actor's 3D. */
+		template <class Fn>
+		void ForEachHairTint(RE::Actor& a_actor, Fn&& a_fn)
+		{
+			auto* root = a_actor.Get3D();
+			if (!root)
+				return;
+			RE::BSVisit::TraverseScenegraphGeometries(root, [&](RE::BSGeometry* a_geometry) {
+				auto* property = a_geometry->lightingShaderProp_cast();
+				auto* material = property ? property->GetBaseMaterial() : nullptr;
+				if (material && material->GetFeature() == RE::BSShaderMaterial::Feature::kHairTint)
+					a_fn(std::string_view(a_geometry->name.c_str()), static_cast<RE::BSLightingShaderMaterialHairTint*>(material)->tintColor);
+				return RE::BSVisit::BSVisitControl::kContinue;
+			});
+		}
 		constexpr int kBakedHairWatchFrames = 1200;  ///< How long a wig wearer is watched for its own hair showing, since a new character has no 3D yet and equipping a wig rebuilds it a few frames later.
 
 		/**
@@ -297,8 +317,10 @@ namespace SmpPhysics
 			}
 			if (actor->Is3DLoaded() && HideBakedHair(*actor) > 0) {
 				watch.everHidden = true;
-				if (const auto* base = actor->GetActorBase(); base && naturalColors.contains(base->GetFormID()))
+				if (const auto* base = actor->GetActorBase(); base && naturalColors.contains(base->GetFormID())) {
+					RecordAuthored(*actor);
 					actor->UpdateHairColor();
+				}
 			}
 			if (--watch.framesLeft <= 0 && !watch.everHidden) {
 				const char* name = actor->GetName();
@@ -313,18 +335,52 @@ namespace SmpPhysics
 				watch.framesLeft = 0;
 				continue;
 			}
-			if (actor->Is3DLoaded() && watch.framesLeft % kTintEveryFrames == 0)
-				actor->UpdateHairColor();
-			--watch.framesLeft;
+			if (actor->Is3DLoaded() && watch.framesLeft % kTintEveryFrames == 0) {
+				if (watch.restore)
+					ApplyAuthored(*actor);
+				else
+					actor->UpdateHairColor();
+			}
+			if (--watch.framesLeft <= 0 && watch.restore)
+				authoredTints.erase(actor->GetFormID());
 		}
 		std::erase_if(tintWatches, [](const TintWatch& a_watch) { return a_watch.framesLeft <= 0; });
 	}
 
 	void CrowdWigs::ScheduleTint(RE::Actor& a_actor)
 	{
+		RecordAuthored(a_actor);
 		const RE::ObjectRefHandle handle = a_actor.GetHandle();
 		std::erase_if(tintWatches, [&](const TintWatch& a_watch) { return a_watch.handle == handle; });
-		tintWatches.push_back({ handle, kTintWatchFrames });
+		tintWatches.push_back({ handle, kTintWatchFrames, false });
+	}
+
+	void CrowdWigs::ScheduleRestore(RE::Actor& a_actor)
+	{
+		const RE::ObjectRefHandle handle = a_actor.GetHandle();
+		std::erase_if(tintWatches, [&](const TintWatch& a_watch) { return a_watch.handle == handle; });
+		tintWatches.push_back({ handle, kTintWatchFrames, true });
+	}
+
+	void CrowdWigs::RecordAuthored(RE::Actor& a_actor)
+	{
+		std::vector<AuthoredTint>& recorded = authoredTints[a_actor.GetFormID()];
+		ForEachHairTint(a_actor, [&](std::string_view a_shape, const RE::NiColor& a_tint) {
+			if (std::ranges::none_of(recorded, [&](const AuthoredTint& a_held) { return a_held.shape == a_shape; }))
+				recorded.push_back({ std::string(a_shape), a_tint.red, a_tint.green, a_tint.blue });
+		});
+	}
+
+	void CrowdWigs::ApplyAuthored(RE::Actor& a_actor)
+	{
+		const auto found = authoredTints.find(a_actor.GetFormID());
+		if (found == authoredTints.end())
+			return;
+		ForEachHairTint(a_actor, [&](std::string_view a_shape, RE::NiColor& a_tint) {
+			const auto held = std::ranges::find_if(found->second, [&](const AuthoredTint& a_entry) { return a_entry.shape == a_shape; });
+			if (held != found->second.end())
+				a_tint = RE::NiColor(held->red, held->green, held->blue);
+		});
 	}
 
 	bool CrowdWigs::KeepWhenStripped(const RE::TESBoundObject& a_object) const
@@ -382,9 +438,13 @@ namespace SmpPhysics
 				naturalColors.try_emplace(baseId, base->headRelatedData->hairColor);
 			base->SetHairColor(color);
 		}
+		if (!a_color.empty())
+			RecordAuthored(a_actor);
 		a_actor.UpdateHairColor();
 		a_actor.DoReset3D(true);
-		if (!a_color.empty())
+		if (a_color.empty())
+			ScheduleRestore(a_actor);
+		else
 			ScheduleTint(a_actor);
 		a_crowd.SetReport(a_color.empty() ? "Put back the target's own hair colour." : std::format("Set the target's hair colour to {}.", a_color));
 	}
@@ -422,6 +482,8 @@ namespace SmpPhysics
 		}
 		naturalColors.clear();
 		const std::size_t refreshed = a_crowd.RefreshNow();
+		for (RE::Actor* actor : a_crowd.OutfitTargets())
+			ScheduleRestore(*actor);
 		a_crowd.SetReport(std::format("Restored the natural hair colours of {} characters' bases and refreshed {} characters.", restored, refreshed));
 	}
 }

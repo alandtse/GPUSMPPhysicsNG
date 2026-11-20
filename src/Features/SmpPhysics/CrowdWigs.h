@@ -81,6 +81,12 @@ namespace SmpPhysics
 		void RestoreNaturalColorsNow(TestBench::TestCrowd& a_crowd);
 
 	private:
+		/** @brief Remembers the colour each of a_actor's hair-tinted shapes holds, for the shapes not yet remembered, so Natural can write it back. */
+		void RecordAuthored(RE::Actor& a_actor);
+		/** @brief Writes the remembered colours back into a_actor's hair-tinted shapes. */
+		void ApplyAuthored(RE::Actor& a_actor);
+		/** @brief Has a_actor's remembered colours written back for a while, since its wig attaches after a rebuild, then forgets them. */
+		void ScheduleRestore(RE::Actor& a_actor);
 		/** @brief Has a_actor's hair-tinted shaders re-tinted for a while, since a wig attaches after the rebuild that follows a colour change. */
 		void ScheduleTint(RE::Actor& a_actor);
 		/** @brief Stops watching a_actor and shows the baked hair that was hidden. */
@@ -103,9 +109,19 @@ namespace SmpPhysics
 		{
 			RE::ObjectRefHandle handle;
 			int framesLeft = 0;
+			bool restore = false;  ///< Write the remembered colours back instead of re-tinting.
 		};
-		std::vector<TintWatch> tintWatches;                               ///< Game thread only.
-		std::unordered_map<RE::FormID, OwnWig> naturalWigs;               ///< Each actor WearOn changed. Game thread only.
-		std::unordered_map<RE::FormID, RE::BGSColorForm*> naturalColors;  ///< Each base's own hair colour, recorded before the first change. Game thread only.
+		/** @brief The colour a hair-tinted shape held before the first tint was written into it. */
+		struct AuthoredTint
+		{
+			std::string shape;
+			float red = 1.0f;
+			float green = 1.0f;
+			float blue = 1.0f;
+		};
+		std::unordered_map<RE::FormID, std::vector<AuthoredTint>> authoredTints;  ///< Per actor, from before its first tint to Natural. Game thread only.
+		std::vector<TintWatch> tintWatches;                                       ///< Game thread only.
+		std::unordered_map<RE::FormID, OwnWig> naturalWigs;                       ///< Each actor WearOn changed. Game thread only.
+		std::unordered_map<RE::FormID, RE::BGSColorForm*> naturalColors;          ///< Each base's own hair colour, recorded before the first change. Game thread only.
 	};
 }
