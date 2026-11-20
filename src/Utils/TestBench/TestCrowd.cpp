@@ -22,8 +22,13 @@ namespace TestBench
 {
 	namespace
 	{
-		/** A generic female character from Skyrim.esm. It has no prebaked face, so head parts and armor added to it change what is drawn. */
-		constexpr RE::FormID kTestCharacterBase = 0x000A2C8E;
+		/** The women housecarls, spawned when no characters are chosen. Rayya comes with Hearthfire, so she is left out when it is not loaded. */
+		std::vector<RE::FormID> DefaultPool()
+		{
+			auto* handler = RE::TESDataHandler::GetSingleton();
+			const auto* rayya = handler ? handler->LookupForm<RE::TESNPC>(kRayyaLocalId, kRayyaPlugin) : nullptr;
+			return HousecarlPool(rayya ? rayya->GetFormID() : 0);
+		}
 		constexpr float kStandHeightOffset = 1.0f;
 		constexpr const char* kResetIdle = "ResetRoot";      ///< The idle that returns a character to its neutral stance, which Stop plays before freezing it.
 		constexpr std::uint32_t kNonPlayableFlag = 1u << 2;  ///< The record flag of an armor the player cannot wear.
@@ -333,7 +338,7 @@ namespace TestBench
 
 	std::vector<RE::FormID> TestCrowd::Bases() const
 	{
-		return crowdBases.empty() ? std::vector<RE::FormID>{ kTestCharacterBase } : crowdBases;
+		return crowdBases.empty() ? DefaultPool() : crowdBases;
 	}
 
 	void TestCrowd::AddHooks(CrowdHooks* a_hooks)
@@ -629,7 +634,6 @@ namespace TestBench
 		}
 		armorIndex.store(static_cast<int>(a_index), std::memory_order_relaxed);
 		RE::TESObjectARMO* armor = armors[a_index];
-		stripped.store(true, std::memory_order_relaxed);
 		for (RE::Actor* actor : OutfitTargets())
 			DressArmorOn(*actor, a_index);
 		SetReport(std::format("Test characters wear {} ({} of {}).", armor->GetName(), a_index + 1, armors.size()));
@@ -695,9 +699,10 @@ namespace TestBench
 			SetReport("Load a save first: there is no player in the world to spawn beside.");
 			return;
 		}
+		const std::vector<std::uint32_t> pool = a_bases.empty() ? DefaultPool() : a_bases;
 		std::vector<RE::TESNPC*> baseForSlot;
 		for (std::size_t index = 0; index < a_count; ++index) {
-			const std::uint32_t baseId = BaseForSlot(index, a_bases, kTestCharacterBase);
+			const std::uint32_t baseId = BaseForSlot(index, pool, kSkyrimHousecarlBases.front());
 			auto* npc = RE::TESForm::LookupByID<RE::TESNPC>(baseId);
 			if (!npc) {
 				SetReport(std::format("{:08X} is not a character base, so nobody was spawned.", baseId));

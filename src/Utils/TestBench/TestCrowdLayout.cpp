@@ -32,6 +32,14 @@ namespace TestBench
 		return anyCicero;
 	}
 
+	std::vector<std::uint32_t> HousecarlPool(std::uint32_t a_rayya)
+	{
+		std::vector<std::uint32_t> pool(kSkyrimHousecarlBases.begin(), kSkyrimHousecarlBases.end());
+		if (a_rayya != 0)
+			pool.push_back(a_rayya);
+		return pool;
+	}
+
 	std::uint32_t BaseForSlot(std::size_t a_index, const std::vector<std::uint32_t>& a_bases, std::uint32_t a_fallback) noexcept
 	{
 		return a_bases.empty() ? a_fallback : a_bases[a_index % a_bases.size()];

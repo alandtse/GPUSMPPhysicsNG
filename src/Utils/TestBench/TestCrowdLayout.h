@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -39,6 +40,15 @@ namespace TestBench
 
 	/** @brief Whether an animation graph event tag means the idle a character was playing has finished. */
 	[[nodiscard]] bool IsIdleEndEvent(std::string_view a_tag) noexcept;
+
+	/** @brief The Skyrim.esm bases of the women who are housecarls: Lydia (Whiterun), Jordis (Haafingar) and Iona (the Rift). */
+	inline constexpr std::array<std::uint32_t, 3> kSkyrimHousecarlBases{ 0x000A2C8E, 0x000A2C8F, 0x000A2C91 };
+	/** @brief Rayya, the Falkreath housecarl, by her local ID in the plugin that adds her. */
+	inline constexpr std::uint32_t kRayyaLocalId = 0x00005215;
+	inline constexpr const char* kRayyaPlugin = "HearthFires.esm";
+
+	/** @return The characters spawned when none are chosen: the women housecarls, Rayya last and only when a_rayya, her base in this load order, is not 0. */
+	[[nodiscard]] std::vector<std::uint32_t> HousecarlPool(std::uint32_t a_rayya);
 
 	/** @return The base the a_index-th character is made from: bases cycle in order, and a_fallback stands in when none are given. */
 	[[nodiscard]] std::uint32_t BaseForSlot(std::size_t a_index, const std::vector<std::uint32_t>& a_bases, std::uint32_t a_fallback) noexcept;
