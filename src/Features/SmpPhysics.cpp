@@ -338,6 +338,10 @@ void SmpPhysicsFeature::OnPluginMessage(const SKSE::MessagingInterface::Message*
 	smpInterface->addFrameSyncListener(&frameSyncListener);
 	if (auto* crosshairSource = SKSE::GetCrosshairRefEventSource())
 		crosshairSource->AddEventSink(&crosshairListener);
+	if (auto* events = RE::ScriptEventSourceHolder::GetSingleton()) {
+		events->AddEventSink<RE::TESEquipEvent>(&bodyChangeListener);
+		events->AddEventSink<RE::TESObjectLoadedEvent>(&bodyChangeListener);
+	}
 	{
 		const std::scoped_lock lock(stateMutex);
 		linkedInterface = smpInterface;
@@ -1408,6 +1412,20 @@ RE::BSEventNotifyControl SmpPhysicsFeature::CrosshairListener::ProcessEvent(cons
 	const auto* actor = a_event && a_event->crosshairRef ? a_event->crosshairRef->As<RE::Actor>() : nullptr;
 	if (actor && !actor->IsPlayerRef())
 		feature.hairTarget.NoteCrosshair(actor->GetFormID());
+	return RE::BSEventNotifyControl::kContinue;
+}
+
+RE::BSEventNotifyControl SmpPhysicsFeature::BodyChangeListener::ProcessEvent(const RE::TESEquipEvent* a_event, RE::BSTEventSource<RE::TESEquipEvent>*)
+{
+	if (a_event && a_event->actor)
+		feature.bodyScanWindows.Note(a_event->actor->GetFormID());
+	return RE::BSEventNotifyControl::kContinue;
+}
+
+RE::BSEventNotifyControl SmpPhysicsFeature::BodyChangeListener::ProcessEvent(const RE::TESObjectLoadedEvent* a_event, RE::BSTEventSource<RE::TESObjectLoadedEvent>*)
+{
+	if (a_event)
+		feature.bodyScanWindows.Note(a_event->formID);
 	return RE::BSEventNotifyControl::kContinue;
 }
 
