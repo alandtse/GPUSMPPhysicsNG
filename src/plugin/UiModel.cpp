@@ -143,11 +143,16 @@ namespace
 		return row;
 	}
 
-	/** @brief Runs a registered TestCrowd command with a_args, as devbench's invokeCommand would. */
+	/** @brief Runs a registered TestCrowd command, or an SmpPhysics feature command such as the wig ones, with a_args, as devbench's invokeCommand would. */
 	void RunCrowdCommand(const char* a_name, const json& a_args = json::object())
 	{
-		if (const auto* entry = Util::DevBenchUx::Registry::GetSingleton().FindToolCommand(TestBench::kOwnerName, a_name))
-			entry->fn(a_args);
+		const auto& registry = Util::DevBenchUx::Registry::GetSingleton();
+		if (const auto* tool = registry.FindToolCommand(TestBench::kOwnerName, a_name))
+			tool->fn(a_args);
+		else if (const auto* feature = registry.FindCommand(Instance().GetShortName(), a_name))
+			feature->fn(&Instance(), a_args);
+		else
+			logger::warn("[GPU SMP Physics] the Test bench page ran '{}', which no command registers", a_name);
 	}
 
 	std::vector<std::string> WithFirst(const char* a_first, const std::vector<std::string>& a_rest)
