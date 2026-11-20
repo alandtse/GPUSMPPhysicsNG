@@ -83,6 +83,7 @@ namespace
 	{
 		const std::string item = a_args.value("item", std::string("wig"));
 		return item == "armor" ? SmpPhysics::TargetItem::Armor : item == "cloak" ? SmpPhysics::TargetItem::Cloak :
+		                                                     item == "hair"      ? SmpPhysics::TargetItem::HairPart :
 		                                                                           SmpPhysics::TargetItem::Wig;
 	}
 
@@ -93,6 +94,8 @@ namespace
 			return TestBench::TestCrowd::ArmorNames();
 		case SmpPhysics::TargetItem::Cloak:
 			return TestBench::TestCrowd::CloakNames();
+		case SmpPhysics::TargetItem::HairPart:
+			return SmpPhysics::CrowdHairParts::Names();
 		default:
 			return SmpPhysics::CrowdWigs::WigNames();
 		}
@@ -495,6 +498,24 @@ void SmpPhysicsFeature::RegisterUxActions()
 	FEATURE_COMMAND(SmpPhysics::CrowdWearCommands::kWig, "Put a wig on every test character standing now, and on the player while stripTestCrowd's includePlayer is on. Args: name (string, case-insensitive part of an entry of testCrowdWigs; the first match is worn) or index (number, an entry of testCrowdWigs). Read the outcome from testCrowdReport.",
 		[](Feature* a_self, const json& a_args) {
 			static_cast<SmpPhysicsFeature*>(a_self)->WearWig(TestBench::ItemIndexFromArgs(a_args, SmpPhysics::CrowdWigs::WigNames()));
+		});
+	FEATURE_COMMAND(SmpPhysics::CrowdWearCommands::kHairPart, "Give the hairstyle (a hair head part) to every base the test crowd is made from that it suits, which changes every character made from those bases, and refresh the characters standing. Args: name (string, case-insensitive part of an entry of testCrowdHairParts) or index (number, an entry of testCrowdHairParts). Read the outcome from testCrowdReport.",
+		[](Feature* a_self, const json& a_args) {
+			const int index = TestBench::ItemIndexFromArgs(a_args, SmpPhysics::CrowdHairParts::Names());
+			if (auto* task = SKSE::GetTaskInterface())
+				task->AddTask([self = static_cast<SmpPhysicsFeature*>(a_self), index] { self->crowdHairParts.SetNow(TestBench::GetCrowd(), index); });
+		});
+	FEATURE_COMMAND(SmpPhysics::CrowdWearCommands::kRestoreHairParts, "Put back the hairstyle every base had before setTestCrowdHairPart changed it, and refresh the characters standing. Read the outcome from testCrowdReport.",
+		[](Feature* a_self, const json&) {
+			if (auto* task = SKSE::GetTaskInterface())
+				task->AddTask([self = static_cast<SmpPhysicsFeature*>(a_self)] { self->crowdHairParts.RestoreNow(TestBench::GetCrowd()); });
+		});
+	FEATURE_QUERY("testCrowdHairParts", "List the hairstyles (hair head parts) the test crowd can be given, with their index for setTestCrowdHairPart, and which one was given last (given is -1 for none). Args: filter (string, case-insensitive part of the name, default none), limit (number, default 100).",
+		[](const Feature* a_self, const json& a_args) -> json {
+			json result;
+			result["given"] = static_cast<const SmpPhysicsFeature*>(a_self)->crowdHairParts.WornIndex();
+			result["parts"] = TestBench::ItemRows(SmpPhysics::CrowdHairParts::Names(), SmpPhysics::CrowdHairParts::Parts(), a_args);
+			return result;
 		});
 	FEATURE_COMMAND(SmpPhysics::CrowdWearCommands::kTakeOffWig, "Take the wig off every test character standing now, and on the player while stripTestCrowd's includePlayer is on, so their own hair shows again; later spawns wear their own too. Read the outcome from testCrowdReport.",
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->TakeOffCrowdWigs(); });
@@ -2159,6 +2180,9 @@ void SmpPhysicsFeature::WearOnTarget(SmpPhysics::TargetItem a_item, int a_index)
 			case SmpPhysics::TargetItem::Cloak:
 				TestBench::GetCrowd().DressCloakOn(*actor, index);
 				break;
+			case SmpPhysics::TargetItem::HairPart:
+				crowdHairParts.SetActorNow(TestBench::GetCrowd(), *actor, a_index);
+				break;
 			default:
 				crowdWigs.WearOn(*actor, a_index);
 			}
@@ -2188,6 +2212,9 @@ void SmpPhysicsFeature::RestoreTarget(SmpPhysics::TargetItem a_item)
 				break;
 			case SmpPhysics::TargetItem::Cloak:
 				TestBench::GetCrowd().TakeOffCloaks(*actor);
+				break;
+			case SmpPhysics::TargetItem::HairPart:
+				crowdHairParts.RestoreActorNow(TestBench::GetCrowd(), *actor);
 				break;
 			default:
 				crowdWigs.TakeOff(*actor);

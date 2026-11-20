@@ -162,10 +162,17 @@ namespace
 		return items;
 	}
 
+	/** @brief A list of forms as the item lists take them, whatever kind of form it holds. */
+	template <class Form>
+	std::vector<RE::TESForm*> AsForms(const std::vector<Form*>& a_forms)
+	{
+		return { a_forms.begin(), a_forms.end() };
+	}
+
 	/** @brief The physics files the last scan found for each item of a list, re-read when a scan finishes. */
 	struct ScannedFiles
 	{
-		std::function<std::vector<RE::TESObjectARMO*>()> forms;
+		std::function<std::vector<RE::TESForm*>()> forms;
 		std::uint32_t generation{};
 		std::vector<std::vector<std::string>> files;
 
@@ -175,7 +182,7 @@ namespace
 			if (current != generation) {
 				files.clear();
 				if (current) {
-					for (const RE::TESObjectARMO* item : forms())
+					for (const RE::TESForm* item : forms())
 						files.push_back(NifProbe::XmlPaths(item->GetFormID()));
 				}
 				generation = current;
@@ -259,7 +266,7 @@ namespace
 	}
 
 	/** @brief The report for the item a list has selected, refreshed at most once a second; empty before a scan or when it has no physics. a_skip leading entries have no item. */
-	std::function<std::string()> SelectedItemReport(std::function<std::vector<RE::TESObjectARMO*>()> a_forms, const int* a_index, int a_skip)
+	std::function<std::string()> SelectedItemReport(std::function<std::vector<RE::TESForm*>()> a_forms, const int* a_index, int a_skip)
 	{
 		struct Cache
 		{
@@ -276,7 +283,7 @@ namespace
 			const auto now = std::chrono::steady_clock::now();
 			if (cache->index == index && cache->generation == generation && now - cache->at < std::chrono::seconds(1))
 				return cache->text;
-			const std::vector<RE::TESObjectARMO*> items = forms();
+			const std::vector<RE::TESForm*> items = forms();
 			cache->text = static_cast<std::size_t>(index) < items.size() ? Instance().ItemReportText(items[static_cast<std::size_t>(index)]->GetFormID()) : std::string();
 			cache->index = index;
 			cache->generation = generation;
@@ -286,7 +293,7 @@ namespace
 	}
 
 	/** @brief The hover tip of a list of items: each item's physics files, their health and size, and what the last claim kept, refreshed at most once a second per item. */
-	std::function<std::string(int)> ItemTip(std::function<std::vector<RE::TESObjectARMO*>()> a_forms, int a_skip)
+	std::function<std::string(int)> ItemTip(std::function<std::vector<RE::TESForm*>()> a_forms, int a_skip)
 	{
 		struct Cache
 		{
@@ -305,7 +312,7 @@ namespace
 			const auto now = std::chrono::steady_clock::now();
 			if (cache->index == index && cache->generation == generation && now - cache->at < std::chrono::seconds(1))
 				return cache->text;
-			const std::vector<RE::TESObjectARMO*> items = forms();
+			const std::vector<RE::TESForm*> items = forms();
 			cache->text = static_cast<std::size_t>(index) < items.size() ? Instance().ItemStatsText(items[static_cast<std::size_t>(index)]->GetFormID()) : std::string();
 			cache->index = index;
 			cache->generation = generation;
@@ -344,7 +351,7 @@ namespace
 	struct ItemKind
 	{
 		std::function<std::vector<std::string>()> names;
-		std::function<std::vector<RE::TESObjectARMO*>()> forms;
+		std::function<std::vector<RE::TESForm*>()> forms;
 		std::function<int()> worn;
 		int skip{};
 		SmpPhysics::TargetItem item{};     ///< What Put on and Take off act on.
@@ -356,7 +363,7 @@ namespace
 	{
 		static const ItemKind kind{
 			[] { return TestBench::TestCrowd::ArmorNames(); },
-			[] { return TestBench::TestCrowd::ArmorForms(); },
+			[] { return AsForms(TestBench::TestCrowd::ArmorForms()); },
 			[] { return TestBench::GetCrowd().WornArmorIndex(); },
 			0,
 			SmpPhysics::TargetItem::Armor,
@@ -369,7 +376,7 @@ namespace
 	{
 		static const ItemKind kind{
 			[] { return WithFirst("None", TestBench::TestCrowd::CloakNames()); },
-			[] { return TestBench::TestCrowd::CloakForms(); },
+			[] { return AsForms(TestBench::TestCrowd::CloakForms()); },
 			[] { return TestBench::GetCrowd().WornCloakIndex() + 1; },
 			1,
 			SmpPhysics::TargetItem::Cloak,
@@ -382,12 +389,25 @@ namespace
 	{
 		static const ItemKind kind{
 			[] { return SmpPhysics::CrowdWigs::WigNames(); },
-			[] { return SmpPhysics::CrowdWigs::WigForms(); },
+			[] { return AsForms(SmpPhysics::CrowdWigs::WigForms()); },
 			[] { return Instance().WornWigIndex(); },
 			0,
 			SmpPhysics::TargetItem::Wig,
 			"wig",
 			[](Row a_row) { return WithTintFlag(WithHairMatch(std::move(a_row))); }
+		};
+		return kind;
+	}
+
+	const ItemKind& HairPartKind()
+	{
+		static const ItemKind kind{
+			[] { return SmpPhysics::CrowdHairParts::Names(); },
+			[] { return AsForms(SmpPhysics::CrowdHairParts::Parts()); },
+			[] { return Instance().HairPartIndex(); },
+			0,
+			SmpPhysics::TargetItem::HairPart,
+			"hair part"
 		};
 		return kind;
 	}
@@ -412,14 +432,14 @@ namespace
 	}
 
 	/** @brief A button that copies the selected item's full report for its mod author. */
-	Row ItemCopy(const char* a_label, std::function<std::vector<RE::TESObjectARMO*>()> a_forms, const int* a_index, int a_skip)
+	Row ItemCopy(const char* a_label, std::function<std::vector<RE::TESForm*>()> a_forms, const int* a_index, int a_skip)
 	{
 		Row copy = Button(a_label, "Copies the item's name, plugin, physics files and what is wrong with each, to send to its mod author. Scan first.", [] {});
 		copy.clipboardFn = SelectedItemReport(std::move(a_forms), a_index, a_skip);
 		return copy;
 	}
 
-	Row WithHealth(Row a_row, std::function<std::vector<RE::TESObjectARMO*>()> a_forms, std::size_t a_skip)
+	Row WithHealth(Row a_row, std::function<std::vector<RE::TESForm*>()> a_forms, std::size_t a_skip)
 	{
 		const auto scanned = std::make_shared<ScannedFiles>(ScannedFiles{ std::move(a_forms), 0, {} });
 		a_row.itemFilesFn = ItemFiles(scanned, a_skip);
@@ -554,10 +574,13 @@ namespace
 		const auto picked = [&a_kind, a_index] { return *a_index - a_kind.skip >= 0; };
 		const auto onCrowd = [a_scope] { return ScopeOf(a_scope) == SmpPhysics::ApplyTo::Crowd; };
 		const auto dresses = [a_scope] { return ScopeOf(a_scope) != SmpPhysics::ApplyTo::Nobody; };
-		Row wear = Button("Put on", std::format("Puts the picked {} on whoever Apply to names. An item stays in a character's inventory in your save until you take it off.", a_kind.noun).c_str(),
+		const bool hair = a_kind.item == SmpPhysics::TargetItem::HairPart;
+		const std::string putTip = hair ? std::string("Gives the picked hair part to whoever Apply to names, and to every character made from the same base.") : std::format("Puts the picked {} on whoever Apply to names. An item stays in a character's inventory in your save until you take it off.", a_kind.noun);
+		const std::string takeTip = hair ? std::string("Puts back the hair whoever Apply to names had before.") : std::format("Takes the {} off whoever Apply to names and puts back what they wore; a wig shows their own hair again.", a_kind.noun);
+		Row wear = Button("Put on", putTip.c_str(),
 			[&a_kind, a_index, onCrowd] { ApplyWear(a_kind, false, *a_index - a_kind.skip, onCrowd()); });
 		wear.enabled = [picked, dresses] { return picked() && dresses(); };
-		Row take = Button("Take off", std::format("Takes the {} off whoever Apply to names and puts back what they wore; a wig shows their own hair again.", a_kind.noun).c_str(), [&a_kind, onCrowd] { ApplyWear(a_kind, true, 0, onCrowd()); }, true);
+		Row take = Button("Take off", takeTip.c_str(), [&a_kind, onCrowd] { ApplyWear(a_kind, true, 0, onCrowd()); }, true);
 		take.enabled = dresses;
 		return { std::move(wear), std::move(take) };
 	}
@@ -604,6 +627,7 @@ namespace
 		int armor = -1;
 		int cloak = 0;
 		int wig = -1;
+		int hairPart = -1;
 	} pickerChoices;
 
 	/** @brief Which characters the Test bench page's pickers reach; nobody until the user picks, so browsing cannot dress anyone. */
@@ -627,11 +651,12 @@ namespace
 	std::vector<Row> ItemPicker(const int* a_scope = nullptr)
 	{
 		const auto showing = [](int a_kind) { return [a_kind] { return pickerChoices.kind == a_kind; }; };
-		std::vector<Row> rows{ Pick("Item type", "Which kind of item the list below shows. Each kind keeps its own pick.", &pickerChoices.kind, [] { return std::vector<std::string>{ "Armors", "Cloaks", "Wigs" }; }) };
+		std::vector<Row> rows{ Pick("Item type", "Which kind of item the list below shows. Each kind keeps its own pick.", &pickerChoices.kind, [] { return std::vector<std::string>{ "Armors", "Cloaks", "Wigs", "Hair parts" }; }) };
 		const auto add = [&rows](std::vector<Row> a_more) { rows = Join(std::move(rows), std::move(a_more)); };
 		add(KindRows(ArmorKind(), "Armors", "Copy report", "Every playable body armor. Click one to see its physics and copy a report for its mod author.", &pickerChoices.armor, a_scope, showing(0)));
 		add(KindRows(CloakKind(), "Cloaks", "Copy report", "Every cloak and cape. Click one to see its physics and copy a report for its mod author.", &pickerChoices.cloak, a_scope, showing(1)));
 		add(KindRows(WigKind(), "Wigs", "Copy report", "Every wig, the hair-slot armors hair mods add. Click one to see its physics and copy a report for its mod author.", &pickerChoices.wig, a_scope, showing(2)));
+		add(KindRows(HairPartKind(), "Hair parts", "Copy report", "Every hairstyle (hair head part) a character can be given. Click one to see its physics and copy a report for its mod author. Putting one on changes every character made from the same base; a worn wig hides it.", &pickerChoices.hairPart, a_scope, showing(3)));
 		Row colour = HairColourRow(&targetHairColor, "Sets the target's hair colour at once; a worn wig takes it. Every character made from the same base changes too. Wig default leaves a wig as made; Character default gives it the character's own colour.", [](const std::string& a_color) { Instance().ApplyTargetHairColor(a_color); });
 		colour.shown = [showing = showing(2), a_scope] { return showing() && ScopeOf(a_scope) == SmpPhysics::ApplyTo::Target; };
 		rows.push_back(std::move(colour));

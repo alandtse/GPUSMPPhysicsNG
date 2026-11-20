@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Features/SmpPhysics/ClaimOverrides.h"
+#include "Features/SmpPhysics/CrowdHairParts.h"
 #include "Features/SmpPhysics/CrowdWigs.h"
 #include "Features/SmpPhysics/HairTarget.h"
 
@@ -224,6 +225,8 @@ struct SmpPhysicsFeature final : Feature
 	void WearOnTarget(SmpPhysics::TargetItem a_item, int a_index);
 	/** @brief Takes a_item off the target and puts back what it wore; for a wig, shows its own hair; runs on the game thread. */
 	void RestoreTarget(SmpPhysics::TargetItem a_item);
+	/** @brief The entry of CrowdHairParts::Parts() given last, or -1 for none. */
+	[[nodiscard]] int HairPartIndex() const noexcept { return crowdHairParts.WornIndex(); }
 	/** @brief The entry of CrowdWigs::WigForms() worn last, or -1 for none. */
 	[[nodiscard]] int WornWigIndex() const noexcept { return crowdWigs.WornIndex(); }
 	/** @brief The rigid solver's island size summary, for the devbench islandSizes query. */
@@ -720,6 +723,7 @@ private:
 	std::atomic<std::uint32_t> healthChanges{};
 	CrosshairListener crosshairListener{ *this };
 	BodyChangeListener bodyChangeListener{ *this };
-	SmpPhysics::CrowdWigs crowdWigs;  ///< What this feature adds to the test crowd.
+	SmpPhysics::CrowdHairParts crowdHairParts;  ///< The hairstyles the test crowd and the target were given.
+	SmpPhysics::CrowdWigs crowdWigs;            ///< What this feature adds to the test crowd.
 	SmpPhysics::HairTarget hairTarget;
 };

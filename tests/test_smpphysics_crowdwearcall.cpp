@@ -20,6 +20,13 @@ TEST_CASE("Putting an item on the crowd sends the command devbench uses, with th
 	const CrowdWearCall wig = CrowdWearCommand(TargetItem::Wig, false, 12);
 	CHECK(wig.command == "setTestCrowdWig");
 	CHECK(wig.index == 12);
+
+	const CrowdWearCall hair = CrowdWearCommand(TargetItem::HairPart, false, 3);
+	CHECK(hair.command == "setTestCrowdHairPart");
+	CHECK(hair.index == 3);
+	const CrowdWearCall restore = CrowdWearCommand(TargetItem::HairPart, true, 3);
+	CHECK(restore.command == "restoreTestCrowdHairParts");
+	CHECK_FALSE(restore.index);
 }
 
 TEST_CASE("The Apply to box maps to who is dressed, and a stray entry dresses nobody", "[smpphysics][crowdwearcall]")

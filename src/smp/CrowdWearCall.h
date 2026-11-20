@@ -12,7 +12,8 @@ namespace SmpPhysics
 	{
 		Armor,
 		Cloak,
-		Wig
+		Wig,
+		HairPart
 	};
 
 	/** @brief Who the item pickers' Put on and Take off reach; the values are the Apply to box's entries. */
@@ -46,6 +47,8 @@ namespace SmpPhysics
 		inline constexpr std::string_view kCloak = "setTestCrowdCloak";
 		inline constexpr std::string_view kWig = "setTestCrowdWig";
 		inline constexpr std::string_view kTakeOffWig = "takeOffTestCrowdWig";
+		inline constexpr std::string_view kHairPart = "setTestCrowdHairPart";
+		inline constexpr std::string_view kRestoreHairParts = "restoreTestCrowdHairParts";
 	}
 
 	/** @brief A test crowd command and the arguments it takes; an argument that is not set is left out of the call. */
