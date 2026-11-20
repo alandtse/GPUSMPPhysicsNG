@@ -58,7 +58,7 @@ namespace SmpPhysics::ReadyWeaponGate
 					if (!button || !RE::BSOpenVRControllerDevice::IsGripButton(button->GetIDCode()))
 						continue;
 					if (const auto hand = HandOf(button->GetDevice()))
-						gripLatch.Set(*hand, IsGripValueClosed(button->Value()));
+						gripLatch.Set(*hand, button->IsPressed());
 				}
 				return RE::BSEventNotifyControl::kContinue;
 			}
