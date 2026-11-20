@@ -321,6 +321,21 @@ namespace
 		return a_row;
 	}
 
+	/** @brief Marks the wigs the last scan found no hair-tinted shader in, since the hair colour box cannot recolour those. */
+	Row WithTintFlag(Row a_row)
+	{
+		a_row.itemsFn = [names = std::move(a_row.itemsFn)] {
+			std::vector<std::string> items = names();
+			const std::vector<RE::TESObjectARMO*>& forms = SmpPhysics::CrowdWigs::WigForms();
+			for (std::size_t index = 0; index < items.size() && index < forms.size(); ++index) {
+				if (forms[index] && NifProbe::TakesHairTint(forms[index]->GetFormID()) == false)
+					items[index] += " (fixed colour)";
+			}
+			return items;
+		};
+		return a_row;
+	}
+
 	/**
 	 * @brief A kind of wearable item the pickers list: its names and forms, and what the crowd wears now.
 	 * @details Indexes are the list's, which has skip leading entries (a "None") before the first form. Devbench reaches the same lists through
@@ -372,7 +387,7 @@ namespace
 			0,
 			SmpPhysics::TargetItem::Wig,
 			"wig",
-			WithHairMatch
+			[](Row a_row) { return WithTintFlag(WithHairMatch(std::move(a_row))); }
 		};
 		return kind;
 	}

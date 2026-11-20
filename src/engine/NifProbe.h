@@ -15,6 +15,9 @@ namespace NifProbe
 	/** @brief Armors and cloaks scanned so far, and how many there are. */
 	[[nodiscard]] std::pair<std::size_t, std::size_t> Progress();
 
+	/** @brief Whether a wig's models have a shader that takes the wearer's hair colour; empty for a wig the last scan did not read or that has no lighting shader. */
+	[[nodiscard]] std::optional<bool> TakesHairTint(RE::FormID a_armor);
+
 	/** @brief The physics xml paths the last scan found in an armor's models, empty when none. */
 	[[nodiscard]] std::vector<std::string> XmlPaths(RE::FormID a_armor);
 

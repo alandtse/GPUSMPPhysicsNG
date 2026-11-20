@@ -1,5 +1,8 @@
 #include "CrowdWigs.h"
 
+#include "RE/B/BSLightingShaderMaterialHairTint.h"
+#include "RE/B/BSLightingShaderProperty.h"
+#include "RE/B/BSVisit.h"
 #include "Utils/ArmorNames.h"
 #include "Utils/StringUtils.h"
 
@@ -393,6 +396,28 @@ namespace SmpPhysics
 		}
 		const std::size_t refreshed = a_crowd.RefreshNow();
 		a_crowd.SetReport(std::format("Set the crowd's hair colour to {:08X} and refreshed {} characters.", color->GetFormID(), refreshed));
+	}
+
+	json CrowdWigs::TintReport(TestBench::TestCrowd& a_crowd)
+	{
+		json rows = json::array();
+		for (RE::Actor* actor : a_crowd.OutfitTargets()) {
+			auto* root = actor ? actor->Get3D() : nullptr;
+			if (!root)
+				continue;
+			json shaders = json::array();
+			RE::BSVisit::TraverseScenegraphGeometries(root, [&](RE::BSGeometry* a_geometry) {
+				auto* property = a_geometry->lightingShaderProp_cast();
+				auto* material = property ? property->GetBaseMaterial() : nullptr;
+				if (material && material->GetFeature() == RE::BSShaderMaterial::Feature::kHairTint) {
+					const auto* tint = static_cast<RE::BSLightingShaderMaterialHairTint*>(material);
+					shaders.push_back({ { "shape", a_geometry->name.c_str() }, { "red", tint->tintColor.red }, { "green", tint->tintColor.green }, { "blue", tint->tintColor.blue } });
+				}
+				return RE::BSVisit::BSVisitControl::kContinue;
+			});
+			rows.push_back({ { "actor", actor->GetFormID() }, { "hairTintShaders", std::move(shaders) } });
+		}
+		return rows;
 	}
 
 	void CrowdWigs::RestoreNaturalColorsNow(TestBench::TestCrowd& a_crowd)
