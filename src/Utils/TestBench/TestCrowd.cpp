@@ -1,6 +1,7 @@
 #include "TestCrowd.h"
 
 #include "CrowdFilter.h"
+#include "CrowdPool.h"
 #include "TestCrowdLayout.h"
 
 #include "Globals.h"
@@ -22,12 +23,12 @@ namespace TestBench
 {
 	namespace
 	{
-		/** The women housecarls, spawned when no characters are chosen. Rayya comes with Hearthfire, so she is left out when it is not loaded. */
+		/** The women housecarls and followers, spawned when no characters are chosen. Rayya comes with Hearthfire, so she is left out when it is not loaded. */
 		std::vector<RE::FormID> DefaultPool()
 		{
 			auto* handler = RE::TESDataHandler::GetSingleton();
 			const auto* rayya = handler ? handler->LookupForm<RE::TESNPC>(kRayyaLocalId, kRayyaPlugin) : nullptr;
-			return HousecarlPool(rayya ? rayya->GetFormID() : 0);
+			return HousecarlPool(rayya ? rayya->GetFormID() : 0, CollectFemaleFollowers());
 		}
 		constexpr float kStandHeightOffset = 1.0f;
 		constexpr const char* kResetIdle = "ResetRoot";      ///< The idle that returns a character to its neutral stance, which Stop plays before freezing it.

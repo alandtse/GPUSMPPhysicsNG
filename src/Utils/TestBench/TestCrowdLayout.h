@@ -47,8 +47,8 @@ namespace TestBench
 	inline constexpr std::uint32_t kRayyaLocalId = 0x00005215;
 	inline constexpr const char* kRayyaPlugin = "HearthFires.esm";
 
-	/** @return The characters spawned when none are chosen: the women housecarls, Rayya last and only when a_rayya, her base in this load order, is not 0. */
-	[[nodiscard]] std::vector<std::uint32_t> HousecarlPool(std::uint32_t a_rayya);
+	/** @return The characters spawned when none are chosen: the women housecarls, Rayya after them when a_rayya (her base in this load order) is not 0, then each of a_followers not already in the pool. */
+	[[nodiscard]] std::vector<std::uint32_t> HousecarlPool(std::uint32_t a_rayya, const std::vector<std::uint32_t>& a_followers = {});
 
 	/** @return The base the a_index-th character is made from: bases cycle in order, and a_fallback stands in when none are given. */
 	[[nodiscard]] std::uint32_t BaseForSlot(std::size_t a_index, const std::vector<std::uint32_t>& a_bases, std::uint32_t a_fallback) noexcept;

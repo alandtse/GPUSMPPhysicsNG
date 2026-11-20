@@ -52,6 +52,8 @@ TEST_CASE("With no characters chosen the crowd is the women housecarls", "[testb
 	REQUIRE(with.size() == 4);
 	CHECK(with.back() == 0x03005215u);
 	CHECK(BaseForSlot(5, with, 0) == 0x000A2C8Fu);
+	const std::vector<std::uint32_t> followers = HousecarlPool(0, { 0x000A2C8F, 0x00013BB0, 0x00013BB0, 0x00014000 });
+	CHECK(followers == std::vector<std::uint32_t>{ 0x000A2C8E, 0x000A2C8F, 0x000A2C91, 0x00013BB0, 0x00014000 });
 }
 
 TEST_CASE("The crowd filter leaves out children and the elderly", "[testbench]")
