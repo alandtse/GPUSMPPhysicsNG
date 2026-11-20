@@ -69,3 +69,17 @@ TEST_CASE("A grip is closed by its button bit or by squeezing past the threshold
 	CHECK_FALSE(IsGripClosed(false, kGripAxisClosedAbove));
 	CHECK_FALSE(IsGripClosed(false, 0.0f));
 }
+
+TEST_CASE("A grip is read as open without polling while a menu is up", "[readyweapongate]")
+{
+	int polls = 0;
+	const auto squeezed = [&] {
+		++polls;
+		return true;
+	};
+
+	CHECK_FALSE(ReadGrip(true, squeezed));
+	CHECK(polls == 0);
+	CHECK(ReadGrip(false, squeezed));
+	CHECK(polls == 1);
+}

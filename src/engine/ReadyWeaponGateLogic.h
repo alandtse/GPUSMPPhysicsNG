@@ -18,6 +18,13 @@ namespace SmpPhysics::ReadyWeaponGate
 		return a_buttonPressed || a_squeeze > kGripAxisClosedAbove;
 	}
 
+	/** @brief a_poll's grip state, or open without calling it while a menu is up: SkyUI-VR's controller hook is not safe to enter then. */
+	template <class Poll>
+	[[nodiscard]] bool ReadGrip(bool a_menuOpen, Poll&& a_poll)
+	{
+		return !a_menuOpen && a_poll();
+	}
+
 	/** @brief Remembers, per hand, whether the press the game last saw was swallowed, so the release matches it. */
 	class PressTracker
 	{
