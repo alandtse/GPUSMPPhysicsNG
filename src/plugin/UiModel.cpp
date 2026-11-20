@@ -594,7 +594,7 @@ namespace
 	/** @brief The Apply to box on the Test crowd page. */
 	Row ApplyToPick()
 	{
-		return Pick("Apply to", "Who the pickers below dress: every test character, the target chosen under Target, or nobody, so the lists only browse. Hair colour on the target is set here; the crowd's is under Hair colour.", &crowdScope, [] { return std::vector<std::string>{ "Test characters", "Target", "Nobody (browse only)" }; });
+		return Pick("Apply to", "Who the pickers below dress: every test character, the target chosen under Target, or nobody, so the lists only browse. With Wigs showing, the hair colour box sets the hair of whoever this reaches.", &crowdScope, [] { return std::vector<std::string>{ "Test characters", "Target", "Nobody (browse only)" }; });
 	}
 
 	/** @brief Marks every row as shown only while a_shown holds. */
@@ -617,6 +617,9 @@ namespace
 		Row colour = HairColourRow(&targetHairColor, "Sets the target's hair colour at once; a worn wig takes it. Every character made from the same base changes too. Natural puts their own back.", [](const std::string& a_color) { Instance().ApplyTargetHairColor(a_color); });
 		colour.shown = [showing = showing(2), a_scope] { return showing() && ScopeOf(a_scope) == SmpPhysics::ApplyTo::Target; };
 		rows.push_back(std::move(colour));
+		Row crowdColour = HairColourRow(&crowdChoices.hairColor, "Sets the hair colour of every base the crowd is made from, and refreshes the characters standing. Natural puts their own back.", [](const std::string& a_color) { Instance().ApplyCrowdHairColor(a_color); });
+		crowdColour.shown = [showing = showing(2), a_scope] { return showing() && ScopeOf(a_scope) == SmpPhysics::ApplyTo::Crowd; };
+		rows.push_back(std::move(crowdColour));
 		return rows;
 	}
 
@@ -767,11 +770,11 @@ void PluginUi::Register()
 															  CopyCombo(),
 														  },
 														 Join({ ApplyToPick() }, Join(ShownWhile(HairTargetRows(), [] { return ScopeOf(&crowdScope) == SmpPhysics::ApplyTo::Target; }), ItemPicker(&crowdScope)))),
-													Join(std::vector<Row>{
-															 Header("Animation"),
-															 Check("Animate on spawn (characters' AI runs)", "Off, test characters spawn frozen.", &choices.animateOnSpawn, [&choices] { TestBench::GetCrowd().SetAnimateOnSpawn(choices.animateOnSpawn); }),
-															 Check("Loop the animation", "Plays the animation again each time it ends.", &choices.loopAnimation, [&choices] { RunCrowdCommand("setTestCrowdLoop", { { "enabled", choices.loopAnimation } }); }),
-															 Browse("Idle", "The idle animation to play on every test character.", &choices.idle, [] {
+													std::vector<Row>{
+														Header("Animation"),
+														Check("Animate on spawn (characters' AI runs)", "Off, test characters spawn frozen.", &choices.animateOnSpawn, [&choices] { TestBench::GetCrowd().SetAnimateOnSpawn(choices.animateOnSpawn); }),
+														Check("Loop the animation", "Plays the animation again each time it ends.", &choices.loopAnimation, [&choices] { RunCrowdCommand("setTestCrowdLoop", { { "enabled", choices.loopAnimation } }); }),
+														Browse("Idle", "The idle animation to play on every test character.", &choices.idle, [] {
 			const auto idles = TestBench::IdleCache::Snapshot();
 			if (idles.empty())
 				return std::vector<std::string>{};
@@ -779,14 +782,12 @@ void PluginUi::Register()
 			for (const TestBench::IdleChoice& idle : idles)
 				names.push_back(idle.editorId);
 			return names; }, {}, {}),
-															 Button("Play on test characters", "Plays the chosen idle on everyone standing, and on each one spawned later.", [&choices] {
+														Button("Play on test characters", "Plays the chosen idle on everyone standing, and on each one spawned later.", [&choices] {
 			const auto idles = TestBench::IdleCache::Snapshot();
 			const bool picked = choices.idle > 0 && choices.idle <= static_cast<int>(idles.size());
 			RunCrowdCommand("playTestCrowdAnimation", { { "idle", picked ? idles[static_cast<std::size_t>(choices.idle - 1)].editorId : std::string{} } }); }),
-															 Button("Stop and freeze", "Stops the animation.", [] { RunCrowdCommand("playTestCrowdAnimation", { { "idle", "ResetRoot" } }); }, true),
-															 Header("Hair colour"),
-														 },
-														std::vector<Row>{ HairColourRow(&choices.hairColor, "Sets the hair colour of every base the crowd is made from, and refreshes the characters standing.", [&feature](const std::string& a_color) { feature.ApplyCrowdHairColor(a_color); }) })));
+														Button("Stop and freeze", "Stops the animation.", [] { RunCrowdCommand("playTestCrowdAnimation", { { "idle", "ResetRoot" } }); }, true),
+													}));
 
 	developerModel.title = "Developer";
 	developerModel.onSave = model.onSave;
