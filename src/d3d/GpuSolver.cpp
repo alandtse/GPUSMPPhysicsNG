@@ -329,7 +329,9 @@ namespace SmpPhysics
 		boneTrees->CreateSRV(StructuredSrvDesc(a_slots));
 		boneTreesSrv = boneTrees->srv;
 		// The contact pass writes this through the UAV and the rigid solver reads it through the SRV, never both at once.
-		contacts = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneContact>(a_slots, true, false), nullptr, "SmpPhysics::PoolContacts");
+		const std::vector<GpuRig::BoneContact> noContacts(a_slots);
+		D3D11_SUBRESOURCE_DATA noContactsData{ noContacts.data(), 0, 0 };
+		contacts = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneContact>(a_slots, true, false), &noContactsData, "SmpPhysics::PoolContacts");
 		contacts->CreateUAV(StructuredUavDesc(a_slots));
 		contacts->CreateSRV(StructuredSrvDesc(a_slots));
 		contactsUav = contacts->uav;
@@ -392,6 +394,17 @@ namespace SmpPhysics
 			staticsDirty = true;
 		}
 		return std::nullopt;
+	}
+
+	void GpuSolver::ClearContacts(std::uint32_t a_offset, std::uint32_t a_count)
+	{
+		auto* context = globals::d3d::context;
+		if (!contacts || !context || a_count == 0)
+			return;
+		constexpr UINT recordSize = static_cast<UINT>(sizeof(GpuRig::BoneContact));
+		const std::vector<GpuRig::BoneContact> noContacts(a_count);
+		const D3D11_BOX range{ a_offset * recordSize, 0, 0, (a_offset + a_count) * recordSize, 1, 1 };
+		context->UpdateSubresource(contacts->resource.get(), 0, &range, noContacts.data(), 0, 0);
 	}
 
 	void GpuSolver::ReleaseSlots(std::uint32_t a_offset, std::uint32_t a_count)
@@ -497,6 +510,8 @@ namespace SmpPhysics
 		if (!staticsDirty)
 			pendingStaticClaims.push_back(claims.size() - 1u);
 		surfacePrepDirty = true;
+
+		ClearContacts(*offset, boneCount);
 
 		RigidGpuSolver::ClaimSetup rigidSetup = BuildRigidSetup(a_token, *offset, a_rig, a_restWorld, a_params);
 		rigidSetup.wind.reserve(claims.back().rig.bones.size());
