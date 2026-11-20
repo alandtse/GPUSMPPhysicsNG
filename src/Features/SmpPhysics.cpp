@@ -3579,9 +3579,26 @@ void SmpPhysicsFeature::GatherSolverInput(Claim& a_claim)
 			a_claim.kinematicInput[index] = ToSolverTransform(a_claim.nodes[index]->world);
 	}
 	gpuSkinning.RecordStepPoses(a_claim.token);
+	if (a_claim.driverAnchor.size() != a_claim.collisionDrivers.size() && a_claim.restPose.size() == a_claim.nodes.size()) {
+		const std::vector<int> anchors = SmpPhysics::KinematicAnchors(rig);
+		a_claim.driverAnchor.assign(a_claim.collisionDrivers.size(), { -1, -1 });
+		for (std::size_t index = 0; index < a_claim.collisionDrivers.size(); ++index) {
+			for (std::size_t bone = 0; bone < a_claim.nodes.size(); ++bone) {
+				if (rig.bones[bone].kinematic || a_claim.nodes[bone].get() != a_claim.collisionDrivers[index].get())
+					continue;
+				if (anchors[bone] >= 0)
+					a_claim.driverAnchor[index] = { static_cast<int>(bone), anchors[bone] };
+				break;
+			}
+		}
+	}
 	for (std::size_t index = 0; index < a_claim.collisionDrivers.size(); ++index) {
 		const auto* node = a_claim.collisionDrivers[index].get();
 		a_claim.driverWorld[index] = node != nullptr ? ToSolverTransform(node->world) : SmpPhysics::Transform{};
+		if (index < a_claim.driverAnchor.size() && a_claim.driverAnchor[index].second >= 0) {
+			const auto [bone, anchor] = a_claim.driverAnchor[index];
+			a_claim.driverWorld[index] = a_claim.kinematicInput[static_cast<std::size_t>(anchor)] * a_claim.restPose[static_cast<std::size_t>(anchor)].Inverse() * a_claim.restPose[static_cast<std::size_t>(bone)];
+		}
 	}
 	UpdateExternalColliders(a_claim);
 
