@@ -4,8 +4,6 @@
 
 #include "Globals.h"
 
-#include <openvr.h>
-
 #include <atomic>
 #include <optional>
 
@@ -17,6 +15,7 @@ namespace SmpPhysics::ReadyWeaponGate
 		std::atomic<std::uint32_t> swallowed{ 0 };
 		std::atomic<bool> installed{ false };
 		PressTracker pressTracker;
+		GripLatch gripLatch;
 
 		/** The right controller is the one the game calls primary; left-handed mode swaps the roles inside the game, not the devices. */
 		std::optional<std::size_t> HandOf(RE::INPUT_DEVICE a_device)
@@ -40,6 +39,8 @@ namespace SmpPhysics::ReadyWeaponGate
 			const auto hand = HandOf(a_event.GetDevice());
 			if (!hand)
 				return false;
+			if (a_event.IsDown() || a_event.IsUp())
+				gripLatch.Set(*hand, a_event.IsDown());
 			if (a_event.IsDown()) {
 				const bool swallow = pressTracker.Press(*hand, heldHands.load(std::memory_order_relaxed));
 				logger::info("[GPU SMP Physics] {} grip pressed, {}", *hand == 0 ? "left" : "right", swallow ? "kept from the weapon" : "passed to the game");
@@ -77,17 +78,8 @@ namespace SmpPhysics::ReadyWeaponGate
 
 	bool IsGripDown(bool a_isLeft) noexcept
 	{
-		auto* system = globals::game::isVR ? RE::BSOpenVR::GetIVRSystem() : nullptr;
-		if (!system)
-			return false;
 		auto* ui = RE::UI::GetSingleton();
-		return ReadGrip(ui && ui->GameIsPaused(), [&] {
-			const vr::TrackedDeviceIndex_t device = system->GetTrackedDeviceIndexForControllerRole(a_isLeft ? vr::TrackedControllerRole_LeftHand : vr::TrackedControllerRole_RightHand);
-			vr::VRControllerState_t state{};
-			if (device == vr::k_unTrackedDeviceIndexInvalid || !system->GetControllerState(device, &state, sizeof(state)))
-				return false;
-			return IsGripClosed((state.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_Grip)) != 0, state.rAxis[kGripAxis].x);
-		});
+		return gripLatch.IsClosed(a_isLeft ? 0 : 1, ui && ui->GameIsPaused());
 	}
 
 	std::uint32_t SwallowedCount() noexcept
