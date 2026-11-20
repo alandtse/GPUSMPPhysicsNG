@@ -9,21 +9,32 @@
 
 namespace SmpPhysics::ReadyWeaponGate
 {
-	inline constexpr std::size_t kGripAxis = 2;          ///< The controller axis that carries grip squeeze on Oculus-style controllers.
-	inline constexpr float kGripAxisClosedAbove = 0.6f;  ///< Squeeze past which the grip counts as closed when the button bit is not set.
-
-	/** @brief Whether a grip is closed, from its button bit or its squeeze axis. */
-	[[nodiscard]] constexpr bool IsGripClosed(bool a_buttonPressed, float a_squeeze) noexcept
+	/**
+	 * @brief Whether each grip is closed, kept from the raw controller events the game's input manager raises, whatever the grip is mapped to.
+	 * @details A grip that was down when a menu opened never sends its release, so a menu reads as open and forgets the press.
+	 */
+	class GripLatch
 	{
-		return a_buttonPressed || a_squeeze > kGripAxisClosedAbove;
-	}
+	public:
+		/** @brief A press (true) or release (false) of a_hand's grip, 0 left and 1 right. */
+		void Set(std::size_t a_hand, bool a_down) noexcept
+		{
+			if (a_hand < closed.size())
+				closed[a_hand].store(a_down, std::memory_order_relaxed);
+		}
 
-	/** @brief a_poll's grip state, or open without calling it while a menu is up: SkyUI-VR's controller hook is not safe to enter then. */
-	template <class Poll>
-	[[nodiscard]] bool ReadGrip(bool a_menuOpen, Poll&& a_poll)
-	{
-		return !a_menuOpen && a_poll();
-	}
+		[[nodiscard]] bool IsClosed(std::size_t a_hand, bool a_menuOpen) noexcept
+		{
+			if (a_hand >= closed.size())
+				return false;
+			if (a_menuOpen)
+				closed[a_hand].store(false, std::memory_order_relaxed);
+			return closed[a_hand].load(std::memory_order_relaxed);
+		}
+
+	private:
+		std::array<std::atomic<bool>, 2> closed{};
+	};
 
 	/** @brief Remembers, per hand, whether the press the game last saw was swallowed, so the release matches it. */
 	class PressTracker
