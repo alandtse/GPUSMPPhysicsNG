@@ -176,6 +176,7 @@ namespace SmpPhysics
 		const RE::ObjectRefHandle handle = a_actor.GetHandle();
 		std::erase_if(watches, [&](const BakedHairWatch& a_watch) { return a_watch.handle == handle; });
 		watches.push_back({ handle, kBakedHairWatchFrames, false });
+		ScheduleTint(a_actor);
 	}
 
 	void CrowdWigs::Restore(RE::Actor& a_actor)
