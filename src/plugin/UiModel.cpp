@@ -739,7 +739,7 @@ void PluginUi::Register()
 	crowdModel.rows = Join(Join(std::vector<Row>{
 									Header("Spawn"),
 									SlideInt("Test characters", "How many characters to spawn in rows ahead of you.", &choices.count, 1, static_cast<int>(TestBench::kMaxTestCrowd)),
-									Check("Any adult woman", "Picks from every named adult female NPC that is friendly or neutral to you; off, one generic female character is used.", &choices.anyAdultWoman),
+									Check("Any adult woman", "Picks from every named adult female NPC that is friendly or neutral to you; off, the women who are housecarls or followers (Lydia, Jordis, Iona, Serana, ...) are spawned in turn.", &choices.anyAdultWoman),
 									Check("Random order", "Shuffles which characters appear.", &choices.randomOrder),
 									Button("Spawn test characters", "Spawns the characters standing still, each wearing a different wig.", [&choices] {
 										RunCrowdCommand("spawnTestCrowd", { { "count", choices.count }, { "anyAdultWoman", choices.anyAdultWoman }, { "randomOrder", choices.randomOrder } });

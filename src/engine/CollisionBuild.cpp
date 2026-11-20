@@ -52,7 +52,6 @@ namespace
 	/** @brief Body vertices one claim may pose before it stops measuring and keeps its default radii. */
 	constexpr std::size_t kMaximumBodyVertices = 400000;
 	/** @brief Seconds between two hashes of the meshes an actor is wearing, on the path that notices an armour swap. */
-	constexpr double kRefitCheckSeconds = 1.0;
 	using SmpPhysics::kHeadBoneName;
 	constexpr const char* kNeckName = "NPC Neck [Neck]";
 	constexpr const char* kSpine0Name = "NPC Spine [Spn0]";
@@ -1861,7 +1860,8 @@ bool SmpPhysicsFeature::WornMeshesChanged(Claim& a_claim, float a_frameDelta)
 	if ((a_claim.colliders.empty() && a_claim.surfaces.empty()) || a_claim.actorFormID == 0)
 		return false;
 	a_claim.refitCheckElapsed += a_frameDelta;
-	if (a_claim.refitCheckElapsed < kRefitCheckSeconds)
+	const bool windowOpen = bodyScanWindows.Open(a_claim.actorFormID, a_frameDelta);
+	if (a_claim.refitCheckElapsed < SmpPhysics::BodyScanInterval(a_claim.bodySignatureSettled, windowOpen))
 		return false;
 	a_claim.refitCheckElapsed = 0.0;
 

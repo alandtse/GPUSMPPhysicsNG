@@ -1097,6 +1097,24 @@ namespace SmpPhysics
 		return std::ranges::find(a_shape.collidesWith, a_tag) != a_shape.collidesWith.end();
 	}
 
+	std::vector<int> KinematicAnchors(const SmpRig& a_rig)
+	{
+		std::vector<int> parentOf(a_rig.bones.size(), -1);
+		for (const RigJoint& joint : a_rig.joints) {
+			if (joint.child >= 0 && static_cast<std::size_t>(joint.child) < parentOf.size())
+				parentOf[static_cast<std::size_t>(joint.child)] = joint.parent;
+		}
+		std::vector<int> anchors(a_rig.bones.size(), -1);
+		for (std::size_t bone = 0; bone < anchors.size(); ++bone) {
+			int current = static_cast<int>(bone);
+			for (std::size_t step = 0; step <= anchors.size() && current >= 0 && static_cast<std::size_t>(current) < anchors.size() && !a_rig.bones[static_cast<std::size_t>(current)].kinematic; ++step)
+				current = parentOf[static_cast<std::size_t>(current)];
+			if (current >= 0 && static_cast<std::size_t>(current) < anchors.size() && a_rig.bones[static_cast<std::size_t>(current)].kinematic)
+				anchors[bone] = current;
+		}
+		return anchors;
+	}
+
 	bool ShapesCanCollide(const RigShape& a_first, const RigShape& a_second)
 	{
 		return AllowsCollisionWithTag(a_first, a_second.tag) && AllowsCollisionWithTag(a_second, a_first.tag);

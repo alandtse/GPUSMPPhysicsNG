@@ -4,8 +4,6 @@
 
 #include "Globals.h"
 
-#include <openvr.h>
-
 #include <atomic>
 #include <optional>
 
@@ -17,6 +15,7 @@ namespace SmpPhysics::ReadyWeaponGate
 		std::atomic<std::uint32_t> swallowed{ 0 };
 		std::atomic<bool> installed{ false };
 		PressTracker pressTracker;
+		GripLatch gripLatch;
 
 		/** The right controller is the one the game calls primary; left-handed mode swaps the roles inside the game, not the devices. */
 		std::optional<std::size_t> HandOf(RE::INPUT_DEVICE a_device)
@@ -48,6 +47,25 @@ namespace SmpPhysics::ReadyWeaponGate
 			return pressTracker.Follow(*hand, a_event.IsUp());
 		}
 
+		/** Every raw controller event, before the game maps it, so the grip is known whatever it is mapped to. */
+		class GripSink final : public RE::BSTEventSink<RE::InputEvent*>
+		{
+		public:
+			RE::BSEventNotifyControl ProcessEvent(RE::InputEvent* const* a_events, RE::BSTEventSource<RE::InputEvent*>*) override
+			{
+				for (const RE::InputEvent* event = a_events ? *a_events : nullptr; event; event = event->next) {
+					const auto* button = event->AsButtonEvent();
+					if (!button || !RE::BSOpenVRControllerDevice::IsGripButton(button->GetIDCode()))
+						continue;
+					if (const auto hand = HandOf(button->GetDevice()))
+						gripLatch.Set(*hand, button->IsPressed());
+				}
+				return RE::BSEventNotifyControl::kContinue;
+			}
+		};
+
+		GripSink gripSink;
+
 		struct ProcessButtonHook
 		{
 			static void thunk(RE::ReadyWeaponHandler* a_this, RE::ButtonEvent* a_event, RE::PlayerControlsData* a_data)
@@ -67,6 +85,10 @@ namespace SmpPhysics::ReadyWeaponGate
 		if (!globals::game::isVR || installed.exchange(true))
 			return;
 		stl::write_vfunc<0x4, ProcessButtonHook>(RE::VTABLE_ReadyWeaponHandler[0]);
+		if (auto* devices = RE::BSInputDeviceManager::GetSingleton())
+			devices->AddEventSink(&gripSink);
+		else
+			logger::warn("[GPU SMP Physics] No input device manager, so a grip on hair cannot be seen");
 		logger::info("[GPU SMP Physics] Ready Weapon gate installed, so a grip on hair does not draw or sheathe the weapon");
 	}
 
@@ -77,14 +99,8 @@ namespace SmpPhysics::ReadyWeaponGate
 
 	bool IsGripDown(bool a_isLeft) noexcept
 	{
-		auto* system = globals::game::isVR ? RE::BSOpenVR::GetIVRSystem() : nullptr;
-		if (!system)
-			return false;
-		const vr::TrackedDeviceIndex_t device = system->GetTrackedDeviceIndexForControllerRole(a_isLeft ? vr::TrackedControllerRole_LeftHand : vr::TrackedControllerRole_RightHand);
-		vr::VRControllerState_t state{};
-		if (device == vr::k_unTrackedDeviceIndexInvalid || !system->GetControllerState(device, &state, sizeof(state)))
-			return false;
-		return IsGripClosed((state.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_Grip)) != 0, state.rAxis[kGripAxis].x);
+		auto* ui = RE::UI::GetSingleton();
+		return gripLatch.IsClosed(a_isLeft ? 0 : 1, ui && ui->GameIsPaused());
 	}
 
 	std::uint32_t SwallowedCount() noexcept

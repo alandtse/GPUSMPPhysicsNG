@@ -338,6 +338,10 @@ void SmpPhysicsFeature::OnPluginMessage(const SKSE::MessagingInterface::Message*
 	smpInterface->addFrameSyncListener(&frameSyncListener);
 	if (auto* crosshairSource = SKSE::GetCrosshairRefEventSource())
 		crosshairSource->AddEventSink(&crosshairListener);
+	if (auto* events = RE::ScriptEventSourceHolder::GetSingleton()) {
+		events->AddEventSink<RE::TESEquipEvent>(&bodyChangeListener);
+		events->AddEventSink<RE::TESObjectLoadedEvent>(&bodyChangeListener);
+	}
 	{
 		const std::scoped_lock lock(stateMutex);
 		linkedInterface = smpInterface;
@@ -1410,6 +1414,20 @@ RE::BSEventNotifyControl SmpPhysicsFeature::CrosshairListener::ProcessEvent(cons
 	const auto* actor = a_event && a_event->crosshairRef ? a_event->crosshairRef->As<RE::Actor>() : nullptr;
 	if (actor && !actor->IsPlayerRef())
 		feature.hairTarget.NoteCrosshair(actor->GetFormID());
+	return RE::BSEventNotifyControl::kContinue;
+}
+
+RE::BSEventNotifyControl SmpPhysicsFeature::BodyChangeListener::ProcessEvent(const RE::TESEquipEvent* a_event, RE::BSTEventSource<RE::TESEquipEvent>*)
+{
+	if (a_event && a_event->actor)
+		feature.bodyScanWindows.Note(a_event->actor->GetFormID());
+	return RE::BSEventNotifyControl::kContinue;
+}
+
+RE::BSEventNotifyControl SmpPhysicsFeature::BodyChangeListener::ProcessEvent(const RE::TESObjectLoadedEvent* a_event, RE::BSTEventSource<RE::TESObjectLoadedEvent>*)
+{
+	if (a_event)
+		feature.bodyScanWindows.Note(a_event->formID);
 	return RE::BSEventNotifyControl::kContinue;
 }
 
@@ -3587,9 +3605,26 @@ void SmpPhysicsFeature::GatherSolverInput(Claim& a_claim)
 			a_claim.kinematicInput[index] = ToSolverTransform(a_claim.nodes[index]->world);
 	}
 	gpuSkinning.RecordStepPoses(a_claim.token);
+	if (a_claim.driverAnchor.size() != a_claim.collisionDrivers.size() && a_claim.restPose.size() == a_claim.nodes.size()) {
+		const std::vector<int> anchors = SmpPhysics::KinematicAnchors(rig);
+		a_claim.driverAnchor.assign(a_claim.collisionDrivers.size(), { -1, -1 });
+		for (std::size_t index = 0; index < a_claim.collisionDrivers.size(); ++index) {
+			for (std::size_t bone = 0; bone < a_claim.nodes.size(); ++bone) {
+				if (rig.bones[bone].kinematic || a_claim.nodes[bone].get() != a_claim.collisionDrivers[index].get())
+					continue;
+				if (anchors[bone] >= 0)
+					a_claim.driverAnchor[index] = { static_cast<int>(bone), anchors[bone] };
+				break;
+			}
+		}
+	}
 	for (std::size_t index = 0; index < a_claim.collisionDrivers.size(); ++index) {
 		const auto* node = a_claim.collisionDrivers[index].get();
 		a_claim.driverWorld[index] = node != nullptr ? ToSolverTransform(node->world) : SmpPhysics::Transform{};
+		if (index < a_claim.driverAnchor.size() && a_claim.driverAnchor[index].second >= 0) {
+			const auto [bone, anchor] = a_claim.driverAnchor[index];
+			a_claim.driverWorld[index] = a_claim.kinematicInput[static_cast<std::size_t>(anchor)] * a_claim.restPose[static_cast<std::size_t>(anchor)].Inverse() * a_claim.restPose[static_cast<std::size_t>(bone)];
+		}
 	}
 	UpdateExternalColliders(a_claim);
 
