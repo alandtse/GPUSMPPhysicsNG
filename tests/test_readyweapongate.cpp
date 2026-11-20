@@ -62,6 +62,14 @@ TEST_CASE("A hand index outside the two hands is never swallowed", "[readyweapon
 	CHECK_FALSE(tracker.Follow(2, true));
 }
 
+TEST_CASE("A grip event is closed past the squeeze threshold", "[readyweapongate]")
+{
+	CHECK(IsGripValueClosed(1.0f));
+	CHECK(IsGripValueClosed(kGripClosedAbove + 0.01f));
+	CHECK_FALSE(IsGripValueClosed(kGripClosedAbove));
+	CHECK_FALSE(IsGripValueClosed(0.0f));
+}
+
 TEST_CASE("A grip is closed from its press until its release", "[readyweapongate]")
 {
 	GripLatch latch;

@@ -39,8 +39,6 @@ namespace SmpPhysics::ReadyWeaponGate
 			const auto hand = HandOf(a_event.GetDevice());
 			if (!hand)
 				return false;
-			if (a_event.IsDown() || a_event.IsUp())
-				gripLatch.Set(*hand, a_event.IsDown());
 			if (a_event.IsDown()) {
 				const bool swallow = pressTracker.Press(*hand, heldHands.load(std::memory_order_relaxed));
 				logger::info("[GPU SMP Physics] {} grip pressed, {}", *hand == 0 ? "left" : "right", swallow ? "kept from the weapon" : "passed to the game");
@@ -48,6 +46,25 @@ namespace SmpPhysics::ReadyWeaponGate
 			}
 			return pressTracker.Follow(*hand, a_event.IsUp());
 		}
+
+		/** Every raw controller event, before the game maps it, so the grip is known whatever it is mapped to. */
+		class GripSink final : public RE::BSTEventSink<RE::InputEvent*>
+		{
+		public:
+			RE::BSEventNotifyControl ProcessEvent(RE::InputEvent* const* a_events, RE::BSTEventSource<RE::InputEvent*>*) override
+			{
+				for (const RE::InputEvent* event = a_events ? *a_events : nullptr; event; event = event->next) {
+					const auto* button = event->AsButtonEvent();
+					if (!button || !RE::BSOpenVRControllerDevice::IsGripButton(button->GetIDCode()))
+						continue;
+					if (const auto hand = HandOf(button->GetDevice()))
+						gripLatch.Set(*hand, IsGripValueClosed(button->Value()));
+				}
+				return RE::BSEventNotifyControl::kContinue;
+			}
+		};
+
+		GripSink gripSink;
 
 		struct ProcessButtonHook
 		{
@@ -68,6 +85,10 @@ namespace SmpPhysics::ReadyWeaponGate
 		if (!globals::game::isVR || installed.exchange(true))
 			return;
 		stl::write_vfunc<0x4, ProcessButtonHook>(RE::VTABLE_ReadyWeaponHandler[0]);
+		if (auto* devices = RE::BSInputDeviceManager::GetSingleton())
+			devices->AddEventSink(&gripSink);
+		else
+			logger::warn("[GPU SMP Physics] No input device manager, so a grip on hair cannot be seen");
 		logger::info("[GPU SMP Physics] Ready Weapon gate installed, so a grip on hair does not draw or sheathe the weapon");
 	}
 

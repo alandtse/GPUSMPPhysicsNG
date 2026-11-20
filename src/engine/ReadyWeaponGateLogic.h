@@ -9,8 +9,16 @@
 
 namespace SmpPhysics::ReadyWeaponGate
 {
+	inline constexpr float kGripClosedAbove = 0.6f;  ///< Squeeze past which a grip counts as closed; a digital press reads 1.
+
+	/** @brief Whether a grip event's value is a closed grip. */
+	[[nodiscard]] constexpr bool IsGripValueClosed(float a_value) noexcept
+	{
+		return a_value > kGripClosedAbove;
+	}
+
 	/**
-	 * @brief Whether each grip is closed, kept from the button events the game delivers instead of polled from the runtime.
+	 * @brief Whether each grip is closed, kept from the raw controller events the game's input manager raises, whatever the grip is mapped to.
 	 * @details A grip that was down when a menu opened never sends its release, so a menu reads as open and forgets the press.
 	 */
 	class GripLatch
