@@ -481,22 +481,25 @@ namespace
 		return row;
 	}
 
+	int targetSource = 0;
+
+	/** @brief Where the target comes from: left on Auto, the console selection else you; a source with nothing to take falls back to Auto. */
 	std::vector<Row> HairTargetRows()
 	{
-		const auto pin = [](SmpPhysics::HairTargetSource a_source) { return [a_source] { Instance().PinHairTarget(a_source); }; };
-		Row console = Button("Console selection", "Matches hair to and dresses the reference selected with prid in the console. A new selection is taken at once unless you picked a source here.", pin(SmpPhysics::HairTargetSource::Console));
-		console.enabled = [] { return Instance().HairTargetState().hasConsole; };
-		Row crosshair = Button("Crosshair target", "Matches hair to and dresses the character you last looked at before opening this menu.", pin(SmpPhysics::HairTargetSource::Crosshair), true);
-		crosshair.enabled = [] { return Instance().HairTargetState().hasCrosshair; };
-		std::vector<Row> rows{
-			Header("Target"),
-			TargetLine(),
-			std::move(console),
-			std::move(crosshair),
-			Button("Me", "Matches hair to and dresses you.", pin(SmpPhysics::HairTargetSource::Player), true),
-			Button("Auto", "Lets the console selection choose again; with none, it is you.", [] { Instance().UnpinHairTarget(); }, true)
-		};
-		return rows;
+		Row source = Pick(
+			"Target source", "Auto takes the character selected with prid in the console, or you when there is none. Console selection and Crosshair target (the character you last looked at before opening this menu) stay on that character; Me is you.", &targetSource, [] { return std::vector<std::string>{ "Auto", "Console selection", "Crosshair target", "Me" }; },
+			[] {
+				const SmpPhysics::HairTargetView view = Instance().HairTargetState();
+				const bool missing = (targetSource == 1 && !view.hasConsole) || (targetSource == 2 && !view.hasCrosshair);
+				if (missing || targetSource == 0) {
+					targetSource = 0;
+					Instance().UnpinHairTarget();
+					return;
+				}
+				static constexpr SmpPhysics::HairTargetSource sources[] = { SmpPhysics::HairTargetSource::Console, SmpPhysics::HairTargetSource::Crosshair, SmpPhysics::HairTargetSource::Player };
+				Instance().PinHairTarget(sources[targetSource - 1]);
+			});
+		return { Header("Target"), TargetLine(), std::move(source) };
 	}
 
 	/** @brief The scope an Apply to box entry names; null, as when no box is shown, is the target. */
