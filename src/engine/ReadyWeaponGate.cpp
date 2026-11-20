@@ -80,11 +80,14 @@ namespace SmpPhysics::ReadyWeaponGate
 		auto* system = globals::game::isVR ? RE::BSOpenVR::GetIVRSystem() : nullptr;
 		if (!system)
 			return false;
-		const vr::TrackedDeviceIndex_t device = system->GetTrackedDeviceIndexForControllerRole(a_isLeft ? vr::TrackedControllerRole_LeftHand : vr::TrackedControllerRole_RightHand);
-		vr::VRControllerState_t state{};
-		if (device == vr::k_unTrackedDeviceIndexInvalid || !system->GetControllerState(device, &state, sizeof(state)))
-			return false;
-		return IsGripClosed((state.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_Grip)) != 0, state.rAxis[kGripAxis].x);
+		auto* ui = RE::UI::GetSingleton();
+		return ReadGrip(ui && ui->GameIsPaused(), [&] {
+			const vr::TrackedDeviceIndex_t device = system->GetTrackedDeviceIndexForControllerRole(a_isLeft ? vr::TrackedControllerRole_LeftHand : vr::TrackedControllerRole_RightHand);
+			vr::VRControllerState_t state{};
+			if (device == vr::k_unTrackedDeviceIndexInvalid || !system->GetControllerState(device, &state, sizeof(state)))
+				return false;
+			return IsGripClosed((state.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_Grip)) != 0, state.rAxis[kGripAxis].x);
+		});
 	}
 
 	std::uint32_t SwallowedCount() noexcept
