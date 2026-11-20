@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CrowdWigs.h"
+#include "smp/CrowdWearCall.h"
 #include "smp/HairMatchOrder.h"
 #include "smp/HairTargetDetail.h"
 #include "smp/HairTargetPick.h"
@@ -16,14 +17,6 @@
 
 namespace SmpPhysics
 {
-	/** @brief The kinds of item the target can wear. */
-	enum class TargetItem
-	{
-		Armor,
-		Cloak,
-		Wig
-	};
-
 	/** @brief What the UI shows of the hair target: who it is, how far the ranking of the wigs by their match to its hair has got, and that ranking. */
 	struct HairTargetView
 	{

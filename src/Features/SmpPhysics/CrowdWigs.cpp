@@ -284,6 +284,16 @@ namespace SmpPhysics
 		a_crowd.SetReport(std::format("{} characters wear the wig {} ({} of {}).", targets.size(), wig->GetName(), a_index + 1, wigs.size()));
 	}
 
+	void CrowdWigs::TakeOffNow(TestBench::TestCrowd& a_crowd)
+	{
+		wornIndex.store(-1, std::memory_order_relaxed);
+		chosen.clear();
+		const std::vector<RE::Actor*> targets = a_crowd.OutfitTargets();
+		for (RE::Actor* actor : targets)
+			TakeOff(*actor);
+		a_crowd.SetReport(std::format("{} characters have their own hair.", targets.size()));
+	}
+
 	void CrowdWigs::Tick()
 	{
 		for (BakedHairWatch& watch : watches) {

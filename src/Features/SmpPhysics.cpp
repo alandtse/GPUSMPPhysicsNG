@@ -492,10 +492,12 @@ void SmpPhysicsFeature::RegisterUxActions()
 				rows.push_back({ { "name", std::string(color.name) }, { "formId", color.formId } });
 			return rows;
 		});
-	FEATURE_COMMAND("setTestCrowdWig", "Put a wig on every test character standing now, and on the player while stripTestCrowd's includePlayer is on. Args: name (string, case-insensitive part of an entry of testCrowdWigs; the first match is worn) or index (number, an entry of testCrowdWigs). Read the outcome from testCrowdReport.",
+	FEATURE_COMMAND(SmpPhysics::CrowdWearCommands::kWig, "Put a wig on every test character standing now, and on the player while stripTestCrowd's includePlayer is on. Args: name (string, case-insensitive part of an entry of testCrowdWigs; the first match is worn) or index (number, an entry of testCrowdWigs). Read the outcome from testCrowdReport.",
 		[](Feature* a_self, const json& a_args) {
 			static_cast<SmpPhysicsFeature*>(a_self)->WearWig(TestBench::ItemIndexFromArgs(a_args, SmpPhysics::CrowdWigs::WigNames()));
 		});
+	FEATURE_COMMAND(SmpPhysics::CrowdWearCommands::kTakeOffWig, "Take the wig off every test character standing now, and on the player while stripTestCrowd's includePlayer is on, so their own hair shows again; later spawns wear their own too. Read the outcome from testCrowdReport.",
+		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->TakeOffCrowdWigs(); });
 	FEATURE_QUERY("testCrowdWigs", "List the wigs the test crowd can wear, with their index for setTestCrowdWig, and which one was worn last (worn is -1 for none). Args: filter (string, case-insensitive part of the name, default none), limit (number, default 100).",
 		[](const Feature* a_self, const json& a_args) -> json {
 			json result;
@@ -2114,6 +2116,12 @@ void SmpPhysicsFeature::WearWig(int a_index)
 {
 	if (auto* task = SKSE::GetTaskInterface())
 		task->AddTask([this, a_index] { crowdWigs.WearNow(TestBench::GetCrowd(), a_index); });
+}
+
+void SmpPhysicsFeature::TakeOffCrowdWigs()
+{
+	if (auto* task = SKSE::GetTaskInterface())
+		task->AddTask([this] { crowdWigs.TakeOffNow(TestBench::GetCrowd()); });
 }
 
 namespace

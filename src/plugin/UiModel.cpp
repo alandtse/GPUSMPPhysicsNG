@@ -310,18 +310,17 @@ namespace
 	}
 
 	/**
-	 * @brief A kind of wearable item the pickers list: its names and forms, what the crowd wears now, and how to put one on.
+	 * @brief A kind of wearable item the pickers list: its names and forms, and what the crowd wears now.
 	 * @details Indexes are the list's, which has skip leading entries (a "None") before the first form. Devbench reaches the same lists through
-	 *          testCrowdArmors, testCrowdCloaks and testCrowdWigs, and the same wearing through setTestCrowdArmor, setTestCrowdCloak and setTestCrowdWig.
+	 *          testCrowdArmors, testCrowdCloaks and testCrowdWigs; wearing goes through CrowdWearCommand, the commands devbench sends.
 	 */
 	struct ItemKind
 	{
 		std::function<std::vector<std::string>()> names;
 		std::function<std::vector<RE::TESObjectARMO*>()> forms;
 		std::function<int()> worn;
-		std::function<void(int)> wear;
 		int skip{};
-		SmpPhysics::TargetItem item{};     ///< What Put on target and Take off target act on.
+		SmpPhysics::TargetItem item{};     ///< What Put on and Take off act on.
 		const char* noun{};                ///< Names one of this kind in the buttons.
 		std::function<Row(Row)> decorate;  ///< Adds what only this kind's list has, when set.
 	};
@@ -332,7 +331,6 @@ namespace
 			[] { return TestBench::TestCrowd::ArmorNames(); },
 			[] { return TestBench::TestCrowd::ArmorForms(); },
 			[] { return TestBench::GetCrowd().WornArmorIndex(); },
-			[](int a_index) { TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(a_index)); },
 			0,
 			SmpPhysics::TargetItem::Armor,
 			"armor"
@@ -346,7 +344,6 @@ namespace
 			[] { return WithFirst("None", TestBench::TestCrowd::CloakNames()); },
 			[] { return TestBench::TestCrowd::CloakForms(); },
 			[] { return TestBench::GetCrowd().WornCloakIndex() + 1; },
-			[](int a_index) { RunCrowdCommand("setTestCrowdCloak", { { "index", a_index - 1 } }); },
 			1,
 			SmpPhysics::TargetItem::Cloak,
 			"cloak"
@@ -360,7 +357,6 @@ namespace
 			[] { return SmpPhysics::CrowdWigs::WigNames(); },
 			[] { return SmpPhysics::CrowdWigs::WigForms(); },
 			[] { return Instance().WornWigIndex(); },
-			[](int a_index) { Instance().WearWig(a_index); },
 			0,
 			SmpPhysics::TargetItem::Wig,
 			"wig",
@@ -476,26 +472,68 @@ namespace
 		return rows;
 	}
 
-	/** @brief Buttons that put the picked item on the target alone or take it off, and one that puts it on the test characters. */
-	std::vector<Row> WearRows(const ItemKind& a_kind, const int* a_index)
+	/** @brief Which characters the pickers' Put on and Take off reach: the test characters (the default) or the target alone. */
+	inline constexpr int kApplyToCrowd = 0;
+	inline constexpr int kApplyToTarget = 1;
+
+	/** @brief What the Test crowd page edits; the buttons turn it into the same commands devbench sends. */
+	struct CrowdChoices
+	{
+		int count = static_cast<int>(TestBench::kDefaultTestCrowd);
+		bool anyAdultWoman = true;
+		bool randomOrder = false;
+		bool stripped = false;
+		bool includePlayer = false;
+		bool animateOnSpawn = false;
+		bool loopAnimation = false;
+		int idle = 0;
+		int hairColor = 0;
+	} crowdChoices;
+
+	/** @brief Puts a_index of a_item's list (past any "None") on every test character, or takes the item off, with the command devbench sends. */
+	void RunCrowdWear(SmpPhysics::TargetItem a_item, bool a_takeOff, int a_index)
+	{
+		const SmpPhysics::CrowdWearCall call = SmpPhysics::CrowdWearCommand(a_item, a_takeOff, a_index);
+		json args = json::object();
+		if (call.index)
+			args["index"] = *call.index;
+		if (call.enabled)
+			args["enabled"] = *call.enabled;
+		RunCrowdCommand(std::string(call.command).c_str(), args);
+		if (a_takeOff && a_item == SmpPhysics::TargetItem::Armor)
+			crowdChoices.stripped = false;
+	}
+
+	/** @brief Puts the item at a_index of a_kind's list on, or takes a_kind off, for the test characters when a_crowd holds and for the target alone when not. */
+	void ApplyWear(const ItemKind& a_kind, bool a_takeOff, int a_index, bool a_crowd)
+	{
+		if (a_crowd)
+			RunCrowdWear(a_kind.item, a_takeOff, a_index);
+		else if (a_takeOff)
+			Instance().RestoreTarget(a_kind.item);
+		else
+			Instance().WearOnTarget(a_kind.item, a_index);
+	}
+
+	/** @brief Buttons that put the picked item on the target alone or on the test characters, as a_scope says (the target without one), and take it off. */
+	std::vector<Row> WearRows(const ItemKind& a_kind, const int* a_index, const int* a_scope)
 	{
 		const auto picked = [&a_kind, a_index] { return *a_index - a_kind.skip >= 0; };
-		Row wear = Button("Put on target", std::format("Puts the picked {} on the target alone. An item stays in a character's inventory in your save until you take it off.", a_kind.noun).c_str(),
-			[&a_kind, a_index] { Instance().WearOnTarget(a_kind.item, *a_index - a_kind.skip); });
+		const auto onCrowd = [a_scope] { return a_scope && *a_scope == kApplyToCrowd; };
+		Row wear = Button("Put on", std::format("Puts the picked {} on the target alone, or on every test character (and you while Include the player is on) when Apply to says so. An item stays in a character's inventory in your save until you take it off.", a_kind.noun).c_str(),
+			[&a_kind, a_index, onCrowd] { ApplyWear(a_kind, false, *a_index - a_kind.skip, onCrowd()); });
 		wear.enabled = picked;
-		Row take = Button("Take off target", std::format("Takes the {} off the target and puts back what it wore; a wig shows their own hair again.", a_kind.noun).c_str(), [&a_kind] { Instance().RestoreTarget(a_kind.item); }, true);
-		Row crowd = Button("Put on test characters", std::format("Puts the picked {} on every test character, and on you while Include the player is on.", a_kind.noun).c_str(), [&a_kind, a_index] { a_kind.wear(*a_index); }, true);
-		crowd.enabled = picked;
-		return { std::move(wear), std::move(take), std::move(crowd) };
+		Row take = Button("Take off", std::format("Takes the {} off the target or the test characters, as Apply to says, and puts back what they wore; a wig shows their own hair again.", a_kind.noun).c_str(), [&a_kind, onCrowd] { ApplyWear(a_kind, true, 0, onCrowd()); }, true);
+		return { std::move(wear), std::move(take) };
 	}
 
 	/** @brief One kind of item in a picker: its list, a button to copy the picked item's report and the wear buttons, shown while a_shown holds. */
-	std::vector<Row> KindRows(const ItemKind& a_kind, const char* a_label, const char* a_copyLabel, const char* a_tooltip, int* a_index, std::function<bool()> a_shown)
+	std::vector<Row> KindRows(const ItemKind& a_kind, const char* a_label, const char* a_copyLabel, const char* a_tooltip, int* a_index, const int* a_scope, std::function<bool()> a_shown)
 	{
-		std::vector<Row> wear = WearRows(a_kind, a_index);
+		std::vector<Row> wear = WearRows(a_kind, a_index, a_scope);
 		Row list = ItemList(a_kind, a_label, a_tooltip, a_index);
 		list.hideLabel = true;
-		list.tooltip += " Double-click an item, or step with Previous and Next, to put it on the target.";
+		list.tooltip += " Double-click an item, or step with Previous and Next, to put it on.";
 		list.onActivated = [enabled = wear.front().enabled, wearNow = wear.front().onChanged] {
 			if (enabled())
 				wearNow();
@@ -525,20 +563,6 @@ namespace
 	SettingsUi::Model crowdModel;
 	SettingsUi::Model developerModel;
 
-	/** @brief What the Test crowd page edits; the buttons turn it into the same commands devbench sends. */
-	struct CrowdChoices
-	{
-		int count = static_cast<int>(TestBench::kDefaultTestCrowd);
-		bool anyAdultWoman = true;
-		bool randomOrder = false;
-		bool stripped = false;
-		bool includePlayer = false;
-		bool animateOnSpawn = false;
-		bool loopAnimation = false;
-		int idle = 0;
-		int hairColor = 0;
-	} crowdChoices;
-
 	/** @brief What the item pickers on the Armor physics and Test crowd pages have selected: the kind shown and each kind's picked entry. */
 	struct PickerChoices
 	{
@@ -548,17 +572,34 @@ namespace
 		int wig = -1;
 	} pickerChoices;
 
-	/** @brief Armors, cloaks and wigs in one list, the kind picked from a box; each kind keeps its own pick. */
-	std::vector<Row> ItemPicker()
+	/** @brief Which characters the Test crowd page's pickers reach. */
+	int crowdScope = kApplyToCrowd;
+
+	/** @brief The Apply to box on the Test crowd page. */
+	Row ApplyToPick()
+	{
+		return Pick("Apply to", "Who the pickers below dress: every test character, or the target chosen under Target. Hair colour on the target is set here; the crowd's is under Hair colour.", &crowdScope, [] { return std::vector<std::string>{ "Test characters", "Target" }; });
+	}
+
+	/** @brief Marks every row as shown only while a_shown holds. */
+	std::vector<Row> ShownWhile(std::vector<Row> a_rows, const std::function<bool()>& a_shown)
+	{
+		for (Row& row : a_rows)
+			row.shown = a_shown;
+		return a_rows;
+	}
+
+	/** @brief Armors, cloaks and wigs in one list, the kind picked from a box; each kind keeps its own pick. a_scope, when set, says who Put on and Take off reach. */
+	std::vector<Row> ItemPicker(const int* a_scope = nullptr)
 	{
 		const auto showing = [](int a_kind) { return [a_kind] { return pickerChoices.kind == a_kind; }; };
 		std::vector<Row> rows{ Pick("Item type", "Which kind of item the list below shows. Each kind keeps its own pick.", &pickerChoices.kind, [] { return std::vector<std::string>{ "Armors", "Cloaks", "Wigs" }; }) };
 		const auto add = [&rows](std::vector<Row> a_more) { rows = Join(std::move(rows), std::move(a_more)); };
-		add(KindRows(ArmorKind(), "Armors", "Copy report for the selected armor", "Every playable body armor. Click one to see its physics and copy a report for its mod author.", &pickerChoices.armor, showing(0)));
-		add(KindRows(CloakKind(), "Cloaks", "Copy report for the selected cloak", "Every cloak and cape. Click one to see its physics and copy a report for its mod author.", &pickerChoices.cloak, showing(1)));
-		add(KindRows(WigKind(), "Wigs", "Copy report for the selected wig", "Every wig, the hair-slot armors hair mods add. Click one to see its physics and copy a report for its mod author.", &pickerChoices.wig, showing(2)));
+		add(KindRows(ArmorKind(), "Armors", "Copy report for the selected armor", "Every playable body armor. Click one to see its physics and copy a report for its mod author.", &pickerChoices.armor, a_scope, showing(0)));
+		add(KindRows(CloakKind(), "Cloaks", "Copy report for the selected cloak", "Every cloak and cape. Click one to see its physics and copy a report for its mod author.", &pickerChoices.cloak, a_scope, showing(1)));
+		add(KindRows(WigKind(), "Wigs", "Copy report for the selected wig", "Every wig, the hair-slot armors hair mods add. Click one to see its physics and copy a report for its mod author.", &pickerChoices.wig, a_scope, showing(2)));
 		Row colour = HairColourRow(&targetHairColor, "Sets the target's hair colour at once; a worn wig takes it. Every character made from the same base changes too. Natural puts their own back.", [](const std::string& a_color) { Instance().ApplyTargetHairColor(a_color); });
-		colour.shown = showing(2);
+		colour.shown = [showing = showing(2), a_scope] { return showing() && (!a_scope || *a_scope == kApplyToTarget); };
 		rows.push_back(std::move(colour));
 		return rows;
 	}
@@ -695,25 +736,24 @@ void PluginUi::Register()
 	auto& choices = crowdChoices;
 	crowdModel.title = "Test crowd";
 	crowdModel.showFooter = false;
-	crowdModel.rows = Join(Join(Join(std::vector<Row>{
-										 Header("Spawn"),
-										 SlideInt("Test characters", "How many characters to spawn in rows ahead of you.", &choices.count, 1, static_cast<int>(TestBench::kMaxTestCrowd)),
-										 Check("Any adult woman", "Picks from every named adult female NPC that is friendly or neutral to you; off, the women who are housecarls or followers (Lydia, Jordis, Iona, Serana, ...) are spawned in turn.", &choices.anyAdultWoman),
-										 Check("Random order", "Shuffles which characters appear.", &choices.randomOrder),
-										 Button("Spawn test characters", "Spawns the characters standing still, each wearing a different wig.", [&choices] {
-											 RunCrowdCommand("spawnTestCrowd", { { "count", choices.count }, { "anyAdultWoman", choices.anyAdultWoman }, { "randomOrder", choices.randomOrder } });
-										 }),
-										 Button("Remove them", "Removes the characters spawned here.", [] { RunCrowdCommand("clearTestCrowd"); }, true),
-										 Button("Refresh", "Rebuilds their 3D and redoes what a rebuild undoes.", [] { RunCrowdCommand("refreshTestCrowd"); }, true),
-										 Text([] { return std::format("{}  ({} standing)", TestBench::GetCrowd().Report(), TestBench::GetCrowd().Count()); }),
-										 Header("Outfit"),
-										 IncludePlayerCheck(),
-										 Check("Strip armor and weapons", "Takes armor and weapons off, except the wigs; later spawns start stripped while this is on.", &choices.stripped, [&choices] { RunCrowdCommand("stripTestCrowd", { { "enabled", choices.stripped } }); }),
-										 Text(WornCombo),
-										 CopyCombo(),
-									 },
-									HairTargetRows()),
-							   ItemPicker()),
+	crowdModel.rows = Join(Join(std::vector<Row>{
+									Header("Spawn"),
+									SlideInt("Test characters", "How many characters to spawn in rows ahead of you.", &choices.count, 1, static_cast<int>(TestBench::kMaxTestCrowd)),
+									Check("Any adult woman", "Picks from every named adult female NPC that is friendly or neutral to you; off, the women who are housecarls or followers (Lydia, Jordis, Iona, Serana, ...) are spawned in turn.", &choices.anyAdultWoman),
+									Check("Random order", "Shuffles which characters appear.", &choices.randomOrder),
+									Button("Spawn test characters", "Spawns the characters standing still, each wearing a different wig.", [&choices] {
+										RunCrowdCommand("spawnTestCrowd", { { "count", choices.count }, { "anyAdultWoman", choices.anyAdultWoman }, { "randomOrder", choices.randomOrder } });
+									}),
+									Button("Remove them", "Removes the characters spawned here.", [] { RunCrowdCommand("clearTestCrowd"); }, true),
+									Button("Refresh", "Rebuilds their 3D and redoes what a rebuild undoes.", [] { RunCrowdCommand("refreshTestCrowd"); }, true),
+									Text([] { return std::format("{}  ({} standing)", TestBench::GetCrowd().Report(), TestBench::GetCrowd().Count()); }),
+									Header("Outfit"),
+									IncludePlayerCheck(),
+									Check("Strip armor and weapons", "Takes armor and weapons off, except the wigs; later spawns start stripped while this is on.", &choices.stripped, [&choices] { RunCrowdCommand("stripTestCrowd", { { "enabled", choices.stripped } }); }),
+									Text(WornCombo),
+									CopyCombo(),
+								},
+							   Join({ ApplyToPick() }, Join(ShownWhile(HairTargetRows(), [] { return crowdScope == kApplyToTarget; }), ItemPicker(&crowdScope)))),
 		Join(std::vector<Row>{
 				 Header("Animation"),
 				 Check("Animate on spawn (characters' AI runs)", "Off, test characters spawn frozen.", &choices.animateOnSpawn, [&choices] { TestBench::GetCrowd().SetAnimateOnSpawn(choices.animateOnSpawn); }),

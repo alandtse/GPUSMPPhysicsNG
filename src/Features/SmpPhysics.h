@@ -207,6 +207,8 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] std::string FilesStatsText(const std::vector<std::string>& a_files);
 	/** @brief Puts the wig at a_index of CrowdWigs::WigForms() on the crowd and, while it is included, the player; runs on the game thread. */
 	void WearWig(int a_index);
+	/** @brief Takes the wig off the crowd and, while it is included, the player; runs on the game thread. */
+	void TakeOffCrowdWigs();
 	/** @brief The character whose hair is matched and swapped, and the wigs ranked by their match to its hair. */
 	/** @brief The hair target as the UI shows it; a_ranking asks for the wigs to be ranked against its hair, which nothing else does. */
 	[[nodiscard]] SmpPhysics::HairTargetView HairTargetState(bool a_ranking = false) const { return hairTarget.View(a_ranking); }

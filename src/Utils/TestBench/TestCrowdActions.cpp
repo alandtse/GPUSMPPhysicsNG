@@ -10,6 +10,7 @@
 #include "Utils/TestBench/ItemRows.h"
 #include "Utils/TestBench/TestCrowd.h"
 #include "Utils/TestBench/TestCrowdLayout.h"
+#include "smp/CrowdWearCall.h"
 
 #include <nlohmann/json.hpp>
 
@@ -63,19 +64,19 @@ void TestBench::RegisterUxActions()
 		[](const json&) { TestBench::GetCrowd().Refresh(); });
 	TOOL_COMMAND(kOwnerName, "turnTestCrowd", "Turn test characters to face the player rotated by some degrees, so a camera that stays put shows them from the front (0), the side (90 or 270) or the back (180). Args: index (number, which character in spawn order, default all), degrees (number, default 0). Read the outcome from testCrowdReport.",
 		[](const json& a_args) { TestBench::GetCrowd().Turn(a_args.value("index", -1), a_args.value("degrees", 0.0f)); });
-	TOOL_COMMAND(kOwnerName, "stripTestCrowd", "Take armor and weapons off the test characters standing now, except what a feature hook keeps (wigs, for GPU SMP Physics), so armor can be compared against bare bodies; later spawns start stripped while it is on. Args: enabled (bool, default true; false puts their outfits back).",
+	TOOL_COMMAND(kOwnerName, SmpPhysics::CrowdWearCommands::kStrip, "Take armor and weapons off the test characters standing now, except what a feature hook keeps (wigs, for GPU SMP Physics), so armor can be compared against bare bodies; later spawns start stripped while it is on. Args: enabled (bool, default true; false puts their outfits back).",
 		[](const json& a_args) { TestBench::GetCrowd().SetStripped(a_args.value("enabled", true)); });
 	TOOL_COMMAND(kOwnerName, "setTestCrowdIncludePlayer", "Make stripTestCrowd, cycleTestCrowdArmor and setTestCrowdCloak act on the player as well as the spawned characters, so a worn outfit can be checked on the player's own body. Turning it on dresses the player in what the crowd wears now; off puts the player's own outfit back and takes the cloak off. Args: enabled (bool, default true).",
 		[](const json& a_args) { TestBench::GetCrowd().SetIncludePlayer(a_args.value("enabled", true)); });
 	TOOL_COMMAND(kOwnerName, "cycleTestCrowdArmor", "Dress every test character in the next or previous playable body armor, with weapons and other gear off and what hooks keep left on, to compare armor types. Args: step (number, default 1; -1 goes back). Read the armor worn from testCrowdReport.",
 		[](const json& a_args) { TestBench::GetCrowd().CycleArmor(a_args.value("step", 1)); });
-	TOOL_COMMAND(kOwnerName, "setTestCrowdArmor", "Dress every test character in one playable body armor, so a run can use a chosen outfit. Args: name (string, case-insensitive part of an entry of testCrowdArmors; the first match is worn) or index (number, an entry of testCrowdArmors).",
+	TOOL_COMMAND(kOwnerName, SmpPhysics::CrowdWearCommands::kArmor, "Dress every test character in one playable body armor, so a run can use a chosen outfit. Args: name (string, case-insensitive part of an entry of testCrowdArmors; the first match is worn) or index (number, an entry of testCrowdArmors).",
 		[](const json& a_args) {
 			const int index = TestBench::ItemIndexFromArgs(a_args, TestBench::TestCrowd::ArmorNames());
 			if (index >= 0)
 				TestBench::GetCrowd().SelectArmor(static_cast<std::size_t>(index));
 		});
-	TOOL_COMMAND(kOwnerName, "setTestCrowdCloak", "Put a cloak or cape on every test character standing now, and on each one spawned later; it is a layer of its own that stays on through stripping and armor changes. Args: name (string, case-insensitive part of an entry of testCrowdCloaks; the first match is worn), index (number, an entry of testCrowdCloaks), or neither / index -1 to take the cloak off. Read the outcome from testCrowdReport.",
+	TOOL_COMMAND(kOwnerName, SmpPhysics::CrowdWearCommands::kCloak, "Put a cloak or cape on every test character standing now, and on each one spawned later; it is a layer of its own that stays on through stripping and armor changes. Args: name (string, case-insensitive part of an entry of testCrowdCloaks; the first match is worn), index (number, an entry of testCrowdCloaks), or neither / index -1 to take the cloak off. Read the outcome from testCrowdReport.",
 		[](const json& a_args) { TestBench::GetCrowd().SelectCloak(TestBench::ItemIndexFromArgs(a_args, TestBench::TestCrowd::CloakNames())); });
 	TOOL_QUERY(kOwnerName, "testCrowdCloaks", "List the cloaks and capes the test crowd can wear, with their index for setTestCrowdCloak, and which one it wears now (worn is -1 for none). Args: filter (string, case-insensitive part of the name, default none), limit (number, default 100).",
 		[](const json& a_args) -> json {
