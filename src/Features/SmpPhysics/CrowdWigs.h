@@ -83,8 +83,8 @@ namespace SmpPhysics
 		 */
 		void RestoreNaturalColorsNow(TestBench::TestCrowd& a_crowd);
 
-		/** @brief For each crowd character, the hair-tinted shaders on its 3D and the colour each holds now, to see whether a wig took the hair colour. Game thread only. */
-		[[nodiscard]] static json TintReport(TestBench::TestCrowd& a_crowd);
+		/** @brief For each of a_actors, the hair-tinted shaders on its 3D and the colour each holds now, to see whether a wig took the hair colour. Game thread only. */
+		[[nodiscard]] static json TintReport(const std::vector<RE::Actor*>& a_actors);
 
 	private:
 		/** @brief Stops watching a_actor and shows the baked hair that was hidden. */

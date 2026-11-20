@@ -398,10 +398,10 @@ namespace SmpPhysics
 		a_crowd.SetReport(std::format("Set the crowd's hair colour to {:08X} and refreshed {} characters.", color->GetFormID(), refreshed));
 	}
 
-	json CrowdWigs::TintReport(TestBench::TestCrowd& a_crowd)
+	json CrowdWigs::TintReport(const std::vector<RE::Actor*>& a_actors)
 	{
 		json rows = json::array();
-		for (RE::Actor* actor : a_crowd.OutfitTargets()) {
+		for (RE::Actor* actor : a_actors) {
 			auto* root = actor ? actor->Get3D() : nullptr;
 			if (!root)
 				continue;

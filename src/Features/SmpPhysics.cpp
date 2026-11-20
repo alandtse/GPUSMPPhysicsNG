@@ -543,8 +543,8 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->SetCollisionOverride(a_args.value("piece", std::string{}), a_args.value("target", std::string{}), a_args.value("off", true)); });
 	FEATURE_COMMAND("clearCollisionOverrides", "Remove every setCollisionOverride switch; run reevaluatePlayer afterwards.",
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->SetCollisionOverride({}, {}, false); });
-	FEATURE_QUERY("crowdWigTints", "For each test character, the hair-tinted shaders on its 3D and the colour each holds now, so a wig that ignores the hair colour can be told from one that took it.",
-		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->CrowdWigTints(); });
+	FEATURE_QUERY("crowdWigTints", "For each test character, or the actor named by actorFormID, the hair-tinted shaders on its 3D and the colour each holds now, so a wig that ignores the hair colour can be told from one that took it.",
+		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->CrowdWigTints(a_args.value("actorFormID", 0u)); });
 	FEATURE_COMMAND("nifPhysicsProbe", "Prototype: read the leading bytes of every body armor's and cloak's models on a worker thread and look for hdtSMP64's physics extra data, to time a scan that does not dress anyone. Read the outcome from nifPhysicsProbeResult.",
 		[](Feature*, const json&) { NifProbe::Start(); });
 	FEATURE_QUERY("nifPhysicsProbeResult", "The nifPhysicsProbe outcome: running, armors done of total, models read and missing, bytes read, elapsed milliseconds and milliseconds per model, and the models whose header names the physics extra data with the xml paths it holds.",
@@ -949,9 +949,12 @@ void SmpPhysicsFeature::ApplyCrowdHairColor(std::string a_color)
 		});
 }
 
-json SmpPhysicsFeature::CrowdWigTints() const
+json SmpPhysicsFeature::CrowdWigTints(RE::FormID a_formID) const
 {
-	return SmpPhysics::CrowdWigs::TintReport(TestBench::GetCrowd());
+	if (!a_formID)
+		return SmpPhysics::CrowdWigs::TintReport(TestBench::GetCrowd().OutfitTargets());
+	auto* actor = RE::TESForm::LookupByID<RE::Actor>(a_formID);
+	return SmpPhysics::CrowdWigs::TintReport(actor ? std::vector<RE::Actor*>{ actor } : std::vector<RE::Actor*>{});
 }
 
 std::vector<SmpPhysicsFeature::ClaimRow> SmpPhysicsFeature::GetClaimRows() const
