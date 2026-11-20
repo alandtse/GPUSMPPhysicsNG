@@ -374,6 +374,7 @@ private:
 		std::vector<RE::NiPointer<RE::NiSkinInstance>> skins;         ///< The skin instances of the claimed model that use at least one rig bone.
 		std::vector<RE::NiPointer<RE::NiAVObject>> cardGeometries;    ///< The geometry of each entry of skins, in the same order.
 		bool skinsBound{};                                            ///< Whether those skin instances were handed to the GPU skinning pass.
+		std::vector<std::pair<int, int>> driverAnchor;                ///< Per collision driver, its own dynamic bone and the kinematic bone its joint chain ends at; -1 when the driver is not a dynamic bone of this claim.
 		std::vector<SmpPhysics::Transform> kinematicInput;            ///< Rebuilt in place each frame; dynamic entries stay the identity.
 		std::vector<SmpPhysics::Transform> previousKinematic;         ///< Last frame's kinematic entries, to detect a teleport.
 		std::vector<SmpPhysics::Transform> restPose;                  ///< What Initialize adopted, so the GPU solver can be given the same rest pose.
