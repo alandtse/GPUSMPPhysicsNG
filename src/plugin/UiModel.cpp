@@ -476,8 +476,19 @@ namespace
 	inline constexpr int kApplyToCrowd = 0;
 	inline constexpr int kApplyToTarget = 1;
 
-	/** @brief Clears the Strip armor checkbox on the Test crowd page, for when the crowd's outfits come back. */
-	void ClearStripChoice();
+	/** @brief What the Test crowd page edits; the buttons turn it into the same commands devbench sends. */
+	struct CrowdChoices
+	{
+		int count = static_cast<int>(TestBench::kDefaultTestCrowd);
+		bool anyAdultWoman = true;
+		bool randomOrder = false;
+		bool stripped = false;
+		bool includePlayer = false;
+		bool animateOnSpawn = false;
+		bool loopAnimation = false;
+		int idle = 0;
+		int hairColor = 0;
+	} crowdChoices;
 
 	/** @brief Puts a_index of a_item's list (past any "None") on every test character, or takes the item off, with the command devbench sends. */
 	void RunCrowdWear(SmpPhysics::TargetItem a_item, bool a_takeOff, int a_index)
@@ -490,7 +501,18 @@ namespace
 			args["enabled"] = *call.enabled;
 		RunCrowdCommand(std::string(call.command).c_str(), args);
 		if (a_takeOff && a_item == SmpPhysics::TargetItem::Armor)
-			ClearStripChoice();
+			crowdChoices.stripped = false;
+	}
+
+	/** @brief Puts the item at a_index of a_kind's list on, or takes a_kind off, for the test characters when a_crowd holds and for the target alone when not. */
+	void ApplyWear(const ItemKind& a_kind, bool a_takeOff, int a_index, bool a_crowd)
+	{
+		if (a_crowd)
+			RunCrowdWear(a_kind.item, a_takeOff, a_index);
+		else if (a_takeOff)
+			Instance().RestoreTarget(a_kind.item);
+		else
+			Instance().WearOnTarget(a_kind.item, a_index);
 	}
 
 	/** @brief Buttons that put the picked item on the target alone or on the test characters, as a_scope says (the target without one), and take it off. */
@@ -499,19 +521,9 @@ namespace
 		const auto picked = [&a_kind, a_index] { return *a_index - a_kind.skip >= 0; };
 		const auto onCrowd = [a_scope] { return a_scope && *a_scope == kApplyToCrowd; };
 		Row wear = Button("Put on", std::format("Puts the picked {} on the target alone, or on every test character (and you while Include the player is on) when Apply to says so. An item stays in a character's inventory in your save until you take it off.", a_kind.noun).c_str(),
-			[&a_kind, a_index, onCrowd] {
-				const int item = *a_index - a_kind.skip;
-				if (onCrowd())
-					RunCrowdWear(a_kind.item, false, item);
-				else
-					Instance().WearOnTarget(a_kind.item, item);
-			});
+			[&a_kind, a_index, onCrowd] { ApplyWear(a_kind, false, *a_index - a_kind.skip, onCrowd()); });
 		wear.enabled = picked;
-		Row take = Button("Take off", std::format("Takes the {} off the target or the test characters, as Apply to says, and puts back what they wore; a wig shows their own hair again.", a_kind.noun).c_str(), [&a_kind, onCrowd] {
-			if (onCrowd())
-				RunCrowdWear(a_kind.item, true, 0);
-			else
-				Instance().RestoreTarget(a_kind.item); }, true);
+		Row take = Button("Take off", std::format("Takes the {} off the target or the test characters, as Apply to says, and puts back what they wore; a wig shows their own hair again.", a_kind.noun).c_str(), [&a_kind, onCrowd] { ApplyWear(a_kind, true, 0, onCrowd()); }, true);
 		return { std::move(wear), std::move(take) };
 	}
 
@@ -551,20 +563,6 @@ namespace
 	SettingsUi::Model crowdModel;
 	SettingsUi::Model developerModel;
 
-	/** @brief What the Test crowd page edits; the buttons turn it into the same commands devbench sends. */
-	struct CrowdChoices
-	{
-		int count = static_cast<int>(TestBench::kDefaultTestCrowd);
-		bool anyAdultWoman = true;
-		bool randomOrder = false;
-		bool stripped = false;
-		bool includePlayer = false;
-		bool animateOnSpawn = false;
-		bool loopAnimation = false;
-		int idle = 0;
-		int hairColor = 0;
-	} crowdChoices;
-
 	/** @brief What the item pickers on the Armor physics and Test crowd pages have selected: the kind shown and each kind's picked entry. */
 	struct PickerChoices
 	{
@@ -573,11 +571,6 @@ namespace
 		int cloak = 0;
 		int wig = -1;
 	} pickerChoices;
-
-	void ClearStripChoice()
-	{
-		crowdChoices.stripped = false;
-	}
 
 	/** @brief Which characters the Test crowd page's pickers reach. */
 	int crowdScope = kApplyToCrowd;

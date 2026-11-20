@@ -15,6 +15,16 @@ namespace SmpPhysics
 		Wig
 	};
 
+	/** @brief The names of the crowd commands that dress and strip the test crowd: registered under these, and sent by the settings menu. */
+	namespace CrowdWearCommands
+	{
+		inline constexpr std::string_view kStrip = "stripTestCrowd";
+		inline constexpr std::string_view kArmor = "setTestCrowdArmor";
+		inline constexpr std::string_view kCloak = "setTestCrowdCloak";
+		inline constexpr std::string_view kWig = "setTestCrowdWig";
+		inline constexpr std::string_view kTakeOffWig = "takeOffTestCrowdWig";
+	}
+
 	/** @brief A test crowd command and the arguments it takes; an argument that is not set is left out of the call. */
 	struct CrowdWearCall
 	{
