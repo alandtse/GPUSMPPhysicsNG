@@ -81,6 +81,8 @@ namespace SmpPhysics
 		void RestoreNaturalColorsNow(TestBench::TestCrowd& a_crowd);
 
 	private:
+		/** @brief Has a_actor's hair-tinted shaders re-tinted for a while, since a wig attaches after the rebuild that follows a colour change. */
+		void ScheduleTint(RE::Actor& a_actor);
 		/** @brief Stops watching a_actor and shows the baked hair that was hidden. */
 		void ShowBakedHair(RE::Actor& a_actor);
 		/** @brief Puts a_wig on a_actor, hides the hair it was born with and watches that it stays hidden. */
@@ -92,10 +94,17 @@ namespace SmpPhysics
 			int framesLeft = 0;
 			bool everHidden = false;
 		};
-		std::vector<RE::TESObjectARMO*> chosen;                           ///< The wigs picked for the last spawn, one per distinct style.
-		std::atomic<int> wornIndex{ -1 };                                 ///< Into WigForms() for the wig last worn, -1 for none. Written on the game thread.
-		std::size_t requested = 0;                                        ///< How many characters the last spawn asked for.
-		std::vector<BakedHairWatch> watches;                              ///< Game thread only.
+		std::vector<RE::TESObjectARMO*> chosen;  ///< The wigs picked for the last spawn, one per distinct style.
+		std::atomic<int> wornIndex{ -1 };        ///< Into WigForms() for the wig last worn, -1 for none. Written on the game thread.
+		std::size_t requested = 0;               ///< How many characters the last spawn asked for.
+		std::vector<BakedHairWatch> watches;     ///< Game thread only.
+		/** @brief An actor whose 3D was rebuilt after a hair colour change, so its wig takes the colour once it has attached. */
+		struct TintWatch
+		{
+			RE::ObjectRefHandle handle;
+			int framesLeft = 0;
+		};
+		std::vector<TintWatch> tintWatches;                               ///< Game thread only.
 		std::unordered_map<RE::FormID, OwnWig> naturalWigs;               ///< Each actor WearOn changed. Game thread only.
 		std::unordered_map<RE::FormID, RE::BGSColorForm*> naturalColors;  ///< Each base's own hair colour, recorded before the first change. Game thread only.
 	};

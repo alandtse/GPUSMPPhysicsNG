@@ -35,6 +35,8 @@ namespace SmpPhysics
 
 		constexpr const char* kUnnamedHeadPart = "(unnamed)";  ///< How a head part without an editor ID is reported.
 
+		constexpr int kTintWatchFrames = 240;  ///< How long a rebuilt actor is re-tinted for: a wig's 3D attaches some frames after the rebuild.
+		constexpr int kTintEveryFrames = 10;
 		constexpr int kBakedHairWatchFrames = 1200;  ///< How long a wig wearer is watched for its own hair showing, since a new character has no 3D yet and equipping a wig rebuilds it a few frames later.
 
 		/**
@@ -304,6 +306,25 @@ namespace SmpPhysics
 			}
 		}
 		std::erase_if(watches, [](const BakedHairWatch& a_watch) { return a_watch.framesLeft <= 0; });
+		for (TintWatch& watch : tintWatches) {
+			auto reference = watch.handle.get();
+			auto* actor = reference ? reference->As<RE::Actor>() : nullptr;
+			if (!actor) {
+				watch.framesLeft = 0;
+				continue;
+			}
+			if (actor->Is3DLoaded() && watch.framesLeft % kTintEveryFrames == 0)
+				actor->UpdateHairColor();
+			--watch.framesLeft;
+		}
+		std::erase_if(tintWatches, [](const TintWatch& a_watch) { return a_watch.framesLeft <= 0; });
+	}
+
+	void CrowdWigs::ScheduleTint(RE::Actor& a_actor)
+	{
+		const RE::ObjectRefHandle handle = a_actor.GetHandle();
+		std::erase_if(tintWatches, [&](const TintWatch& a_watch) { return a_watch.handle == handle; });
+		tintWatches.push_back({ handle, kTintWatchFrames });
 	}
 
 	bool CrowdWigs::KeepWhenStripped(const RE::TESBoundObject& a_object) const
@@ -363,6 +384,7 @@ namespace SmpPhysics
 		}
 		a_actor.UpdateHairColor();
 		a_actor.DoReset3D(true);
+		ScheduleTint(a_actor);
 		a_crowd.SetReport(a_color.empty() ? "Put back the target's own hair colour." : std::format("Set the target's hair colour to {}.", a_color));
 	}
 
@@ -382,6 +404,8 @@ namespace SmpPhysics
 			base->SetHairColor(color);
 		}
 		const std::size_t refreshed = a_crowd.RefreshNow();
+		for (RE::Actor* actor : a_crowd.OutfitTargets())
+			ScheduleTint(*actor);
 		a_crowd.SetReport(std::format("Set the crowd's hair colour to {:08X} and refreshed {} characters.", color->GetFormID(), refreshed));
 	}
 
@@ -397,6 +421,8 @@ namespace SmpPhysics
 		}
 		naturalColors.clear();
 		const std::size_t refreshed = a_crowd.RefreshNow();
+		for (RE::Actor* actor : a_crowd.OutfitTargets())
+			ScheduleTint(*actor);
 		a_crowd.SetReport(std::format("Restored the natural hair colours of {} characters' bases and refreshed {} characters.", restored, refreshed));
 	}
 }
