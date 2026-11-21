@@ -1,0 +1,24 @@
+// Unit tests for telling a skirt-style cloth rig from a hair rig (src/smp/ClothRig.h).
+
+#include "smp/ClothRig.h"
+
+#include <catch2/catch_test_macros.hpp>
+
+using namespace SmpPhysics;
+
+TEST_CASE("A rig whose per-vertex shapes skin to simulated bones is a hair rig", "[smpphysics][clothrig]")
+{
+	CHECK_FALSE(IsClothRig(1, 1, 0));
+	CHECK_FALSE(IsClothRig(4, 2, 1));
+}
+
+TEST_CASE("A rig with only body collision per-vertex shapes and a simulated triangle shape is a cloth rig", "[smpphysics][clothrig]")
+{
+	CHECK(IsClothRig(4, 0, 1));
+}
+
+TEST_CASE("A rig with no per-vertex shape, or no simulated triangle shape, is not decided here", "[smpphysics][clothrig]")
+{
+	CHECK_FALSE(IsClothRig(0, 0, 1));
+	CHECK_FALSE(IsClothRig(4, 0, 0));
+}

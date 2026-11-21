@@ -7,6 +7,9 @@ outfit suites pass except the checks below.
   0.74. `smp_parity_baseline.json` is stale: run `smp_parity_e2e.py --update-baseline` on a trusted scene.
 - **`holdStrand` leaves the pose unchanged** in the `pose_e2e.py` pull check (the solved-from-rest distance stays near
   0.01). A real hand grab pulls hair 8.9 units (`grab_e2e.py`).
+- **Skirt rigs whose per-vertex shapes are collision for others** (DD Elanor Timeless Elegance) collide with the rig's own
+  tagged shapes, as hdtSMP64 does. On SE the 64 skirt bones sit a mean 0.57 units (max 5.11) from hdtSMP64's, down from 2.05
+  (max 9.25) when the claim had no collision at all.
 - **hdtSMP64's own reference is noisy** between runs, so small distance checks can flip.
 - **Wind** is not hdtSMP64's scale (its wind is over-strong). The default `WindStrength` is chosen so hair moves about as
   far as under hdtSMP64's default in a storm.
