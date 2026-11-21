@@ -61,6 +61,7 @@ namespace SettingsUi
 				}
 			}
 			const std::vector<std::string> files = row.itemFilesFn ? row.itemFilesFn() : std::vector<std::string>{};
+			const std::vector<std::string> plugins = row.itemPluginsFn ? row.itemPluginsFn() : std::vector<std::string>{};
 			std::vector<int> status;
 			if (row.itemStatusFn) {
 				status = row.itemStatusFn();
@@ -125,7 +126,7 @@ namespace SettingsUi
 					std::vector<std::string> lowerNames;
 					lowerNames.reserve(row.items.size());
 					for (std::size_t index = 0; index < row.items.size(); ++index)
-						lowerNames.push_back(SearchText(row.items[index], index < files.size() ? files[index] : std::string_view{}));
+						lowerNames.push_back(SearchText(row.items[index], index < files.size() ? files[index] : std::string_view{}, index < plugins.size() ? plugins[index] : std::string_view{}));
 					const int target = StepVisible(lowerNames, filter, row.showMode, status, selected, next ? 1 : -1, order);
 					if (target != selected) {
 						*row.intValue = target;
@@ -143,7 +144,7 @@ namespace SettingsUi
 					const std::string& name = row.items[index];
 					constexpr const char* kStateTags[] = { "", "  [OK]", "  [REPAIRED]", "  [FAULT]" };
 					const int state = std::clamp(statusOf(index), 0, kMaxItemState);
-					if (!RowVisible(SearchText(name, index < files.size() ? files[index] : std::string_view{}), filter, row.showMode, state))
+					if (!RowVisible(SearchText(name, index < files.size() ? files[index] : std::string_view{}, index < plugins.size() ? plugins[index] : std::string_view{}), filter, row.showMode, state))
 						continue;
 					if (shown >= kMaxRows) {
 						++hidden;
