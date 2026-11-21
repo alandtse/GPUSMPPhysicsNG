@@ -14,6 +14,8 @@ namespace SmpPhysics
 			return { kCloak, a_takeOff ? -1 : a_index, std::nullopt };
 		case TargetItem::Wig:
 			return a_takeOff ? CrowdWearCall{ kTakeOffWig, std::nullopt, std::nullopt } : CrowdWearCall{ kWig, a_index, std::nullopt };
+		case TargetItem::HairPart:
+			return a_takeOff ? CrowdWearCall{ kRestoreHairParts, std::nullopt, std::nullopt } : CrowdWearCall{ kHairPart, a_index, std::nullopt };
 		}
 		return {};
 	}

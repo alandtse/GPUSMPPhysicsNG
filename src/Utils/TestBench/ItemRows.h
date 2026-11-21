@@ -24,7 +24,8 @@ namespace TestBench
 	 * @brief The rows of a devbench list of wearable items: index, form ID and name, for the names that contain args.filter, up to args.limit.
 	 * @param a_names The names of a_forms, in the same order.
 	 */
-	[[nodiscard]] inline nlohmann::json ItemRows(const std::vector<std::string>& a_names, const std::vector<RE::TESObjectARMO*>& a_forms, const nlohmann::json& a_args)
+	template <class Form>
+	[[nodiscard]] nlohmann::json ItemRows(const std::vector<std::string>& a_names, const std::vector<Form*>& a_forms, const nlohmann::json& a_args)
 	{
 		const std::string filter = Util::ToLowerAscii(a_args.value("filter", std::string{}));
 		const auto limit = static_cast<std::size_t>(std::max(a_args.value("limit", kDefaultListLimit), 1));
