@@ -364,17 +364,15 @@ namespace SmpPhysics::GpuRig
 		return reach;
 	}
 
-	bool PoseExceedsReach(const SmpRig& a_rig, const std::vector<Transform>& a_bones, const std::vector<float>& a_reach)
+	bool PoseIsFinite(const SmpRig& a_rig, const std::vector<Transform>& a_bones)
 	{
-		if (a_bones.size() != a_rig.bones.size() || a_reach.size() != a_bones.size())
-			return false;
+		if (a_bones.size() != a_rig.bones.size())
+			return true;
 		for (std::size_t index = 0; index < a_bones.size(); ++index) {
-			if (a_rig.bones[index].kinematic)
-				continue;
-			if (!IsFiniteTransform(a_bones[index]) || Length(a_bones[index].translation) > a_reach[index])
-				return true;
+			if (!a_rig.bones[index].kinematic && !IsFiniteTransform(a_bones[index]))
+				return false;
 		}
-		return false;
+		return true;
 	}
 
 	TreeInput MakeTreeInput(std::uint32_t a_firstSurface, std::uint32_t a_surfaceCount, bool a_rigidContacts, std::uint32_t a_boneSpan) noexcept
