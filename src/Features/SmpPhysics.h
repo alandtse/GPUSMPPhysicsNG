@@ -446,8 +446,7 @@ private:
 		/** @brief BoneWorld's position of every bone, empty where the bone has no node. */
 		[[nodiscard]] std::vector<std::optional<SmpPhysics::Vec3>> BonePositions() const;
 		std::vector<SmpPhysics::Transform> gpuLastBones;  ///< The last pose the GPU returned, held while the next readback is not ready.
-		std::vector<float> boneReach;                     ///< Per rig bone, how far from its kinematic root the solver may place it; see GpuRig::BuildBoneReach.
-		std::uint32_t divergenceRestarts{};               ///< Times a solver pose left boneReach and the claim was restarted.
+		std::vector<float> boneReach;                     ///< Per rig bone, how far from its kinematic root a strand can place it, for diagnostics only; see GpuRig::BuildBoneReach.
 		int firstKinematicBone{ -1 };
 		int boneCount{};
 		int dynamicBoneCount{};

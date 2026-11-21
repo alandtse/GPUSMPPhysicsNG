@@ -170,7 +170,7 @@ namespace
 		0x21EDBu, 0x1E49Du, 0x2B101u, 0x2A9D8u, 0x20BFEu };
 	/** Translation jump above which the kinematic root is moved by teleport, so the solver is reset instead of dragged after it. */
 	constexpr float kTeleportDistance = 150.0f;
-	/** A bone's reach from its kinematic root is its rest strand length times this plus kBoneReachMargin; a solver pose past it restarts the claim. */
+	/** A bone's reach from its kinematic root is its rest strand length times this plus kBoneReachMargin; the solverBones query reports a pose past it. */
 	constexpr float kBoneReachSlack = 2.0f;
 	constexpr float kBoneReachMargin = 5.0f;
 	/** @brief Consecutive frames a claim's actor may be missing before the claim is dropped. */
@@ -864,7 +864,7 @@ json SmpPhysicsFeature::SolverBonesJson(const json& a_args) const
 		}
 		claimRows.push_back({ { "token", entry.first }, { "actorFormID", claim.actorFormID }, { "file", claim.physicsFile },
 			{ "gpuRegistered", claim.gpuRegistered }, { "hasPose", claim.gpuLastBones.size() == rig.bones.size() },
-			{ "divergenceRestarts", claim.divergenceRestarts }, { "bones", std::move(bones) } });
+			{ "bones", std::move(bones) } });
 	}
 	return { { "claims", std::move(claimRows) } };
 }
@@ -927,7 +927,6 @@ json SmpPhysicsFeature::BuildStatusJson() const
 				{ "colliderCount", claim.colliderCount },
 				{ "surfaceCount", claim.surfaces.size() },
 				{ "gpuRegistered", claim.gpuRegistered },
-				{ "divergenceRestarts", claim.divergenceRestarts },
 				{ "stepMicroseconds", claim.stepMicroseconds },
 				{ "windFactor", claim.windFactor },
 				{ "windVector", { claim.wind.x, claim.wind.y, claim.wind.z } },
@@ -3771,13 +3770,8 @@ bool SmpPhysicsFeature::StepClaim(Claim& a_claim, const RE::NiPoint3& a_cameraPo
 
 	const bool applyGpu = gpuDrives && a_gpuResult && a_gpuResult->bones.size() == boneCount;
 	if (applyGpu && !a_gpuResult->failed) {
-		if (SmpPhysics::GpuRig::PoseExceedsReach(a_claim.parsed->rig, a_gpuResult->bones, a_claim.boneReach)) {
-			if (a_claim.divergenceRestarts++ == 0)
-				logger::warn("{} '{}' (token {}) placed a bone beyond its strand's reach, so the claim restarts from rest", kLogPrefix, a_claim.physicsFile, a_claim.token);
-			RestartClaim(a_claim);
-		} else {
+		if (SmpPhysics::GpuRig::PoseIsFinite(a_claim.parsed->rig, a_gpuResult->bones))
 			a_claim.gpuLastBones = a_gpuResult->bones;
-		}
 	}
 	const bool holdGpu = gpuDrives && a_claim.gpuLastBones.size() == boneCount;
 

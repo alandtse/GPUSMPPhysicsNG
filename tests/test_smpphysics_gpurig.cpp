@@ -233,7 +233,7 @@ TEST_CASE("A limited linear axis widens its bone's reach and a free one removes 
 	REQUIRE(free[1] == Approx(25.0f));
 }
 
-TEST_CASE("A solver pose past a bone's reach, or not finite, is flagged", "[SmpPhysics]")
+TEST_CASE("A solver pose is rejected only when a dynamic bone is not finite", "[SmpPhysics]")
 {
 	const SmpRig rig = MakeBranchingRig();
 	std::vector<Transform> rest(rig.bones.size());
@@ -242,23 +242,22 @@ TEST_CASE("A solver pose past a bone's reach, or not finite, is flagged", "[SmpP
 	rest[3].translation = { 5.0f, 0.0f, -20.0f };
 	rest[4].translation = { -5.0f, 0.0f, -8.0f };
 	rest[5].translation = { -5.0f, 0.0f, -18.0f };
-	const std::vector<float> reach = GpuRig::BuildBoneReach(rig, rest, 2.0f, 5.0f);
 
 	std::vector<Transform> pose = rest;
-	REQUIRE_FALSE(GpuRig::PoseExceedsReach(rig, pose, reach));
+	REQUIRE(GpuRig::PoseIsFinite(rig, pose));
 
 	pose[2].translation = { 0.0f, 0.0f, -500.0f };
-	REQUIRE(GpuRig::PoseExceedsReach(rig, pose, reach));
+	REQUIRE(GpuRig::PoseIsFinite(rig, pose));
 
 	pose = rest;
 	pose[3].translation.x = std::numeric_limits<float>::quiet_NaN();
-	REQUIRE(GpuRig::PoseExceedsReach(rig, pose, reach));
+	REQUIRE_FALSE(GpuRig::PoseIsFinite(rig, pose));
 
 	pose = rest;
 	pose[0].translation = { 1.0e6f, 0.0f, 0.0f };
-	REQUIRE_FALSE(GpuRig::PoseExceedsReach(rig, pose, reach));
+	REQUIRE(GpuRig::PoseIsFinite(rig, pose));
 
-	REQUIRE_FALSE(GpuRig::PoseExceedsReach(rig, std::vector<Transform>(2), reach));
+	REQUIRE(GpuRig::PoseIsFinite(rig, std::vector<Transform>(2)));
 }
 
 TEST_CASE("The per-frame tree input carries the surface range, the rigid flag and the contact skin", "[SmpPhysics]")
