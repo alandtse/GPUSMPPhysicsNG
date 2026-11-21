@@ -8,6 +8,7 @@
 #include "d3d/GpuSolver.h"
 #include "engine/DebugLines.h"
 #include "engine/GpuSkinning.h"
+#include "smp/BodyScanPacing.h"
 #include "smp/ClaimTally.h"
 #include "smp/Collision.h"
 #include "smp/CollisionOverride.h"
@@ -185,6 +186,8 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] UiStatus GetUiStatus() const;
 	/** @brief Sets the test crowd's hair colour from the game thread, or puts back the natural colours when a_color is empty. */
 	void ApplyCrowdHairColor(std::string a_color);
+	/** @brief The hair-tinted shaders and their colours now on the actor a_formID names, or on each crowd character when it is 0; see CrowdWigs::TintReport. Game thread. */
+	[[nodiscard]] json CrowdWigTints(RE::FormID a_formID) const;
 	/** @brief Sets the hair target's hair colour (an empty name puts its own back) on the game thread; a worn wig takes it. */
 	void ApplyTargetHairColor(std::string a_color);
 	/** @brief The live claims and the files switched off for testing, one row each, for the Claims page. */
@@ -206,6 +209,8 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] std::string FilesStatsText(const std::vector<std::string>& a_files);
 	/** @brief Puts the wig at a_index of CrowdWigs::WigForms() on the crowd and, while it is included, the player; runs on the game thread. */
 	void WearWig(int a_index);
+	/** @brief Takes the wig off the crowd and, while it is included, the player; runs on the game thread. */
+	void TakeOffCrowdWigs();
 	/** @brief The character whose hair is matched and swapped, and the wigs ranked by their match to its hair. */
 	/** @brief The hair target as the UI shows it; a_ranking asks for the wigs to be ranked against its hair, which nothing else does. */
 	[[nodiscard]] SmpPhysics::HairTargetView HairTargetState(bool a_ranking = false) const { return hairTarget.View(a_ranking); }
@@ -312,6 +317,20 @@ private:
 		SmpPhysicsFeature& feature;
 	};
 
+	/** @brief Wakes the body scan of an actor whose equipment or 3D has just changed. */
+	class BodyChangeListener final : public RE::BSTEventSink<RE::TESEquipEvent>, public RE::BSTEventSink<RE::TESObjectLoadedEvent>
+	{
+	public:
+		explicit BodyChangeListener(SmpPhysicsFeature& a_feature) noexcept :
+			feature(a_feature) {}
+
+		RE::BSEventNotifyControl ProcessEvent(const RE::TESEquipEvent* a_event, RE::BSTEventSource<RE::TESEquipEvent>*) override;
+		RE::BSEventNotifyControl ProcessEvent(const RE::TESObjectLoadedEvent* a_event, RE::BSTEventSource<RE::TESObjectLoadedEvent>*) override;
+
+	private:
+		SmpPhysicsFeature& feature;
+	};
+
 	/** @brief The collision proxies built for one claim, and how many of them had to fall back on a default. */
 	struct ClaimCollision
 	{
@@ -359,6 +378,7 @@ private:
 		std::vector<RE::NiPointer<RE::NiSkinInstance>> skins;         ///< The skin instances of the claimed model that use at least one rig bone.
 		std::vector<RE::NiPointer<RE::NiAVObject>> cardGeometries;    ///< The geometry of each entry of skins, in the same order.
 		bool skinsBound{};                                            ///< Whether those skin instances were handed to the GPU skinning pass.
+		std::vector<std::pair<int, int>> driverAnchor;                ///< Per collision driver, its own dynamic bone and the kinematic bone its joint chain ends at; -1 when the driver is not a dynamic bone of this claim.
 		std::vector<SmpPhysics::Transform> kinematicInput;            ///< Rebuilt in place each frame; dynamic entries stay the identity.
 		std::vector<SmpPhysics::Transform> previousKinematic;         ///< Last frame's kinematic entries, to detect a teleport.
 		std::vector<SmpPhysics::Transform> restPose;                  ///< What Initialize adopted, so the GPU solver can be given the same rest pose.
@@ -644,7 +664,8 @@ private:
 	json windProbeResult = json::object();
 	mutable std::mutex stateMutex;  ///< Guards everything below, and nothing is called into hdtSMP64 while it is held.
 	std::string linkStatus;
-	SmpPhysics::RefitGuard refitGuard;  ///< Spaces out the soft reloads each actor asks for.
+	SmpPhysics::BodyScanWindows bodyScanWindows;  ///< The actors an equip or load event has just touched.
+	SmpPhysics::RefitGuard refitGuard;            ///< Spaces out the soft reloads each actor asks for.
 	hdt::PluginInterface* linkedInterface{};
 	hdt::PluginInterface* seenInterface{};  ///< Keeps a repeated startup message from relinking or re-warning.
 	hdt::PluginInterface::Version interfaceVersion{};
@@ -698,6 +719,7 @@ private:
 	FrameSyncListener frameSyncListener{ *this };
 	std::atomic<std::uint32_t> healthChanges{};
 	CrosshairListener crosshairListener{ *this };
+	BodyChangeListener bodyChangeListener{ *this };
 	SmpPhysics::CrowdWigs crowdWigs;  ///< What this feature adds to the test crowd.
 	SmpPhysics::HairTarget hairTarget;
 };

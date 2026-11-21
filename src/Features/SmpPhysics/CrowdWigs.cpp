@@ -3,7 +3,6 @@
 #include "RE/B/BSLightingShaderMaterialHairTint.h"
 #include "RE/B/BSLightingShaderProperty.h"
 #include "RE/B/BSVisit.h"
-
 #include "Utils/ArmorNames.h"
 #include "Utils/StringUtils.h"
 
@@ -306,6 +305,16 @@ namespace SmpPhysics
 		a_crowd.SetReport(std::format("{} characters wear the wig {} ({} of {}).", targets.size(), wig->GetName(), a_index + 1, wigs.size()));
 	}
 
+	void CrowdWigs::TakeOffNow(TestBench::TestCrowd& a_crowd)
+	{
+		wornIndex.store(-1, std::memory_order_relaxed);
+		chosen.clear();
+		const std::vector<RE::Actor*> targets = a_crowd.OutfitTargets();
+		for (RE::Actor* actor : targets)
+			TakeOff(*actor);
+		a_crowd.SetReport(std::format("{} characters have their own hair.", targets.size()));
+	}
+
 	void CrowdWigs::Tick()
 	{
 		for (BakedHairWatch& watch : watches) {
@@ -473,6 +482,28 @@ namespace SmpPhysics
 		for (RE::Actor* actor : a_crowd.OutfitTargets())
 			ScheduleTint(*actor);
 		a_crowd.SetReport(std::format("Set the crowd's hair colour to {:08X} and refreshed {} characters.", color->GetFormID(), refreshed));
+	}
+
+	json CrowdWigs::TintReport(const std::vector<RE::Actor*>& a_actors)
+	{
+		json rows = json::array();
+		for (RE::Actor* actor : a_actors) {
+			auto* root = actor ? actor->Get3D() : nullptr;
+			if (!root)
+				continue;
+			json shaders = json::array();
+			RE::BSVisit::TraverseScenegraphGeometries(root, [&](RE::BSGeometry* a_geometry) {
+				auto* property = a_geometry->lightingShaderProp_cast();
+				auto* material = property ? property->GetBaseMaterial() : nullptr;
+				if (material && material->GetFeature() == RE::BSShaderMaterial::Feature::kHairTint) {
+					const auto* tint = static_cast<RE::BSLightingShaderMaterialHairTint*>(material);
+					shaders.push_back({ { "shape", a_geometry->name.c_str() }, { "red", tint->tintColor.red }, { "green", tint->tintColor.green }, { "blue", tint->tintColor.blue } });
+				}
+				return RE::BSVisit::BSVisitControl::kContinue;
+			});
+			rows.push_back({ { "actor", actor->GetFormID() }, { "hairTintShaders", std::move(shaders) } });
+		}
+		return rows;
 	}
 
 	void CrowdWigs::RestoreNaturalColorsNow(TestBench::TestCrowd& a_crowd, bool a_wigsTakeCharacter)

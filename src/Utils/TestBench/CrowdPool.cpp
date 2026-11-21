@@ -3,6 +3,7 @@
 #include "Utils/TestBench/CrowdBases.h"
 #include "Utils/TestBench/TestCrowd.h"
 
+#include <algorithm>
 #include <format>
 #include <map>
 #include <string>
@@ -14,6 +15,7 @@ namespace TestBench
 		constexpr const char* kHumanoidKeyword = "ActorTypeNPC";
 		constexpr RE::FormID kPlayerBaseFormId = 0x7;
 		constexpr RE::FormID kPlayerFactionFormId = 0xDB1;
+		constexpr RE::FormID kPotentialFollowerFactionFormId = 0x5C84D;
 
 		CharacterTraits TraitsOf(const RE::TESNPC& a_npc)
 		{
@@ -68,6 +70,20 @@ namespace TestBench
 			}
 			return ids;
 		}
+	}
+
+	std::vector<std::uint32_t> CollectFemaleFollowers()
+	{
+		std::vector<std::uint32_t> ids;
+		auto* followers = RE::TESForm::LookupByID<RE::TESFaction>(kPotentialFollowerFactionFormId);
+		auto* handler = RE::TESDataHandler::GetSingleton();
+		if (!followers || !handler)
+			return ids;
+		for (const RE::TESNPC* npc : handler->GetFormArray<RE::TESNPC>()) {
+			if (npc && IsAdultWomanCandidate(*npc) && std::ranges::any_of(npc->factions, [followers](const RE::FACTION_RANK& a_membership) { return a_membership.faction == followers; }))
+				ids.push_back(npc->GetFormID());
+		}
+		return ids;
 	}
 
 	std::vector<std::uint32_t> ChooseBases(const SpawnChoice& a_choice)

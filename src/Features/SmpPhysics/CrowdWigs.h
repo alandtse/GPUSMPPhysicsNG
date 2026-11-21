@@ -59,6 +59,9 @@ namespace SmpPhysics
 		bool WearOn(RE::Actor& a_actor, int a_index);
 		/** @brief Takes the wig a_actor wears off and shows its own hair again, or puts back the wig it wore before WearOn first changed it. Game thread only. */
 		void TakeOff(RE::Actor& a_actor);
+		/** @brief Takes the wig off every character the crowd outfits and lets later spawns wear their own again. Game thread only. */
+		void TakeOffNow(TestBench::TestCrowd& a_crowd);
+
 		/** @brief The wig a_actor wears now, or null. Game thread only. */
 		[[nodiscard]] static RE::TESObjectARMO* WornWig(RE::Actor& a_actor);
 		/** @brief The form ID of the wig that is a_actor's own look: the one it wore before WearOn changed it while WearOn's wig is still on, else the one it wears now; 0 for none. Game thread only. */
@@ -83,6 +86,9 @@ namespace SmpPhysics
 		 *          Game thread only. The outcome goes to the crowd's report.
 		 */
 		void RestoreNaturalColorsNow(TestBench::TestCrowd& a_crowd, bool a_wigsTakeCharacter = false);
+
+		/** @brief For each of a_actors, the hair-tinted shaders on its 3D and the colour each holds now, to see whether a wig took the hair colour. Game thread only. */
+		[[nodiscard]] static json TintReport(const std::vector<RE::Actor*>& a_actors);
 
 	private:
 		/** @brief Remembers the colour each of a_actor's hair-tinted shapes holds, for the shapes not yet remembered, so Natural can write it back. */

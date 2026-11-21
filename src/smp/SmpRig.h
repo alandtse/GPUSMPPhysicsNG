@@ -137,6 +137,12 @@ namespace SmpPhysics
 		RigCollision collision;
 	};
 
+	/**
+	 * @brief Per bone, the kinematic bone its joint chain ends at.
+	 * @details A kinematic bone is its own anchor; a bone whose chain never reaches a kinematic one gets -1.
+	 */
+	[[nodiscard]] std::vector<int> KinematicAnchors(const SmpRig& a_rig);
+
 	enum class ParseStatus
 	{
 		Ok,

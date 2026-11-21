@@ -338,6 +338,10 @@ void SmpPhysicsFeature::OnPluginMessage(const SKSE::MessagingInterface::Message*
 	smpInterface->addFrameSyncListener(&frameSyncListener);
 	if (auto* crosshairSource = SKSE::GetCrosshairRefEventSource())
 		crosshairSource->AddEventSink(&crosshairListener);
+	if (auto* events = RE::ScriptEventSourceHolder::GetSingleton()) {
+		events->AddEventSink<RE::TESEquipEvent>(&bodyChangeListener);
+		events->AddEventSink<RE::TESObjectLoadedEvent>(&bodyChangeListener);
+	}
 	{
 		const std::scoped_lock lock(stateMutex);
 		linkedInterface = smpInterface;
@@ -488,10 +492,12 @@ void SmpPhysicsFeature::RegisterUxActions()
 				rows.push_back({ { "name", std::string(color.name) }, { "formId", color.formId } });
 			return rows;
 		});
-	FEATURE_COMMAND("setTestCrowdWig", "Put a wig on every test character standing now, and on the player while stripTestCrowd's includePlayer is on. Args: name (string, case-insensitive part of an entry of testCrowdWigs; the first match is worn) or index (number, an entry of testCrowdWigs). Read the outcome from testCrowdReport.",
+	FEATURE_COMMAND(SmpPhysics::CrowdWearCommands::kWig, "Put a wig on every test character standing now, and on the player while stripTestCrowd's includePlayer is on. Args: name (string, case-insensitive part of an entry of testCrowdWigs; the first match is worn) or index (number, an entry of testCrowdWigs). Read the outcome from testCrowdReport.",
 		[](Feature* a_self, const json& a_args) {
 			static_cast<SmpPhysicsFeature*>(a_self)->WearWig(TestBench::ItemIndexFromArgs(a_args, SmpPhysics::CrowdWigs::WigNames()));
 		});
+	FEATURE_COMMAND(SmpPhysics::CrowdWearCommands::kTakeOffWig, "Take the wig off every test character standing now, and on the player while stripTestCrowd's includePlayer is on, so their own hair shows again; later spawns wear their own too. Read the outcome from testCrowdReport.",
+		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->TakeOffCrowdWigs(); });
 	FEATURE_QUERY("testCrowdWigs", "List the wigs the test crowd can wear, with their index for setTestCrowdWig, and which one was worn last (worn is -1 for none). Args: filter (string, case-insensitive part of the name, default none), limit (number, default 100).",
 		[](const Feature* a_self, const json& a_args) -> json {
 			json result;
@@ -537,6 +543,8 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->SetCollisionOverride(a_args.value("piece", std::string{}), a_args.value("target", std::string{}), a_args.value("off", true)); });
 	FEATURE_COMMAND("clearCollisionOverrides", "Remove every setCollisionOverride switch; run reevaluatePlayer afterwards.",
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->SetCollisionOverride({}, {}, false); });
+	FEATURE_QUERY("crowdWigTints", "For each test character, or the actor named by actorFormID, the hair-tinted shaders on its 3D and the colour each holds now, so a wig that ignores the hair colour can be told from one that took it.",
+		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->CrowdWigTints(a_args.value("actorFormID", 0u)); });
 	FEATURE_COMMAND("nifPhysicsProbe", "Prototype: read the leading bytes of every body armor's and cloak's models on a worker thread and look for hdtSMP64's physics extra data, to time a scan that does not dress anyone. Read the outcome from nifPhysicsProbeResult.",
 		[](Feature*, const json&) { NifProbe::Start(); });
 	FEATURE_QUERY("nifPhysicsProbeResult", "The nifPhysicsProbe outcome: running, armors done of total, models read and missing, bytes read, elapsed milliseconds and milliseconds per model, and the models whose header names the physics extra data with the xml paths it holds.",
@@ -941,6 +949,14 @@ void SmpPhysicsFeature::ApplyCrowdHairColor(std::string a_color)
 			else
 				crowdWigs.SetHairColorNow(TestBench::GetCrowd(), color);
 		});
+}
+
+json SmpPhysicsFeature::CrowdWigTints(RE::FormID a_formID) const
+{
+	if (!a_formID)
+		return SmpPhysics::CrowdWigs::TintReport(TestBench::GetCrowd().OutfitTargets());
+	auto* actor = RE::TESForm::LookupByID<RE::Actor>(a_formID);
+	return SmpPhysics::CrowdWigs::TintReport(actor ? std::vector<RE::Actor*>{ actor } : std::vector<RE::Actor*>{});
 }
 
 std::vector<SmpPhysicsFeature::ClaimRow> SmpPhysicsFeature::GetClaimRows() const
@@ -1410,6 +1426,20 @@ RE::BSEventNotifyControl SmpPhysicsFeature::CrosshairListener::ProcessEvent(cons
 	const auto* actor = a_event && a_event->crosshairRef ? a_event->crosshairRef->As<RE::Actor>() : nullptr;
 	if (actor && !actor->IsPlayerRef())
 		feature.hairTarget.NoteCrosshair(actor->GetFormID());
+	return RE::BSEventNotifyControl::kContinue;
+}
+
+RE::BSEventNotifyControl SmpPhysicsFeature::BodyChangeListener::ProcessEvent(const RE::TESEquipEvent* a_event, RE::BSTEventSource<RE::TESEquipEvent>*)
+{
+	if (a_event && a_event->actor)
+		feature.bodyScanWindows.Note(a_event->actor->GetFormID());
+	return RE::BSEventNotifyControl::kContinue;
+}
+
+RE::BSEventNotifyControl SmpPhysicsFeature::BodyChangeListener::ProcessEvent(const RE::TESObjectLoadedEvent* a_event, RE::BSTEventSource<RE::TESObjectLoadedEvent>*)
+{
+	if (a_event)
+		feature.bodyScanWindows.Note(a_event->formID);
 	return RE::BSEventNotifyControl::kContinue;
 }
 
@@ -2098,6 +2128,12 @@ void SmpPhysicsFeature::WearWig(int a_index)
 {
 	if (auto* task = SKSE::GetTaskInterface())
 		task->AddTask([this, a_index] { crowdWigs.WearNow(TestBench::GetCrowd(), a_index); });
+}
+
+void SmpPhysicsFeature::TakeOffCrowdWigs()
+{
+	if (auto* task = SKSE::GetTaskInterface())
+		task->AddTask([this] { crowdWigs.TakeOffNow(TestBench::GetCrowd()); });
 }
 
 namespace
@@ -3581,9 +3617,26 @@ void SmpPhysicsFeature::GatherSolverInput(Claim& a_claim)
 			a_claim.kinematicInput[index] = ToSolverTransform(a_claim.nodes[index]->world);
 	}
 	gpuSkinning.RecordStepPoses(a_claim.token);
+	if (a_claim.driverAnchor.size() != a_claim.collisionDrivers.size() && a_claim.restPose.size() == a_claim.nodes.size()) {
+		const std::vector<int> anchors = SmpPhysics::KinematicAnchors(rig);
+		a_claim.driverAnchor.assign(a_claim.collisionDrivers.size(), { -1, -1 });
+		for (std::size_t index = 0; index < a_claim.collisionDrivers.size(); ++index) {
+			for (std::size_t bone = 0; bone < a_claim.nodes.size(); ++bone) {
+				if (rig.bones[bone].kinematic || a_claim.nodes[bone].get() != a_claim.collisionDrivers[index].get())
+					continue;
+				if (anchors[bone] >= 0)
+					a_claim.driverAnchor[index] = { static_cast<int>(bone), anchors[bone] };
+				break;
+			}
+		}
+	}
 	for (std::size_t index = 0; index < a_claim.collisionDrivers.size(); ++index) {
 		const auto* node = a_claim.collisionDrivers[index].get();
 		a_claim.driverWorld[index] = node != nullptr ? ToSolverTransform(node->world) : SmpPhysics::Transform{};
+		if (index < a_claim.driverAnchor.size() && a_claim.driverAnchor[index].second >= 0) {
+			const auto [bone, anchor] = a_claim.driverAnchor[index];
+			a_claim.driverWorld[index] = a_claim.kinematicInput[static_cast<std::size_t>(anchor)] * a_claim.restPose[static_cast<std::size_t>(anchor)].Inverse() * a_claim.restPose[static_cast<std::size_t>(bone)];
+		}
 	}
 	UpdateExternalColliders(a_claim);
 

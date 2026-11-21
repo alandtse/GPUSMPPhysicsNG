@@ -19,7 +19,7 @@ namespace SmpPhysics::ReadyWeaponGate
 	/** @brief The hands whose grip is meant for hair this frame: a bit per hand. Call every frame, from any thread. */
 	void SetHeldHands(std::uint32_t a_mask) noexcept;
 
-	/** @brief Whether a controller's grip is squeezed, read from OpenVR so it does not depend on the game or HIGGS passing the button event on. */
+	/** @brief Whether a controller's grip is squeezed, from the controller's raw input events; open while a menu is up. */
 	[[nodiscard]] bool IsGripDown(bool a_isLeft) noexcept;
 
 	/** @brief How many Ready Weapon events the gate has swallowed since the game started. */

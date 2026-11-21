@@ -19,6 +19,9 @@ namespace TestBench
 		CharacterFilter filter;                 ///< Which kinds of character to leave out.
 	};
 
+	/** @brief Every named adult woman the game loaded who is in the potential follower faction and not hostile to the player, in form order. Call it on the game thread. */
+	[[nodiscard]] std::vector<std::uint32_t> CollectFemaleFollowers();
+
 	/**
 	 * @brief Picks the bases of a spawn, leaving out the characters the filter excludes. Call it on the game thread.
 	 * @details Logs how many candidates there were and how many children and elderly the filter left out, with the races it matched.

@@ -62,10 +62,35 @@ TEST_CASE("A hand index outside the two hands is never swallowed", "[readyweapon
 	CHECK_FALSE(tracker.Follow(2, true));
 }
 
-TEST_CASE("A grip is closed by its button bit or by squeezing past the threshold", "[readyweapongate]")
+TEST_CASE("A grip is closed from its press until its release", "[readyweapongate]")
 {
-	CHECK(IsGripClosed(true, 0.0f));
-	CHECK(IsGripClosed(false, kGripAxisClosedAbove + 0.01f));
-	CHECK_FALSE(IsGripClosed(false, kGripAxisClosedAbove));
-	CHECK_FALSE(IsGripClosed(false, 0.0f));
+	GripLatch latch;
+	CHECK_FALSE(latch.IsClosed(kRight, false));
+	latch.Set(kRight, true);
+	CHECK(latch.IsClosed(kRight, false));
+	latch.Set(kRight, false);
+	CHECK_FALSE(latch.IsClosed(kRight, false));
+}
+
+TEST_CASE("Each hand keeps its own grip", "[readyweapongate]")
+{
+	GripLatch latch;
+	latch.Set(kLeft, true);
+	CHECK(latch.IsClosed(kLeft, false));
+	CHECK_FALSE(latch.IsClosed(kRight, false));
+}
+
+TEST_CASE("A menu reads a grip as open and forgets the press", "[readyweapongate]")
+{
+	GripLatch latch;
+	latch.Set(kLeft, true);
+	CHECK_FALSE(latch.IsClosed(kLeft, true));
+	CHECK_FALSE(latch.IsClosed(kLeft, false));
+}
+
+TEST_CASE("A hand index outside the two hands has no grip", "[readyweapongate]")
+{
+	GripLatch latch;
+	latch.Set(2, true);
+	CHECK_FALSE(latch.IsClosed(2, false));
 }
