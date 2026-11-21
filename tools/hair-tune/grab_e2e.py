@@ -10,7 +10,8 @@ injects controller poses and grip state through devbench's vrTrackedSet input an
   hair off the hand      -> the palm points at nothing and HIGGS keeps the hand
   hair in the palm's cast -> the palm points at hair, strands are in reach, HIGGS is kept from that hand only
   grip squeezed          -> the hand closes, strands are held, the controller pulses
-  hand moved while held  -> the hair is pulled away from its animation pose and the controller pulses again
+  hand moved while held  -> the held strands follow the hand, the hair is pulled away from its animation pose and the controller pulses again
+  hand moved, no grip    -> the same strands stay where they were
   hand pulled far away   -> the strands are dropped and not grabbed again until the grip opens
   grip released          -> nothing held
   hair moved off the hand -> HIGGS given back, then taken from the other hand
@@ -21,8 +22,11 @@ Exit code 0 when every check passes.
 """
 
 import argparse
+import math
+import statistics
 import sys
 import time
+import urllib.error
 
 import ingame
 
@@ -41,6 +45,12 @@ SETTLE_SECONDS = 7.0  # for injected hands to reach their poses, and for release
 MINIMUM_PULLED_DISPLACEMENT = 0.5  # game units the held hair must sit from its animation pose while pulled
 NEAR_MISS = 40.0                   # game units between the hair and the hand's line: past grab reach (5) and past the width of a lock of hair
 MAXIMUM_PLAYER_DRIFT = 3.0         # game units the player may move while the test holds a character against a hand
+MINIMUM_STRAND_FOLLOW = 1.0  # game units a held strand must move when the hand moves PULL_RIGHT from REST_RIGHT (about 4.9)
+MAXIMUM_UNHELD_MOVE = 1.0    # game units the same strands may move when the hand moves the same way with no grip
+CONTROL_PULL_START_MS = 8000
+CONTROL_PULL_END_MS = 10500
+CONTROL_END_MS = 15000
+CONTROL_START_ATTEMPTS = 25  # one second apart, for the main sequence's remaining frames to run out
 MAXIMUM_REST_DISTANCE = 1.0        # game units a held strand may be from the hand when the hand is still
 
 
@@ -62,6 +72,55 @@ def right_hand(t):
 
 def left_hand(t):
     return REST_LEFT, False
+
+
+def bone_positions(bench, actor, bones):
+    """The solver pose of the given rig bones of an actor, in each claim's root frame, keyed by claim actor and bone."""
+    positions = {}
+    for claim in bench.query('solverBones', actorFormID=actor).get('claims', []):
+        for bone in claim.get('bones', []):
+            if bone['bone'] in bones:
+                positions[(claim['actorFormID'], bone['bone'])] = bone['local']
+    return positions
+
+
+def moved_distances(before, after):
+    return sorted(math.dist(after[key], before[key]) for key in before if key in after)
+
+
+def unheld_strand_move(bench, actor, bones):
+    """Moves the right hand as the pull does with the grip never pressed, and returns how far the given bones moved."""
+    def right(t):
+        position = REST_RIGHT
+        if CONTROL_PULL_START_MS <= t < CONTROL_PULL_END_MS:
+            fraction = (t - CONTROL_PULL_START_MS) / (CONTROL_PULL_END_MS - CONTROL_PULL_START_MS)
+            position = tuple(a + (b - a) * fraction for a, b in zip(REST_RIGHT, PULL_RIGHT))
+        elif t >= CONTROL_PULL_END_MS:
+            position = PULL_RIGHT
+        return position, False
+
+    token = None
+    for _ in range(CONTROL_START_ATTEMPTS):
+        try:
+            token = ingame.start_tracked_sequence(bench, ingame.tracked_frames(CONTROL_END_MS, left_hand, right), 'grab-e2e-control')
+            break
+        except urllib.error.HTTPError as error:
+            if error.code != 409:  # 409: devbench keeps the stopped sequence's owner until its frames run out
+                raise
+            time.sleep(1.0)
+    if token is None:
+        return []
+    started = time.time()
+    try:
+        time.sleep(2.0)
+        bench.place_hair_at_hand('right')
+        time.sleep(max(0.0, started + CONTROL_PULL_START_MS / 1000 - 0.5 - time.time()))
+        before = bone_positions(bench, actor, bones)
+        time.sleep(max(0.0, started + CONTROL_PULL_END_MS / 1000 + 1.0 - time.time()))
+        after = bone_positions(bench, actor, bones)
+    finally:
+        ingame.stop_tracked_sequence(bench, token)
+    return moved_distances(before, after)
 
 
 def player_position(bench):
@@ -143,7 +202,14 @@ def main():
         checks.check('held strands sit on the hand', bool(distances) and max(distances) <= MAXIMUM_REST_DISTANCE, [round(d, 2) for d in distances])
         checks.check('the weapon is left alone', grip.get('weaponDrawn') == weapon, grip.get('weaponDrawn'))
 
+        at(PULL_START_MS / 1000 - 0.5)
+        held_bones = {entry['bone'] for entry in bench.status().get('heldStrands') or []}
+        bones_before = bone_positions(bench, actor, held_bones)
+
         at(FAR_START_MS / 1000 - 0.5)
+        followed = moved_distances(bones_before, bone_positions(bench, actor, held_bones))
+        follow = statistics.median(followed) if followed else 0.0
+        checks.check('the held strands follow the pulling hand', follow >= MINIMUM_STRAND_FOLLOW, [round(f, 2) for f in followed])
         state, grip = hands(bench)
         checks.check('the grip holds while the hand moves', state['right']['closed'] and state['right']['holding'] > 0, [state['right']['closed'], state['right']['holding']])
         checks.check('a taut strand pulses the controller again', grip.get('hapticPulses', 0) > pulses_at_grab, [pulses_at_grab, grip.get('hapticPulses')])
@@ -165,6 +231,12 @@ def main():
         moved = ingame.wait_until(lambda: (lambda s: s['left']['higgsDisabled'] and not s['right']['higgsDisabled'])(hands(bench)[0]), 4)
         state, grip = hands(bench)
         checks.check('HIGGS is handed back when the hair leaves, and taken from the hand it moved to', bool(moved), [state['left']['higgsDisabled'], state['right']['higgsDisabled']])
+
+        ingame.stop_tracked_sequence(bench, token)
+        token = None
+        unheld = unheld_strand_move(bench, actor, held_bones)
+        unheld_move = statistics.median(unheld) if unheld else 1e9
+        checks.check('the same strands stay put when the hand moves with no grip', bool(unheld) and unheld_move <= MAXIMUM_UNHELD_MOVE, [round(m, 2) for m in unheld])
     finally:
         if collision_off:
             bench.post('console', {'command': 'tcl'}, 10)
