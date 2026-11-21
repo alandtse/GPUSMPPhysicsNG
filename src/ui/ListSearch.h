@@ -11,10 +11,10 @@
 
 namespace SettingsUi
 {
-	/** @brief What a list's filter box searches for one item: its name and physics file paths, lower case, so a filter matches either. */
-	[[nodiscard]] inline std::string SearchText(std::string_view a_name, std::string_view a_files)
+	/** @brief What a list's filter box searches for one item: its name, physics file paths and plugin file name, lower case, so a filter matches any. */
+	[[nodiscard]] inline std::string SearchText(std::string_view a_name, std::string_view a_files, std::string_view a_plugin = {})
 	{
-		return Util::SearchKey(a_name) + '\n' + Util::SearchKey(a_files);
+		return Util::SearchKey(a_name) + '\n' + Util::SearchKey(a_files) + '\n' + Util::SearchKey(a_plugin);
 	}
 
 	/** @brief How much of a scan is done, from 0 to 1; 0 while its size is unknown. */

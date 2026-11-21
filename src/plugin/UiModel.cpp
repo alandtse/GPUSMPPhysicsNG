@@ -265,6 +265,29 @@ namespace
 		};
 	}
 
+	/** @brief Each item's plugin file name, for a list's filter to match before or after a scan; a_skip leading entries have no item. */
+	std::function<std::vector<std::string>()> ItemPlugins(std::function<std::vector<RE::TESForm*>()> a_forms, std::size_t a_skip)
+	{
+		struct Cache
+		{
+			std::vector<RE::TESForm*> forms;
+			std::vector<std::string> values;
+		};
+		return [forms = std::move(a_forms), a_skip, cache = std::make_shared<Cache>()] {
+			const std::vector<RE::TESForm*> items = forms();
+			const bool same = cache->forms.size() == items.size() && std::equal(items.begin(), items.end(), cache->forms.begin());
+			if (!same) {
+				cache->forms = items;
+				cache->values.assign(a_skip, std::string{});
+				for (const RE::TESForm* item : items) {
+					const RE::TESFile* file = item ? item->GetFile(0) : nullptr;
+					cache->values.push_back(file ? std::string(file->GetFilename()) : std::string{});
+				}
+			}
+			return cache->values;
+		};
+	}
+
 	/** @brief The report for the item a list has selected, refreshed at most once a second; empty before a scan or when it has no physics. a_skip leading entries have no item. */
 	std::function<std::string()> SelectedItemReport(std::function<std::vector<RE::TESForm*>()> a_forms, const int* a_index, int a_skip)
 	{
@@ -443,6 +466,7 @@ namespace
 	{
 		const auto scanned = std::make_shared<ScannedFiles>(ScannedFiles{ std::move(a_forms), 0, {} });
 		a_row.itemFilesFn = ItemFiles(scanned, a_skip);
+		a_row.itemPluginsFn = ItemPlugins(scanned->forms, a_skip);
 		a_row.progressFn = [] { return NifProbe::Running() ? NifProbe::Progress() : std::pair<std::size_t, std::size_t>{}; };
 		a_row.itemStatusFn = HealthColours(scanned, a_skip);
 		a_row.itemBonesFn = ItemBones(scanned, a_skip);
