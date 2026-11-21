@@ -186,6 +186,8 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] UiStatus GetUiStatus() const;
 	/** @brief Sets the test crowd's hair colour from the game thread, or puts back the natural colours when a_color is empty. */
 	void ApplyCrowdHairColor(std::string a_color);
+	/** @brief The hair-tinted shaders and their colours now on the actor a_formID names, or on each crowd character when it is 0; see CrowdWigs::TintReport. Game thread. */
+	[[nodiscard]] json CrowdWigTints(RE::FormID a_formID) const;
 	/** @brief Sets the hair target's hair colour (an empty name puts its own back) on the game thread; a worn wig takes it. */
 	void ApplyTargetHairColor(std::string a_color);
 	/** @brief The live claims and the files switched off for testing, one row each, for the Claims page. */

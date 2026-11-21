@@ -9,6 +9,7 @@
 #include "Utils/StringUtils.h"
 #include "Utils/TestBench/TestCrowd.h"
 #include "smp/NifPhysicsScan.h"
+#include "smp/NifShaderScan.h"
 #include "smp/PathKey.h"
 #include "smp/XmlAudit.h"
 
@@ -16,9 +17,11 @@
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <string>
 #include <thread>
@@ -30,12 +33,14 @@ namespace NifProbe
 	{
 		constexpr std::uint32_t kHeaderBytes = 65536;
 		constexpr std::uint32_t kChunk = 4096;
+		constexpr std::uint32_t kWigModelBytes = 8u << 20;  ///< Wig shaders sit after the vertex data, so a wig is read whole.
 
 		struct Target
 		{
 			std::string armor;
 			RE::FormID formID{};
 			std::vector<std::string> models;
+			bool wig{};  ///< A hair-slot armor, whose models are read whole to see whether their shaders take a hair colour.
 		};
 
 		struct Hit
@@ -67,6 +72,7 @@ namespace NifProbe
 		std::size_t bytesRead = 0;
 		double milliseconds = 0.0;
 		std::vector<Hit> hits;
+		std::map<RE::FormID, bool> takesHairTint;  ///< Per wig whose models were read: whether any of its shaders takes the hair colour.
 		SmpPhysics::XmlAudit audit;
 		std::size_t xmlOnDisk = 0;
 		std::atomic<std::uint32_t> generation{ 0 };
@@ -81,7 +87,7 @@ namespace NifProbe
 			}
 		}
 
-		std::string ReadHeader(const std::string& a_model, bool& a_found)
+		std::string ReadHeader(const std::string& a_model, bool& a_found, std::uint32_t a_limit = kHeaderBytes)
 		{
 			RE::BSResourceNiBinaryStream stream("Meshes\\" + a_model);
 			a_found = stream.good();
@@ -89,7 +95,7 @@ namespace NifProbe
 			if (!a_found)
 				return bytes;
 			std::vector<char> buffer(kChunk);
-			while (bytes.size() < kHeaderBytes) {
+			while (bytes.size() < a_limit) {
 				const std::uint32_t before = stream.tell();
 				const bool whole = stream.read(buffer.data(), kChunk);
 				const std::uint32_t got = std::min<std::uint32_t>(stream.tell() - before, kChunk);
@@ -140,9 +146,16 @@ namespace NifProbe
 			std::size_t missed = 0;
 			std::size_t read = 0;
 			std::vector<Hit> found;
+			std::map<RE::FormID, bool> tints;
 			std::size_t checked = 0;
 			for (const Target& target : a_targets) {
 				for (const std::string& model : target.models) {
+					if (target.wig) {
+						bool exists = false;
+						const SmpPhysics::NifShaderHint shaders = SmpPhysics::ScanNifShaders(ReadHeader(model, exists, kWigModelBytes));
+						if (shaders.lightingShaders)
+							tints[target.formID] = tints[target.formID] || shaders.hairTintShaders > 0;
+					}
 					auto known = seen.find(model);
 					if (known == seen.end()) {
 						bool exists = false;
@@ -174,6 +187,7 @@ namespace NifProbe
 			bytesRead = read;
 			milliseconds = elapsed;
 			hits = std::move(found);
+			takesHairTint = std::move(tints);
 			audit = std::move(newAudit);
 			xmlOnDisk = onDisk.size();
 			generation.fetch_add(1, std::memory_order_release);
@@ -192,7 +206,8 @@ namespace NifProbe
 		const auto addArmor = [&](const RE::TESObjectARMO* a_armor) {
 			if (!a_armor || !listed.insert(a_armor->GetFormID()).second)
 				return;
-			Target target{ a_armor->GetName(), a_armor->GetFormID(), {} };
+			Target target{ a_armor->GetName(), a_armor->GetFormID(), {}, false };
+			target.wig = (a_armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kHair) || a_armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kLongHair)) && !a_armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kHead);
 			for (const RE::TESObjectARMA* addon : a_armor->armorAddons) {
 				if (!addon)
 					continue;
@@ -222,6 +237,7 @@ namespace NifProbe
 			total = missing = bytesRead = 0;
 			milliseconds = 0.0;
 			hits.clear();
+			takesHairTint.clear();
 			audit = {};
 			xmlOnDisk = 0;
 		}
@@ -251,6 +267,13 @@ namespace NifProbe
 	{
 		const std::scoped_lock lock(mutex);
 		return { done.load(std::memory_order_relaxed), armors };
+	}
+
+	std::optional<bool> TakesHairTint(RE::FormID a_armor)
+	{
+		const std::scoped_lock lock(mutex);
+		const auto found = takesHairTint.find(a_armor);
+		return found == takesHairTint.end() ? std::nullopt : std::optional<bool>(found->second);
 	}
 
 	std::vector<std::string> XmlPaths(RE::FormID a_armor)
@@ -305,9 +328,12 @@ namespace NifProbe
 		json rows = json::array();
 		for (const Hit& hit : hits)
 			rows.push_back({ { "armor", hit.armor }, { "formId", hit.formID }, { "model", hit.model }, { "xml", hit.xml } });
+		json tints = json::object();
+		for (const auto& [formId, takes] : takesHairTint)
+			tints[std::format("{:08X}", formId)] = takes;
 		const bool finished = !running.load(std::memory_order_acquire);
 		return { { "running", !finished }, { "armorsDone", done.load(std::memory_order_relaxed) }, { "armors", armors }, { "modelsRead", total },
 			{ "modelsMissing", missing }, { "bytesRead", bytesRead }, { "elapsedMs", milliseconds },
-			{ "msPerModel", total ? milliseconds / static_cast<double>(total) : 0.0 }, { "withPhysicsExtraData", hits.size() }, { "hits", std::move(rows) } };
+			{ "msPerModel", total ? milliseconds / static_cast<double>(total) : 0.0 }, { "withPhysicsExtraData", hits.size() }, { "hits", std::move(rows) }, { "wigTakesHairTint", std::move(tints) } };
 	}
 }

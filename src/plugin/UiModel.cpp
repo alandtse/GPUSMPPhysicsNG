@@ -138,16 +138,21 @@ namespace
 	/** @brief The line that stands in for the debug overlay rows while developer mode is off. */
 	Row NotDeveloperNote()
 	{
-		Row row = Text([] { return std::string("Developer mode unlocks the debug overlay and the Armor physics and Test crowd pages."); });
+		Row row = Text([] { return std::string("Developer mode unlocks the debug overlay and the Test bench page."); });
 		row.shown = [] { return !globals::state->IsDeveloperMode(); };
 		return row;
 	}
 
-	/** @brief Runs a registered TestCrowd command with a_args, as devbench's invokeCommand would. */
+	/** @brief Runs a registered TestCrowd command, or an SmpPhysics feature command such as the wig ones, with a_args, as devbench's invokeCommand would. */
 	void RunCrowdCommand(const char* a_name, const json& a_args = json::object())
 	{
-		if (const auto* entry = Util::DevBenchUx::Registry::GetSingleton().FindToolCommand(TestBench::kOwnerName, a_name))
-			entry->fn(a_args);
+		const auto& registry = Util::DevBenchUx::Registry::GetSingleton();
+		if (const auto* tool = registry.FindToolCommand(TestBench::kOwnerName, a_name))
+			tool->fn(a_args);
+		else if (const auto* feature = registry.FindCommand(Instance().GetShortName(), a_name))
+			feature->fn(&Instance(), a_args);
+		else
+			logger::warn("[GPU SMP Physics] the Test bench page ran '{}', which no command registers", a_name);
 	}
 
 	std::vector<std::string> WithFirst(const char* a_first, const std::vector<std::string>& a_rest)
@@ -316,6 +321,21 @@ namespace
 		return a_row;
 	}
 
+	/** @brief Marks the wigs the last scan found no hair-tinted shader in, since the hair colour box cannot recolour those. */
+	Row WithTintFlag(Row a_row)
+	{
+		a_row.itemsFn = [names = std::move(a_row.itemsFn)] {
+			std::vector<std::string> items = names();
+			const std::vector<RE::TESObjectARMO*>& forms = SmpPhysics::CrowdWigs::WigForms();
+			for (std::size_t index = 0; index < items.size() && index < forms.size(); ++index) {
+				if (forms[index] && NifProbe::TakesHairTint(forms[index]->GetFormID()) == false)
+					items[index] += " (fixed colour)";
+			}
+			return items;
+		};
+		return a_row;
+	}
+
 	/**
 	 * @brief A kind of wearable item the pickers list: its names and forms, and what the crowd wears now.
 	 * @details Indexes are the list's, which has skip leading entries (a "None") before the first form. Devbench reaches the same lists through
@@ -367,7 +387,7 @@ namespace
 			0,
 			SmpPhysics::TargetItem::Wig,
 			"wig",
-			WithHairMatch
+			[](Row a_row) { return WithTintFlag(WithHairMatch(std::move(a_row))); }
 		};
 		return kind;
 	}
@@ -380,7 +400,7 @@ namespace
 			const std::vector<std::string> names = a_kind.names();
 			return worn >= 0 && worn < static_cast<int>(names.size()) ? names[static_cast<std::size_t>(worn)] : std::string("none");
 		};
-		return std::format("Wearing: {} / {} / {}", part(ArmorKind()), part(CloakKind()), part(WigKind()));
+		return std::format("Test characters wear: {} / {} / {}", part(ArmorKind()), part(CloakKind()), part(WigKind()));
 	}
 
 	/** @brief A button that copies WornCombo, so a combination can be written down or sent. */
@@ -461,26 +481,28 @@ namespace
 		return row;
 	}
 
+	int targetSource = 0;
+
+	/** @brief Where the target comes from: left on Auto, the console selection else you; a source with nothing to take falls back to Auto. */
 	std::vector<Row> HairTargetRows()
 	{
-		const auto pin = [](SmpPhysics::HairTargetSource a_source) { return [a_source] { Instance().PinHairTarget(a_source); }; };
-		Row console = Button("Console selection", "Matches hair to and dresses the reference selected with prid in the console. A new selection is taken at once unless you picked a source here.", pin(SmpPhysics::HairTargetSource::Console));
-		console.enabled = [] { return Instance().HairTargetState().hasConsole; };
-		Row crosshair = Button("Crosshair target", "Matches hair to and dresses the character you last looked at before opening this menu.", pin(SmpPhysics::HairTargetSource::Crosshair), true);
-		crosshair.enabled = [] { return Instance().HairTargetState().hasCrosshair; };
-		std::vector<Row> rows{
-			Header("Target"),
-			TargetLine(),
-			std::move(console),
-			std::move(crosshair),
-			Button("Me", "Matches hair to and dresses you.", pin(SmpPhysics::HairTargetSource::Player), true),
-			Button("Auto", "Lets the console selection choose again; with none, it is you.", [] { Instance().UnpinHairTarget(); }, true), Text([] { return std::string("Select someone with prid in the console, or look at them and open this menu. Wigs are listed closest first to their hair, or to the wig they wear."); })
-		};
-		return rows;
+		Row source = Pick(
+			"Target source", "Auto takes the character selected with prid in the console, or you when there is none. Console selection and Crosshair target (the character you last looked at before opening this menu) stay on that character; Me is you.", &targetSource, [] { return std::vector<std::string>{ "Auto", "Console selection", "Crosshair target", "Me" }; },
+			[] {
+				const SmpPhysics::HairTargetView view = Instance().HairTargetState();
+				const bool missing = (targetSource == 1 && !view.hasConsole) || (targetSource == 2 && !view.hasCrosshair);
+				if (missing || targetSource == 0) {
+					targetSource = 0;
+					Instance().UnpinHairTarget();
+					return;
+				}
+				static constexpr SmpPhysics::HairTargetSource sources[] = { SmpPhysics::HairTargetSource::Console, SmpPhysics::HairTargetSource::Crosshair, SmpPhysics::HairTargetSource::Player };
+				Instance().PinHairTarget(sources[targetSource - 1]);
+			});
+		return { Header("Target"), TargetLine(), std::move(source) };
 	}
 
-	/** @brief Which characters the pickers' Put on and Take off reach: the test characters (the default) or the target alone. */
-	/** @brief The scope an Apply to box entry names; null, the Armor physics page's, is the target. */
+	/** @brief The scope an Apply to box entry names; null, as when no box is shown, is the target. */
 	SmpPhysics::ApplyTo ScopeOf(const int* a_scope)
 	{
 		return SmpPhysics::ApplyToOf(a_scope ? std::optional<int>(*a_scope) : std::nullopt);
@@ -531,12 +553,11 @@ namespace
 		const auto picked = [&a_kind, a_index] { return *a_index - a_kind.skip >= 0; };
 		const auto onCrowd = [a_scope] { return ScopeOf(a_scope) == SmpPhysics::ApplyTo::Crowd; };
 		const auto dresses = [a_scope] { return ScopeOf(a_scope) != SmpPhysics::ApplyTo::Nobody; };
-		Row wear = Button("Put on", std::format("Puts the picked {} on the target alone, or on every test character (and you while Include the player is on) when Apply to says so. An item stays in a character's inventory in your save until you take it off.", a_kind.noun).c_str(),
+		Row wear = Button("Put on", std::format("Puts the picked {} on whoever Apply to names. An item stays in a character's inventory in your save until you take it off.", a_kind.noun).c_str(),
 			[&a_kind, a_index, onCrowd] { ApplyWear(a_kind, false, *a_index - a_kind.skip, onCrowd()); });
 		wear.enabled = [picked, dresses] { return picked() && dresses(); };
-		wear.shown = dresses;
-		Row take = Button("Take off", std::format("Takes the {} off the target or the test characters, as Apply to says, and puts back what they wore; a wig shows their own hair again.", a_kind.noun).c_str(), [&a_kind, onCrowd] { ApplyWear(a_kind, true, 0, onCrowd()); }, true);
-		take.shown = dresses;
+		Row take = Button("Take off", std::format("Takes the {} off whoever Apply to names and puts back what they wore; a wig shows their own hair again.", a_kind.noun).c_str(), [&a_kind, onCrowd] { ApplyWear(a_kind, true, 0, onCrowd()); }, true);
+		take.enabled = dresses;
 		return { std::move(wear), std::move(take) };
 	}
 
@@ -546,7 +567,7 @@ namespace
 		std::vector<Row> wear = WearRows(a_kind, a_index, a_scope);
 		Row list = ItemList(a_kind, a_label, a_tooltip, a_index);
 		list.hideLabel = true;
-		list.tooltip += " Double-click an item, or step with Previous and Next, to put it on.";
+		list.tooltip += " Double-click an item to put it on.";
 		list.onActivated = [enabled = wear.front().enabled, wearNow = wear.front().onChanged] {
 			if (enabled())
 				wearNow();
@@ -572,11 +593,10 @@ namespace
 	SettingsUi::Model model;
 	SettingsUi::Model claimsModel;
 	SettingsUi::Model reportModel;
-	SettingsUi::Model physicsModel;
 	SettingsUi::Model crowdModel;
 	SettingsUi::Model developerModel;
 
-	/** @brief What the item pickers on the Armor physics and Test crowd pages have selected: the kind shown and each kind's picked entry. */
+	/** @brief What the item pickers on the Test bench page have selected: the kind shown and each kind's picked entry. */
 	struct PickerChoices
 	{
 		int kind = 0;
@@ -585,13 +605,13 @@ namespace
 		int wig = -1;
 	} pickerChoices;
 
-	/** @brief Which characters the Test crowd page's pickers reach. */
-	int crowdScope = static_cast<int>(SmpPhysics::ApplyTo::Crowd);
+	/** @brief Which characters the Test bench page's pickers reach; nobody until the user picks, so browsing cannot dress anyone. */
+	int crowdScope = static_cast<int>(SmpPhysics::ApplyTo::Nobody);
 
 	/** @brief The Apply to box on the Test crowd page. */
 	Row ApplyToPick()
 	{
-		return Pick("Apply to", "Who the pickers below dress: every test character, the target chosen under Target, or nobody, so the lists only browse. Hair colour on the target is set here; the crowd's is under Hair colour.", &crowdScope, [] { return std::vector<std::string>{ "Test characters", "Target", "Nobody (browse only)" }; });
+		return Pick("Apply to", "Who the pickers below dress: every test character, the target chosen under Target, or nobody, so the lists only browse. With Wigs showing, the hair colour box sets the hair of whoever this reaches.", &crowdScope, [] { return std::vector<std::string>{ "Test characters", "Target", "Nobody (browse only)" }; });
 	}
 
 	/** @brief Marks every row as shown only while a_shown holds. */
@@ -608,12 +628,20 @@ namespace
 		const auto showing = [](int a_kind) { return [a_kind] { return pickerChoices.kind == a_kind; }; };
 		std::vector<Row> rows{ Pick("Item type", "Which kind of item the list below shows. Each kind keeps its own pick.", &pickerChoices.kind, [] { return std::vector<std::string>{ "Armors", "Cloaks", "Wigs" }; }) };
 		const auto add = [&rows](std::vector<Row> a_more) { rows = Join(std::move(rows), std::move(a_more)); };
-		add(KindRows(ArmorKind(), "Armors", "Copy report for the selected armor", "Every playable body armor. Click one to see its physics and copy a report for its mod author.", &pickerChoices.armor, a_scope, showing(0)));
-		add(KindRows(CloakKind(), "Cloaks", "Copy report for the selected cloak", "Every cloak and cape. Click one to see its physics and copy a report for its mod author.", &pickerChoices.cloak, a_scope, showing(1)));
-		add(KindRows(WigKind(), "Wigs", "Copy report for the selected wig", "Every wig, the hair-slot armors hair mods add. Click one to see its physics and copy a report for its mod author.", &pickerChoices.wig, a_scope, showing(2)));
+		add(KindRows(ArmorKind(), "Armors", "Copy report", "Every playable body armor. Click one to see its physics and copy a report for its mod author.", &pickerChoices.armor, a_scope, showing(0)));
+		add(KindRows(CloakKind(), "Cloaks", "Copy report", "Every cloak and cape. Click one to see its physics and copy a report for its mod author.", &pickerChoices.cloak, a_scope, showing(1)));
+		add(KindRows(WigKind(), "Wigs", "Copy report", "Every wig, the hair-slot armors hair mods add. Click one to see its physics and copy a report for its mod author.", &pickerChoices.wig, a_scope, showing(2)));
 		Row colour = HairColourRow(&targetHairColor, "Sets the target's hair colour at once; a worn wig takes it. Every character made from the same base changes too. Natural puts their own back.", [](const std::string& a_color) { Instance().ApplyTargetHairColor(a_color); });
 		colour.shown = [showing = showing(2), a_scope] { return showing() && ScopeOf(a_scope) == SmpPhysics::ApplyTo::Target; };
 		rows.push_back(std::move(colour));
+		Row crowdColour = HairColourRow(&crowdChoices.hairColor, "Sets the hair colour of every base the crowd is made from, and refreshes the characters standing. Natural puts their own back.", [](const std::string& a_color) { Instance().ApplyCrowdHairColor(a_color); });
+		crowdColour.shown = [showing = showing(2), a_scope] { return showing() && ScopeOf(a_scope) == SmpPhysics::ApplyTo::Crowd; };
+		rows.push_back(std::move(crowdColour));
+		if (a_scope) {
+			Row hint = Text([] { return std::string("Choose who to dress under Apply to to enable Put on and Take off."); });
+			hint.shown = [a_scope] { return ScopeOf(a_scope) == SmpPhysics::ApplyTo::Nobody; };
+			rows.push_back(std::move(hint));
+		}
 		return rows;
 	}
 
@@ -734,44 +762,41 @@ void PluginUi::Register()
 		return blocks;
 	};
 
-	physicsModel.title = "Armor physics";
-	physicsModel.showFooter = false;
-	physicsModel.rows = Join(
-		{ Text([] { return std::string("Finds which armors and cloaks carry physics and whether their files work, without dressing anyone."); }),
-			Button("Rescan physics", "Reads every armor's, cloak's and head part's models for physics data and checks each physics file, then lists physics files nothing uses. A scan runs when a list first opens; this runs it again after you change your mods.", [] { NifProbe::Start(); }),
-			Text([] {
+	std::vector<Row> scanRows{ Header("Physics scan"),
+		Text([] { return std::string("Finds which armors and cloaks carry physics and whether their files work, without dressing anyone."); }),
+		Button("Rescan physics", "Reads every armor's, cloak's and head part's models for physics data and checks each physics file, then lists physics files nothing uses. Run it again after you change your mods.", [] { NifProbe::Start(); }),
+		Text([] {
 				const auto [done, total] = NifProbe::Progress();
 				if (NifProbe::Running())
 					return std::format("Scanning: {} of {}", done, total);
-				return NifProbe::Generation() ? std::string("Green [OK]: no file problems detected. Amber [REPAIRED]: repaired and used. Red [FAULT]: file fault. Plain: no physics found.") : std::string("Scanning starts when a list opens."); }) },
-		Join(HairTargetRows(), ItemPicker()));
+				return NifProbe::Generation() ? std::string("Green [OK]: no file problems detected. Amber [REPAIRED]: repaired and used. Red [FAULT]: file fault. Plain: no physics found.") : std::string("Not scanned yet."); }) };
 
 	auto& choices = crowdChoices;
-	crowdModel.title = "Test crowd";
+	crowdModel.title = "Test bench";
 	crowdModel.showFooter = false;
-	crowdModel.rows = Join(Join(std::vector<Row>{
-									Header("Spawn"),
-									SlideInt("Test characters", "How many characters to spawn in rows ahead of you.", &choices.count, 1, static_cast<int>(TestBench::kMaxTestCrowd)),
-									Check("Any adult woman", "Picks from every named adult female NPC that is friendly or neutral to you; off, the women who are housecarls or followers (Lydia, Jordis, Iona, Serana, ...) are spawned in turn.", &choices.anyAdultWoman),
-									Check("Random order", "Shuffles which characters appear.", &choices.randomOrder),
-									Button("Spawn test characters", "Spawns the characters standing still, each wearing a different wig.", [&choices] {
-										RunCrowdCommand("spawnTestCrowd", { { "count", choices.count }, { "anyAdultWoman", choices.anyAdultWoman }, { "randomOrder", choices.randomOrder } });
-									}),
-									Button("Remove them", "Removes the characters spawned here.", [] { RunCrowdCommand("clearTestCrowd"); }, true),
-									Button("Refresh", "Rebuilds their 3D and redoes what a rebuild undoes.", [] { RunCrowdCommand("refreshTestCrowd"); }, true),
-									Text([] { return std::format("{}  ({} standing)", TestBench::GetCrowd().Report(), TestBench::GetCrowd().Count()); }),
-									Header("Outfit"),
-									IncludePlayerCheck(),
-									Check("Strip armor and weapons", "Takes armor and weapons off, except the wigs; later spawns start stripped while this is on.", &choices.stripped, [&choices] { RunCrowdCommand("stripTestCrowd", { { "enabled", choices.stripped } }); }),
-									Text(WornCombo),
-									CopyCombo(),
-								},
-							   Join({ ApplyToPick() }, Join(ShownWhile(HairTargetRows(), [] { return ScopeOf(&crowdScope) == SmpPhysics::ApplyTo::Target; }), ItemPicker(&crowdScope)))),
-		Join(std::vector<Row>{
-				 Header("Animation"),
-				 Check("Animate on spawn (characters' AI runs)", "Off, test characters spawn frozen.", &choices.animateOnSpawn, [&choices] { TestBench::GetCrowd().SetAnimateOnSpawn(choices.animateOnSpawn); }),
-				 Check("Loop the animation", "Plays the animation again each time it ends.", &choices.loopAnimation, [&choices] { RunCrowdCommand("setTestCrowdLoop", { { "enabled", choices.loopAnimation } }); }),
-				 Browse("Idle", "The idle animation to play on every test character.", &choices.idle, [] {
+	crowdModel.rows = Join(std::move(scanRows), Join(Join(std::vector<Row>{
+															  Header("Spawn"),
+															  SlideInt("Test characters", "How many characters to spawn in rows ahead of you.", &choices.count, 1, static_cast<int>(TestBench::kMaxTestCrowd)),
+															  Check("Any adult woman", "Picks from every named adult female NPC that is friendly or neutral to you; off, the women who are housecarls or followers (Lydia, Jordis, Iona, Serana, ...) are spawned in turn.", &choices.anyAdultWoman),
+															  Check("Random order", "Shuffles which characters appear.", &choices.randomOrder),
+															  Button("Spawn test characters", "Spawns the characters standing still, each wearing a different wig.", [&choices] {
+																  RunCrowdCommand("spawnTestCrowd", { { "count", choices.count }, { "anyAdultWoman", choices.anyAdultWoman }, { "randomOrder", choices.randomOrder } });
+															  }),
+															  Button("Remove test characters", "Removes the characters spawned here.", [] { RunCrowdCommand("clearTestCrowd"); }, true),
+															  Button("Rebuild test characters", "Rebuilds their 3D and redoes what a rebuild undoes.", [] { RunCrowdCommand("refreshTestCrowd"); }, true),
+															  Text([] { return std::format("{}  ({} standing)", TestBench::GetCrowd().Report(), TestBench::GetCrowd().Count()); }),
+															  Header("Outfit"),
+															  IncludePlayerCheck(),
+															  Check("Strip armor and weapons", "Takes armor and weapons off, except the wigs; later spawns start stripped while this is on.", &choices.stripped, [&choices] { RunCrowdCommand("stripTestCrowd", { { "enabled", choices.stripped } }); }),
+															  Text(WornCombo),
+															  CopyCombo(),
+														  },
+														 Join({ ApplyToPick() }, Join(ShownWhile(HairTargetRows(), [] { return ScopeOf(&crowdScope) == SmpPhysics::ApplyTo::Target; }), ItemPicker(&crowdScope)))),
+													std::vector<Row>{
+														Header("Animation"),
+														Check("Animate on spawn (characters' AI runs)", "Off, test characters spawn frozen.", &choices.animateOnSpawn, [&choices] { TestBench::GetCrowd().SetAnimateOnSpawn(choices.animateOnSpawn); }),
+														Check("Loop the animation", "Plays the animation again each time it ends.", &choices.loopAnimation, [&choices] { RunCrowdCommand("setTestCrowdLoop", { { "enabled", choices.loopAnimation } }); }),
+														Browse("Idle", "The idle animation to play on every test character.", &choices.idle, [] {
 			const auto idles = TestBench::IdleCache::Snapshot();
 			if (idles.empty())
 				return std::vector<std::string>{};
@@ -779,14 +804,12 @@ void PluginUi::Register()
 			for (const TestBench::IdleChoice& idle : idles)
 				names.push_back(idle.editorId);
 			return names; }, {}, {}),
-				 Button("Play on test characters", "Plays the chosen idle on everyone standing, and on each one spawned later.", [&choices] {
+														Button("Play on test characters", "Plays the chosen idle on everyone standing, and on each one spawned later.", [&choices] {
 			const auto idles = TestBench::IdleCache::Snapshot();
 			const bool picked = choices.idle > 0 && choices.idle <= static_cast<int>(idles.size());
 			RunCrowdCommand("playTestCrowdAnimation", { { "idle", picked ? idles[static_cast<std::size_t>(choices.idle - 1)].editorId : std::string{} } }); }),
-				 Button("Stop and freeze", "Stops the animation.", [] { RunCrowdCommand("playTestCrowdAnimation", { { "idle", "ResetRoot" } }); }, true),
-				 Header("Hair colour"),
-			 },
-			std::vector<Row>{ HairColourRow(&choices.hairColor, "Sets the hair colour of every base the crowd is made from, and refreshes the characters standing.", [&feature](const std::string& a_color) { feature.ApplyCrowdHairColor(a_color); }) }));
+														Button("Stop and freeze", "Stops the animation.", [] { RunCrowdCommand("playTestCrowdAnimation", { { "idle", "ResetRoot" } }); }, true),
+													}));
 
 	developerModel.title = "Developer";
 	developerModel.onSave = model.onSave;
@@ -810,10 +833,9 @@ void PluginUi::Register()
 	};
 
 	const auto shaderAlerts = [] { return Util::ShaderAlertLines(Util::GetShaderFailures()); };
-	for (SettingsUi::Model* page : { &model, &claimsModel, &physicsModel, &reportModel, &crowdModel, &developerModel })
+	for (SettingsUi::Model* page : { &model, &claimsModel, &reportModel, &crowdModel, &developerModel })
 		page->alerts = shaderAlerts;
-	crowdModel.lockedReason = [] { return globals::state->IsDeveloperMode() ? std::string() : std::string("Developer tool. Turn on Developer mode on the Developer page to use the test crowd."); };
-	physicsModel.lockedReason = [] { return globals::state->IsDeveloperMode() ? std::string() : std::string("Developer tool. Turn on Developer mode on the Developer page to browse armor physics and try items on."); };
+	crowdModel.lockedReason = [] { return globals::state->IsDeveloperMode() ? std::string() : std::string("Developer tool. Turn on Developer mode on the Developer page to use the test bench."); };
 
-	SettingsUi::Register({ &model, &claimsModel, &reportModel, &developerModel, &physicsModel, &crowdModel });
+	SettingsUi::Register({ &model, &claimsModel, &reportModel, &developerModel, &crowdModel });
 }

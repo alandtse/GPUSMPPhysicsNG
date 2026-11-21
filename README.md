@@ -69,15 +69,15 @@ welcome.
 With SKSE Menu Framework installed, the "GPU SMP Physics NG" menu has pages for finding and fixing physics problems
 without spawning a single NPC by hand:
 
-- **Armor physics**: scans every armor, cloak and head part for physics data and checks each physics file. The list is
-  coloured: green works, amber was repaired and used, red has a file fault, plain has no physics. Pick an item to see
-  its report and copy it to paste to the author, or dress the test characters in it.
 - **Physics file report**: the faults found in physics files this session and what was done about them, as text for each
   file's author, plus physics files no model uses and files a model names that do not exist (loose files only).
 - **Claims**: every mesh the plugin simulates, per actor and file with its bone count, each switchable on and off, and
   the meshes it declined with the reason.
-- **Test crowd**: spawns wigged characters in rows ahead of you, then cycles armor, cloaks, wig colours and idle
-  animations on all of them. Useful for checking a wig, a cloak or a whole armor list against the solver.
+- **Test bench** (Developer mode): scans every armor, cloak and head part for physics data and checks each physics file.
+  The lists are coloured: green works, amber was repaired and used, red has a file fault, plain has no physics. Pick an
+  item to see its report and copy it to paste to the author. It also spawns wigged characters in rows ahead of you, so
+  "Apply to" can dress them, the target or nobody (browse only) with armor, cloaks, wig colours and idle animations.
+  Useful for checking a wig, a cloak or a whole armor list against the solver.
 - **Developer**: debug overlays for colliders, skeletons and joints (joints are coloured by who simulates them: GPU,
   claimed but not stepped, inactive, or hdtSMP64 on the CPU; stretched joints are marked), and a shader reload.
 
