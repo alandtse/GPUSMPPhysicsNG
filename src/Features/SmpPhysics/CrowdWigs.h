@@ -13,6 +13,9 @@
 
 namespace SmpPhysics
 {
+	/** @brief The colour name that puts a character's own hair colour on its wig too; the empty name leaves the wig as made. */
+	inline constexpr const char* kCharacterColor = "@character";
+
 	/** @brief One node a character's baked hair draws, with what the actor's 3D has of it. */
 	struct BakedHairNode
 	{
@@ -79,14 +82,23 @@ namespace SmpPhysics
 
 		/**
 		 * @brief Puts back the natural hair colour of every base SetHairColorNow changed, then refreshes the characters standing now.
-		 * @details Game thread only. The outcome goes to the crowd's report.
+		 * @details Worn wigs go back to the colour their mesh was made with, or take the character's own colour when a_wigsTakeCharacter.
+		 *          Game thread only. The outcome goes to the crowd's report.
 		 */
-		void RestoreNaturalColorsNow(TestBench::TestCrowd& a_crowd);
+		void RestoreNaturalColorsNow(TestBench::TestCrowd& a_crowd, bool a_wigsTakeCharacter = false);
 
 		/** @brief For each of a_actors, the hair-tinted shaders on its 3D and the colour each holds now, to see whether a wig took the hair colour. Game thread only. */
 		[[nodiscard]] static json TintReport(const std::vector<RE::Actor*>& a_actors);
 
 	private:
+		/** @brief Remembers the colour each of a_actor's hair-tinted shapes holds, for the shapes not yet remembered, so Natural can write it back. */
+		void RecordAuthored(RE::Actor& a_actor);
+		/** @brief Writes the remembered colours back into a_actor's hair-tinted shapes. */
+		void ApplyAuthored(RE::Actor& a_actor);
+		/** @brief Has a_actor's remembered colours written back for a while, since its wig attaches after a rebuild, then forgets them. */
+		void ScheduleRestore(RE::Actor& a_actor);
+		/** @brief Has a_actor's hair-tinted shaders re-tinted for a while, since a wig attaches after the rebuild that follows a colour change. */
+		void ScheduleTint(RE::Actor& a_actor);
 		/** @brief Stops watching a_actor and shows the baked hair that was hidden. */
 		void ShowBakedHair(RE::Actor& a_actor);
 		/** @brief Puts a_wig on a_actor, hides the hair it was born with and watches that it stays hidden. */
@@ -98,11 +110,28 @@ namespace SmpPhysics
 			int framesLeft = 0;
 			bool everHidden = false;
 		};
-		std::vector<RE::TESObjectARMO*> chosen;                           ///< The wigs picked for the last spawn, one per distinct style.
-		std::atomic<int> wornIndex{ -1 };                                 ///< Into WigForms() for the wig last worn, -1 for none. Written on the game thread.
-		std::size_t requested = 0;                                        ///< How many characters the last spawn asked for.
-		std::vector<BakedHairWatch> watches;                              ///< Game thread only.
-		std::unordered_map<RE::FormID, OwnWig> naturalWigs;               ///< Each actor WearOn changed. Game thread only.
-		std::unordered_map<RE::FormID, RE::BGSColorForm*> naturalColors;  ///< Each base's own hair colour, recorded before the first change. Game thread only.
+		std::vector<RE::TESObjectARMO*> chosen;  ///< The wigs picked for the last spawn, one per distinct style.
+		std::atomic<int> wornIndex{ -1 };        ///< Into WigForms() for the wig last worn, -1 for none. Written on the game thread.
+		std::size_t requested = 0;               ///< How many characters the last spawn asked for.
+		std::vector<BakedHairWatch> watches;     ///< Game thread only.
+		/** @brief An actor whose 3D was rebuilt after a hair colour change, so its wig takes the colour once it has attached. */
+		struct TintWatch
+		{
+			RE::ObjectRefHandle handle;
+			int framesLeft = 0;
+			bool restore = false;  ///< Write the remembered colours back instead of re-tinting.
+		};
+		/** @brief The colour a hair-tinted shape held before the first tint was written into it. */
+		struct AuthoredTint
+		{
+			std::string shape;
+			float red = 1.0f;
+			float green = 1.0f;
+			float blue = 1.0f;
+		};
+		std::unordered_map<RE::FormID, std::vector<AuthoredTint>> authoredTints;  ///< Per actor, from before its first tint to Natural. Game thread only.
+		std::vector<TintWatch> tintWatches;                                       ///< Game thread only.
+		std::unordered_map<RE::FormID, OwnWig> naturalWigs;                       ///< Each actor WearOn changed. Game thread only.
+		std::unordered_map<RE::FormID, RE::BGSColorForm*> naturalColors;          ///< Each base's own hair colour, recorded before the first change. Game thread only.
 	};
 }
