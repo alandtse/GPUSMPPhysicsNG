@@ -29,7 +29,7 @@ Deploy only while holding that game's lock (below).
   `src/GpuPass.h` + `src/GpuPassTimer.h` per-pass GPU timing (`CS_GPU_PASS`).
 - `shaders/` HLSL, shipped as loose files next to the DLL.
 - `tests/` Catch2. Test the real code, never a pasted copy of it.
-- `tools/hair-tune/` in-game suites driven over devbench; `tools/game/` launcher and quick checks.
+- `tools/hair-tune/` in-game suites driven over devbench; `tools/game/` quick checks.
 - `docs/PARITY.md`, `docs/PERFORMANCE.md`, `docs/perf-data/` measured evidence; update them when a result changes.
 
 ## Code rules
@@ -55,8 +55,7 @@ Coordination with other agents is mandatory (`~/.claude/skyrim-game-coordination
 - SE and VR are separate games. Take the lock with `~/.claude/tools/skyrim-game.ps1` (acquire, renew, release,
   clear-running) before deploying or launching; never preempt or kill a game another agent holds.
 - Back up the target game's DLLs before deploying to one shared with others, and gate the deploy on a successful acquire.
-- Launch with `python tools/game/launch.py <SE|VR>` (holder from `GSP_HOLDER`, default `gpusmpng-vr`). It runs
-  `backgroundCompile` first and loads the test save. VR uses the SteamVR null driver (`~/vr-null-toggle.ps1`).
+- Launch the game yourself with the plugin installed and load the test save; VR needs a headset or the SteamVR null driver.
 - Quit with the `qqq` console command, never taskkill. Release the lock and turn the null driver off afterwards.
 - Perf runs mark the machine do-not-disturb; keep every run under 5 minutes.
 - SE can show a warning modal that blocks devbench captures until it is dismissed. Dismiss it and carry on; do not switch to VR
