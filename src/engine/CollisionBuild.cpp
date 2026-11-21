@@ -1526,8 +1526,10 @@ void SmpPhysicsFeature::BuildRigSurfaces(CollisionBuildState& s) const
 	for (std::size_t index = 0; index < a_collision.drivers.size(); ++index)
 		driverOfNode.emplace(a_collision.drivers[index].get(), static_cast<int>(index));
 	std::vector<RigShape> surfaceShapes = shapes.triangleShapes;
-	if (s.clothRig)
-		surfaceShapes.insert(surfaceShapes.end(), shapes.vertexShapes.begin(), shapes.vertexShapes.end());
+	for (const RigShape& shape : shapes.vertexShapes) {
+		if (shape.name != hairShape->name && !SkinsToDynamicBone(FindMeshObject(a_context, meshRoot, shape.name), s.rig, a_context))
+			surfaceShapes.push_back(shape);
+	}
 	if (const RE::Actor* actor = a_context.getActor()) {
 		const std::scoped_lock lock(stateMutex);
 		if (const auto known = bodyShapes.find(actor->GetFormID()); known != bodyShapes.end()) {
