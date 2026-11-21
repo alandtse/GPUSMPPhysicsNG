@@ -1,6 +1,7 @@
 #include "Features/SmpPhysics.h"
 #include "smp/CardVertices.h"
 #include "smp/ClaimPolicy.h"
+#include "smp/ClothRig.h"
 #include "smp/RestRetarget.h"
 
 #include "RE/A/Actor.h"
@@ -1023,6 +1024,7 @@ struct SmpPhysicsFeature::CollisionBuildState
 	int rightArmDriver{ -1 };
 	int lowerTorsoDriver{ -1 };
 	int groundDriver{ -1 };
+	bool clothRig{};  ///< The rig's per-vertex shapes are collision for others and its dynamic bones are skinned to triangle shapes, as a skirt's are.
 	std::map<std::string, int> rigBoneOfName;
 	std::vector<bool> dynamicBone;
 	std::vector<std::string> hairNames;                 ///< The meshes the rig builds its own shapes from, which are never body.
@@ -1078,7 +1080,16 @@ bool SmpPhysicsFeature::ResolveCollisionInputs(CollisionBuildState& s, std::stri
 	const std::vector<RE::NiPointer<RE::NiAVObject>>& a_boneNodes = s.boneNodes;
 	ClaimCollision& a_collision = s.collision;
 	const SmpPhysics::RigCollision& shapes = a_rig.collision;
-	std::vector<const RigShape*> hairShapeCandidates = OrderHairShapes(shapes);
+	RE::NiNode* skeleton = a_context.getSkeleton();
+	RE::NiAVObject* meshRoot = FindMeshRoot(a_context);
+	if (!meshRoot) {
+		a_reason = "the actor has no scene graph to look the hair mesh up in";
+		return false;
+	}
+	const auto skinsDynamic = [&](const RigShape& a_shape) { return SkinsToDynamicBone(FindMeshObject(a_context, meshRoot, a_shape.name), a_rig, a_context); };
+	s.clothRig = SmpPhysics::IsClothRig(shapes.vertexShapes.size(), static_cast<std::size_t>(std::ranges::count_if(shapes.vertexShapes, skinsDynamic)),
+		static_cast<std::size_t>(std::ranges::count_if(shapes.triangleShapes, skinsDynamic)));
+	std::vector<const RigShape*> hairShapeCandidates = s.clothRig ? std::vector<const RigShape*>{ &shapes.triangleShapes.back() } : OrderHairShapes(shapes);
 	if (hairShapeCandidates.empty() && !shapes.triangleShapes.empty())
 		hairShapeCandidates.push_back(&shapes.triangleShapes.back());
 	if (hairShapeCandidates.empty()) {
@@ -1086,17 +1097,10 @@ bool SmpPhysicsFeature::ResolveCollisionInputs(CollisionBuildState& s, std::stri
 		a_collision.bodyShapes = shapes.triangleShapes;
 		return false;
 	}
-
-	RE::NiNode* skeleton = a_context.getSkeleton();
-	RE::NiAVObject* meshRoot = FindMeshRoot(a_context);
-	if (!meshRoot) {
-		a_reason = "the actor has no scene graph to look the hair mesh up in";
-		return false;
-	}
 	const RigShape* hairShape = nullptr;
 	RE::NiAVObject* hairMesh = nullptr;
 	std::string triedShapes;
-	const bool clothFallback = shapes.vertexShapes.empty();
+	const bool clothFallback = shapes.vertexShapes.empty() || s.clothRig;
 	for (const RigShape* candidate : hairShapeCandidates) {
 		hairMesh = FindMeshObject(a_context, meshRoot, candidate->name);
 		if (clothFallback && !SkinsToDynamicBone(hairMesh, a_rig, a_context))
@@ -1111,7 +1115,7 @@ bool SmpPhysicsFeature::ResolveCollisionInputs(CollisionBuildState& s, std::stri
 	}
 	if (hairShape == nullptr) {
 		a_reason = std::format("none of the hair meshes {} is below the actor", triedShapes);
-		if (shapes.vertexShapes.empty()) {
+		if (clothFallback) {
 			a_collision.bodyShapes = shapes.triangleShapes;
 			a_collision.noCollisionGeometry = true;
 		}
@@ -1223,11 +1227,13 @@ bool SmpPhysicsFeature::BuildHairSpheres(CollisionBuildState& s, std::string& a_
 	std::uint32_t mappedSkinBones = 0;
 	std::uint32_t totalSkinBones = 0;
 	std::vector<const RigShape*> sphereShapes;
-	for (const RigShape& shape : shapes.vertexShapes)
-		sphereShapes.push_back(&shape);
+	if (!s.clothRig) {
+		for (const RigShape& shape : shapes.vertexShapes)
+			sphereShapes.push_back(&shape);
+	}
 	if (std::ranges::find(sphereShapes, hairShape) == sphereShapes.end())
 		sphereShapes.push_back(hairShape);
-	const bool perShape = shapes.vertexShapes.empty();
+	const bool perShape = shapes.vertexShapes.empty() || s.clothRig;
 	if (perShape) {
 		for (const RigShape& shape : shapes.triangleShapes) {
 			if (&shape != hairShape)
@@ -1520,6 +1526,8 @@ void SmpPhysicsFeature::BuildRigSurfaces(CollisionBuildState& s) const
 	for (std::size_t index = 0; index < a_collision.drivers.size(); ++index)
 		driverOfNode.emplace(a_collision.drivers[index].get(), static_cast<int>(index));
 	std::vector<RigShape> surfaceShapes = shapes.triangleShapes;
+	if (s.clothRig)
+		surfaceShapes.insert(surfaceShapes.end(), shapes.vertexShapes.begin(), shapes.vertexShapes.end());
 	if (const RE::Actor* actor = a_context.getActor()) {
 		const std::scoped_lock lock(stateMutex);
 		if (const auto known = bodyShapes.find(actor->GetFormID()); known != bodyShapes.end()) {
