@@ -15,6 +15,7 @@ import pathlib
 import subprocess
 import sys
 import time
+import urllib.error
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'hair-tune'))
 import ingame
@@ -30,6 +31,8 @@ COORDINATOR = str(HOME / '.claude' / 'tools' / 'skyrim-game.ps1')
 NULL_DRIVER = str(HOME / 'vr-null-toggle.ps1')
 HOLDER = os.environ.get('GSP_HOLDER', 'gpusmpng-vr')
 LOCK_MINUTES = 20
+LOAD_SECONDS = 150  # one load attempt; a save that has not loaded by then is stuck behind something
+LOAD_ATTEMPTS = 2
 
 
 def powershell(command):
@@ -46,6 +49,29 @@ def wait_for(function, seconds, step=3):
             pass
         time.sleep(step)
     return False
+
+
+def blockers(bench):
+    """The menus devbench says are in the way, as text, so a game idling at the main menu or a modal is reported instead of waited on."""
+    try:
+        return '; '.join(entry.get('name', '?') + (' (' + entry['hint'] + ')' if entry.get('hint') else '') for entry in bench.post('inspect', {'kind': 'state'}, 5).get('blockedBy', []))
+    except Exception as error:
+        return f'state unreadable: {error}'
+
+
+def request_load(bench, wanted, explicit):
+    """Asks the game to load a save: the wanted one when it exists, else the newest. A name that is not there is an error only when it was asked for."""
+    names = [entry['name'] for entry in bench.post('game', {'action': 'list', 'limit': 500}, 15).get('saves', [])]
+    if wanted in names:
+        bench.post('game', {'action': 'load', 'name': wanted}, 15)
+        return wanted
+    if explicit:
+        raise SystemExit(f'save {wanted!r} does not exist; {len(names)} saves, newest {names[0] if names else "none"}')
+    if not names:
+        raise SystemExit('the game has no saves to load')
+    print(f'save {wanted!r} does not exist, loading the newest save instead: {names[0]}', flush=True)
+    bench.post('game', {'action': 'loadLast'}, 15)
+    return names[0]
 
 
 def main():
@@ -90,15 +116,17 @@ def main():
             bench.post('openshaders.shadercache', {'action': 'backgroundCompile'}, 10)
         except Exception as error:
             print('backgroundCompile skipped:', error)
-        for attempt in range(6):
+        for attempt in range(LOAD_ATTEMPTS):
             try:
-                bench.post('game', {'action': 'load', 'name': arguments.save or config['save']}, 15)
-            except Exception as error:
-                print('load', error)
-            if wait_for(lambda: bench.post('inspect', {'kind': 'state'}, 5).get('playerLoaded'), 90):
+                loading = request_load(bench, arguments.save or config['save'], bool(arguments.save))
+            except urllib.error.HTTPError as error:
+                raise SystemExit(f'the game refused the load: HTTP {error.code} {error.read().decode(errors="replace")[:200]}; blocked by: {blockers(bench)}')
+            print(f'loading {loading} (attempt {attempt + 1} of {LOAD_ATTEMPTS})', flush=True)
+            if wait_for(lambda: bench.post('inspect', {'kind': 'state'}, 5).get('playerLoaded'), LOAD_SECONDS):
                 break
+            print('not loaded yet, blocked by:', blockers(bench), flush=True)
         else:
-            raise SystemExit('the save did not load')
+            raise SystemExit(f'the save did not load in {LOAD_ATTEMPTS * LOAD_SECONDS} s; blocked by: {blockers(bench)}')
         print('vr =', bench.post('inspect', {'kind': 'state'}, 5).get('vr'), flush=True)
         time.sleep(20)
         renew()
