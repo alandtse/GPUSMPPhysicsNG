@@ -695,7 +695,8 @@ private:
 	std::unordered_map<RE::FormID, std::vector<std::string>> clothMeshNames;  ///< Per actor, the mesh names its cloth claims simulated, sorted; guarded by stateMutex.
 	std::vector<RE::FormID> bodyShapeActors;                                  ///< actors whose hair must be offered again because a body shape appeared
 	double totalStepMicroseconds{};
-	std::uint32_t registrationsThisFrame{};  ///< Claims registered with the GPU solver so far this frame, capped at kRegistrationsPerFrame.
+	std::uint32_t registrationsThisFrame{};                    ///< Claims registered with the GPU solver so far this frame, capped at kRegistrationsPerFrame.
+	std::unordered_set<const RE::NiAVObject*> simulatedNodes;  ///< Every node a claim simulates, rebuilt each frame; write-back leaves these to their own claim.
 
 	struct BoneRecording
 	{
