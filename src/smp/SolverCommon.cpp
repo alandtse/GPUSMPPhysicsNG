@@ -127,7 +127,7 @@ namespace SmpPhysics
 			std::for_each(jobs.begin(), jobs.end(), probe);
 	}
 
-	std::size_t ExemptSurfacesBehind(const std::vector<SphereProbe>& a_probes, std::size_t a_surfaceLimit, std::size_t a_boneCount,
+	std::size_t ExemptSurfacesBehind(const std::vector<SphereProbe>& a_probes, const std::vector<SkinnedSurface>& a_surfaces, std::size_t a_surfaceLimit, std::size_t a_boneCount,
 		std::vector<std::uint32_t>& a_boneSurfaceMask)
 	{
 		std::size_t exempted = 0;
@@ -136,7 +136,10 @@ namespace SmpPhysics
 				continue;
 			const auto surface = static_cast<std::size_t>(probe.behindSurface);
 			const auto bone = static_cast<std::size_t>(probe.bone);
-			if (surface >= a_surfaceLimit || surface >= kMaskedSurfaceLimit || bone >= a_boneCount)
+			if (surface >= a_surfaceLimit || surface >= kMaskedSurfaceLimit || surface >= a_surfaces.size() || bone >= a_boneCount)
+				continue;
+			// A deep-push surface holds a sphere authored behind it out by design, as hdtSMP64's one-sided triangles do.
+			if (a_surfaces[surface].deepPush)
 				continue;
 			if (a_boneSurfaceMask.size() < a_boneCount)
 				a_boneSurfaceMask.resize(a_boneCount, kAllMaskBits);
