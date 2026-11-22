@@ -220,6 +220,7 @@ namespace
 	struct PassOptions
 	{
 		std::array<bool, kTreeCount> takesContacts{ true, true };
+		std::vector<GpuRig::DriverDelta> driverDeltas;
 	};
 
 	/** @brief Dispatches the three contact passes over a scene and returns each bone's merged contact; a skipped bone keeps the sentinel. */
@@ -299,6 +300,8 @@ namespace
 		bind(10, surfaceFrame.nodes);
 		bind(12, sphereList);
 		bind(13, boneTrees);
+		if (!a_options.driverDeltas.empty())
+			bind(14, a_options.driverDeltas);
 		std::array<ComPtr<ID3D11ShaderResourceView>, 15> sourceViews;
 		std::array<ID3D11ShaderResourceView*, 15> sources{};
 		for (std::size_t slot = 0; slot < sources.size(); ++slot) {
@@ -434,4 +437,35 @@ TEST_CASE("A bone between two surface clusters, inside the BVH root box, finds n
 	CHECK(probes[1].depth == 0.0f);
 	CHECK(probes[2].depth > 0.0f);
 	CHECK(probes[3].depth == 0.0f);
+}
+
+TEST_CASE("A contact carries the velocity its collider's driver gives the contact point", "[smpphysics][contact_gpu]")
+{
+	const Scene scene = MakeScene();
+	const float half = std::sqrt(0.5f);
+	PassOptions options;
+	GpuRig::DriverDelta delta;
+	delta.rotation = { half, 0.0f, 0.0f, half };
+	delta.translation = { 2.0f, -1.0f, 0.5f, 60.0f };
+	options.driverDeltas = { delta };
+	const std::vector<GpuRig::BoneContact> contacts = RunPasses(scene, options);
+	for (std::size_t bone = 0; bone < kBoneCount; ++bone) {
+		INFO("bone " << bone);
+		if (!(contacts[bone].depth > 0.0f)) {
+			CHECK(contacts[bone].velocityValid == 0u);
+			continue;
+		}
+		REQUIRE(contacts[bone].velocityValid == 1u);
+		const Vec3 expected = GpuRig::DriverPointVelocity(delta, { contacts[bone].position[0], contacts[bone].position[1], contacts[bone].position[2] });
+		CHECK(contacts[bone].velocity[0] == Approx(expected.x).margin(5.0e-3f));
+		CHECK(contacts[bone].velocity[1] == Approx(expected.y).margin(5.0e-3f));
+		CHECK(contacts[bone].velocity[2] == Approx(expected.z).margin(5.0e-3f));
+	}
+}
+
+TEST_CASE("A contact with no driver delta bound reports no velocity", "[smpphysics][contact_gpu]")
+{
+	const std::vector<GpuRig::BoneContact> contacts = RunPasses(MakeScene(), {});
+	for (const GpuRig::BoneContact& contact : contacts)
+		CHECK(contact.velocityValid == 0u);
 }

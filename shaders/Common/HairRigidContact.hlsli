@@ -49,7 +49,8 @@ namespace HairRigidContact
 
 	/** @brief One contact's rows, built from the bodies' states and solver bodies as the step starts. */
 	ContactRows BuildRows(in Contact a_contact, in HairRigidSolver::BodyState a_stateA, in HairRigidSolver::BodyState a_stateB,
-		in HairRigidSolver::SolverBody a_bodyA, in HairRigidSolver::SolverBody a_bodyB, in float a_globalCfm, in float a_framesPerSecond)
+		in HairRigidSolver::SolverBody a_bodyA, in HairRigidSolver::SolverBody a_bodyB, in float a_globalCfm, in float a_framesPerSecond,
+		in bool a_hasSurfaceVelocity, in float3 a_surfaceVelocity)
 	{
 		ContactRows result;
 		const float3 normal = a_contact.normalOnB;
@@ -73,7 +74,8 @@ namespace HairRigidContact
 
 		const float vel1Dotn = HairRigidSolver::Dot(row.normal1, a_bodyA.linearVelocity + a_bodyA.externalForceImpulse) +
 		                       HairRigidSolver::Dot(row.relpos1CrossNormal, a_bodyA.angularVelocity + a_bodyA.externalTorqueImpulse);
-		const float vel2Dotn = HairRigidSolver::Dot(row.normal2, a_bodyB.linearVelocity + a_bodyB.externalForceImpulse) +
+		const float vel2Dotn = a_hasSurfaceVelocity ? -HairRigidSolver::Dot(normal, a_surfaceVelocity) :
+		                       HairRigidSolver::Dot(row.normal2, a_bodyB.linearVelocity + a_bodyB.externalForceImpulse) +
 		                       HairRigidSolver::Dot(row.relpos2CrossNormal, a_bodyB.angularVelocity + a_bodyB.externalTorqueImpulse);
 		const float penetration = a_contact.distance + kLinearSlop;
 		float velocityError = -(vel1Dotn + vel2Dotn);
@@ -101,7 +103,8 @@ namespace HairRigidContact
 		if (result.hasFriction) {
 			const float3 vel1 = a_bodyA.linearVelocity + a_bodyA.externalForceImpulse +
 			                    HairRigidSolver::Cross(a_bodyA.angularVelocity + a_bodyA.externalTorqueImpulse, relPos1);
-			const float3 vel2 = a_bodyB.linearVelocity + a_bodyB.externalForceImpulse +
+			const float3 vel2 = a_hasSurfaceVelocity ? a_surfaceVelocity :
+			                    a_bodyB.linearVelocity + a_bodyB.externalForceImpulse +
 			                    HairRigidSolver::Cross(a_bodyB.angularVelocity + a_bodyB.externalTorqueImpulse, relPos2);
 			const float3 vel = vel1 - vel2;
 			const float relVel = HairRigidSolver::Dot(normal, vel);
@@ -123,7 +126,8 @@ namespace HairRigidContact
 			frictionRow.jacDiagABInv = kSor / (frictionDenom0 + frictionDenom1);
 			const float frictionVel1 = HairRigidSolver::Dot(frictionRow.normal1, a_bodyA.linearVelocity + a_bodyA.externalForceImpulse) +
 			                           HairRigidSolver::Dot(frictionRow.relpos1CrossNormal, a_bodyA.angularVelocity);
-			const float frictionVel2 = HairRigidSolver::Dot(frictionRow.normal2, a_bodyB.linearVelocity + a_bodyB.externalForceImpulse) +
+			const float frictionVel2 = a_hasSurfaceVelocity ? -HairRigidSolver::Dot(direction, a_surfaceVelocity) :
+			                           HairRigidSolver::Dot(frictionRow.normal2, a_bodyB.linearVelocity + a_bodyB.externalForceImpulse) +
 			                           HairRigidSolver::Dot(frictionRow.relpos2CrossNormal, a_bodyB.angularVelocity);
 			frictionRow.rhs = -(frictionVel1 + frictionVel2) * frictionRow.jacDiagABInv;
 			frictionRow.cfm = 0.0f;

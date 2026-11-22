@@ -112,6 +112,8 @@ struct HairBoneContact
 	int collider;
 	float3 normal;
 	float3 position;
+	float3 velocity;
+	uint velocityValid;
 };
 
 struct HairRigidIsland
@@ -371,11 +373,12 @@ void ApplyGrabPin(in HairRigidBody a_record, in HairRigidSolver::Body a_body, in
 }
 
 /** @brief Builds a contact constraint's normal row and optional friction row into its slot, and flags the slot as a contact. */
-void SetupContact(uint a_constraint, int a_bodyA, int a_bodyB, in HairRigidContact::Contact a_contact)
+void SetupContact(uint a_constraint, int a_bodyA, int a_bodyB, in HairRigidContact::Contact a_contact, bool a_hasSurfaceVelocity, float3 a_surfaceVelocity)
 {
 	const HairRigidContact::ContactRows contactRows = HairRigidContact::BuildRows(a_contact,
 		BuildBodyState(LoadBody(HairRigidBodies[a_bodyA])), BuildBodyState(LoadBody(HairRigidBodies[a_bodyB])),
-		LoadSolverBody(HairRigidSolverBodies[a_bodyA]), LoadSolverBody(HairRigidSolverBodies[a_bodyB]), HairRigidGlobalCfm, HairRigidFramesPerSecond);
+		LoadSolverBody(HairRigidSolverBodies[a_bodyA]), LoadSolverBody(HairRigidSolverBodies[a_bodyB]), HairRigidGlobalCfm, HairRigidFramesPerSecond,
+		a_hasSurfaceVelocity, a_surfaceVelocity);
 	const uint rowBase = a_constraint * (uint)HairRigidSolver::kRowsPerConstraint;
 	HairRigidRow normalRecord = StoreRow(contactRows.normal);
 	normalRecord.bodies = int4(a_bodyA, a_bodyB, 0, 0);
@@ -425,7 +428,7 @@ void StoreSetupRow(uint a_destination, in HairRigidSolver::SolverRow a_row, int 
 		contact.distance = recorded.pointDistance.w;
 		contact.normalOnB = recorded.normalFriction.xyz;
 		contact.friction = recorded.normalFriction.w;
-		SetupContact(index, bodyA, bodyB, contact);
+		SetupContact(index, bodyA, bodyB, contact, false, float3(0.0f, 0.0f, 0.0f));
 		return;
 	}
 	if (record.constraintFlags.y != 0u) {
@@ -439,7 +442,7 @@ void StoreSetupRow(uint a_destination, in HairRigidSolver::SolverRow a_row, int 
 		contact.distance = -bone.depth;
 		contact.normalOnB = bone.normal;
 		contact.friction = asfloat(record.constraintFlags.w);
-		SetupContact(index, bodyA, bodyB, contact);
+		SetupContact(index, bodyA, bodyB, contact, bone.velocityValid != 0u, bone.velocity);
 		return;
 	}
 	if (record.header.z != 0u && bothValid) {
