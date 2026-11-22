@@ -54,6 +54,13 @@ generation and the engine frame lock were not changed, so frame time is not repo
 - `FlushAfterSubmit` removes a misattributed 8 to 9 ms wait from the per-pass timers on SE (the commands sit in the
   driver until the game flushes) but gave no frame-time gain, so it ships off. Turn it on only when reading GPU pass times.
 
+## Contacts posed at the end of the substep
+
+Posing the body surfaces at the end of each substep instead of the start (`SmpStepClock::EndFraction`) adds no pass or
+dispatch. SE, Tara dress, 500-frame sprint, frame time with the recorder running: 10.2 to 10.4 ms mean (p99 13.2 to 13.5)
+before, 10.0 to 10.3 ms (p99 12.2 to 12.5) after. Deep contacts (>4 units) at the drawn pose fell from 39-40 to 11-20 per
+500 frames. `gpuPassStats` was not read for this change.
+
 ## Not measured
 
 VR frame time (the null driver caps the frame near 31 ms), capes, AE, frame generation state.
