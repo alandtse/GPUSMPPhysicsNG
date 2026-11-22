@@ -6,9 +6,11 @@
 #include "SolverCommon.h"
 #include "TriangleBvh.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 /**
@@ -176,6 +178,31 @@ namespace SmpPhysics::GpuRig
 		result.rotation = { delta.rotation.w, delta.rotation.x, delta.rotation.y, delta.rotation.z };
 		result.translation = { delta.translation.x, delta.translation.y, delta.translation.z, 1.0f / a_total };
 		return result;
+	}
+
+	/** @brief A run of driver slots, as an offset and a count. */
+	using DriverRange = std::pair<std::uint32_t, std::uint32_t>;
+
+	/** @brief Sets each slot of a_ranges in a_out to the pose a_t of the way from a_from to a_to; every other slot of a_out is left as it was. */
+	inline void BlendDriverRanges(const std::vector<DriverWorld>& a_from, const std::vector<DriverWorld>& a_to, const std::vector<DriverRange>& a_ranges, float a_t,
+		std::vector<DriverWorld>& a_out) noexcept
+	{
+		const std::size_t size = std::min({ a_from.size(), a_to.size(), a_out.size() });
+		for (const auto& [offset, count] : a_ranges) {
+			for (std::size_t slot = offset; slot < std::size_t{ offset } + count && slot < size; ++slot)
+				a_out[slot] = LerpDriverWorld(a_from[slot], a_to[slot], a_t);
+		}
+	}
+
+	/** @brief Sets each slot of a_ranges in a_out to the delta from a_from to a_to over a_total seconds; every other slot of a_out is left as it was. */
+	inline void FillDriverDeltas(const std::vector<DriverWorld>& a_from, const std::vector<DriverWorld>& a_to, const std::vector<DriverRange>& a_ranges, float a_total,
+		std::vector<DriverDelta>& a_out) noexcept
+	{
+		const std::size_t size = std::min({ a_from.size(), a_to.size(), a_out.size() });
+		for (const auto& [offset, count] : a_ranges) {
+			for (std::size_t slot = offset; slot < std::size_t{ offset } + count && slot < size; ++slot)
+				a_out[slot] = MakeDriverDelta(a_from[slot], a_to[slot], a_total);
+		}
 	}
 
 	/** @brief The velocity of a_point, a world position the driver carried, under a_delta; zero when the delta is empty. */
