@@ -448,7 +448,7 @@ namespace SmpPhysics
 				context->CSSetUnorderedAccessViews(0, kRuntimeTargetCount, runtimeTargets, nullptr);
 				context->CSSetShader(worldExportShader->get(), nullptr, 0);
 				context->Dispatch(Groups(bodyCount), 1, 1);
-				a_contactPass(static_cast<std::uint32_t>(subStep) + 1u, plan.StartFraction(subStep), plan.total);
+				a_contactPass(static_cast<std::uint32_t>(subStep) + 1u, plan.EndFraction(subStep), plan.total);
 				ID3D11UnorderedAccessView* releasedTargets[kContactTargetCount] = {};
 				context->CSSetUnorderedAccessViews(0, kContactTargetCount, releasedTargets, nullptr);
 			}

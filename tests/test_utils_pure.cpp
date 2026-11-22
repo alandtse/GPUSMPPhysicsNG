@@ -154,3 +154,23 @@ TEST_CASE("A step's start fraction is the share of the frame before it", "[solve
 
 	CHECK(SmpPhysics::SmpStepClock::Frame{}.StartFraction(0) == Approx(1.0f));
 }
+
+TEST_CASE("A step's end fraction is the share of the frame up to its end", "[solver]")
+{
+	SmpPhysics::SmpStepClock clock;
+	const float tick = 1.0f / 60.0f;
+
+	const auto single = clock.Advance(tick);
+	REQUIRE(single.count == 1);
+	CHECK(single.EndFraction(0) == Approx(1.0f));
+
+	clock.Reset();
+	const auto several = clock.Advance(tick * 3.0f);
+	REQUIRE(several.count >= 3);
+	CHECK(several.EndFraction(0) == Approx(several.steps[0] / several.total));
+	CHECK(several.EndFraction(1) == Approx(several.StartFraction(2)));
+	CHECK(several.EndFraction(several.count - 1) == Approx(1.0f));
+	CHECK(several.EndFraction(several.count) == Approx(1.0f));
+
+	CHECK(SmpPhysics::SmpStepClock::Frame{}.EndFraction(0) == Approx(1.0f));
+}
