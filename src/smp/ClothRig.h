@@ -14,4 +14,13 @@ namespace SmpPhysics
 	{
 		return a_vertexShapes > 0 && a_vertexShapesOnSimulatedBones == 0 && a_triangleShapesOnSimulatedBones > 0;
 	}
+
+	/**
+	 * @brief Whether collision spheres are built shape by shape rather than from one merged set of vertex-shape vertices: a rig with no
+	 *        per-vertex shape, a cloth rig, or one whose per-triangle shape (a dress) is skinned to simulated bones and so collides on its own.
+	 */
+	[[nodiscard]] constexpr bool BuildsSpheresPerShape(std::size_t a_vertexShapes, bool a_clothRig, std::size_t a_triangleShapesOnSimulatedBones) noexcept
+	{
+		return a_vertexShapes == 0 || a_clothRig || a_triangleShapesOnSimulatedBones > 0;
+	}
 }
