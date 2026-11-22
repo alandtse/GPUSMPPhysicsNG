@@ -22,3 +22,11 @@ TEST_CASE("A rig with no per-vertex shape, or no simulated triangle shape, is no
 	CHECK_FALSE(IsClothRig(0, 0, 1));
 	CHECK_FALSE(IsClothRig(4, 0, 0));
 }
+
+TEST_CASE("Spheres are built per shape for a rig without per-vertex shapes, a cloth rig, or a simulated triangle shape", "[smpphysics][clothrig]")
+{
+	CHECK(BuildsSpheresPerShape(0, false, 0));
+	CHECK(BuildsSpheresPerShape(4, true, 1));
+	CHECK(BuildsSpheresPerShape(6, false, 1));
+	CHECK_FALSE(BuildsSpheresPerShape(1, false, 0));
+}
