@@ -956,6 +956,9 @@ namespace SmpPhysics
 				a_pack.treeInputs[claim.boneOffset + static_cast<std::uint32_t>(tree)] = claim.inputs[tree];
 			}
 			const bool supplied = frameClaim.driverWorld && frameClaim.driverWorld->size() == claim.driverCount;
+			a_pack.packedClaims.push_back(found->second);
+			if (!frameClaim.hasPreviousInput || frameClaim.resetRequested || !claim.steppedDriversValid)
+				a_pack.freshDrivers.emplace_back(claim.driverOffset, claim.driverCount);
 			for (std::uint32_t index = 0; index < claim.driverCount; ++index) {
 				const Transform driver = supplied ? (*frameClaim.driverWorld)[index] : Transform{};
 				GpuRig::DriverWorld& packed = a_pack.driverWorlds[claim.driverOffset + index];
@@ -1163,15 +1166,39 @@ namespace SmpPhysics
 			}
 		}
 
-		DispatchSurfacePrep();
+		const bool takeContacts = !pack.rigidClaims.empty() && std::ranges::any_of(a_claims, [](const FrameClaim& a_claim) { return a_claim.rigidContacts; });
+		if (!takeContacts)
+			DispatchSurfacePrep();
 		if (!pack.rigidClaims.empty()) {
-			const auto contactPass = [this, &values](std::uint32_t) { DispatchContacts(values); };
-			const bool takeContacts = std::ranges::any_of(a_claims, [](const FrameClaim& a_claim) { return a_claim.rigidContacts; });
-			(void)rigidSolver.Dispatch(pack.rigidClaims, worldsUav.get(), outputsUav.get(), takeContacts ? contactsSrv.get() : nullptr, contactPass);
+			std::vector<GpuRig::DriverWorld> from = steppedDrivers.size() == pack.driverWorlds.size() ? steppedDrivers : pack.driverWorlds;
+			for (const auto& [offset, count] : pack.freshDrivers)
+				std::copy_n(pack.driverWorlds.begin() + offset, count, from.begin() + offset);
+			std::vector<GpuRig::DriverWorld> blended(pack.driverWorlds.size());
+			const auto contactPass = [this, &values, &pack, &from, &blended](std::uint32_t, float a_fraction) {
+				if (!pack.driverWorlds.empty()) {
+					for (std::size_t index = 0; index < blended.size(); ++index)
+						blended[index] = GpuRig::LerpDriverWorld(from[index], pack.driverWorlds[index], a_fraction);
+					(void)UploadDiscard(globals::d3d::context, drivers->resource.get(), blended.data(), blended.size() * sizeof(GpuRig::DriverWorld));
+				}
+				DispatchSurfacePrep();
+				DispatchContacts(values);
+			};
+			const bool stepped = rigidSolver.Dispatch(pack.rigidClaims, worldsUav.get(), outputsUav.get(), takeContacts ? contactsSrv.get() : nullptr, contactPass);
 			if (!rigidSolver.Available()) {
 				UndoFramePack(pack);
 				Fail("the rigid solver became unavailable; claimed hair stays at the engine's pose");
 				return false;
+			}
+			if (stepped) {
+				if (takeContacts && !pack.driverWorlds.empty())
+					(void)UploadDiscard(globals::d3d::context, drivers->resource.get(), pack.driverWorlds.data(), pack.driverWorlds.size() * sizeof(GpuRig::DriverWorld));
+				steppedDrivers = pack.driverWorlds;
+				for (Claim& claim : claims)
+					claim.steppedDriversValid = false;
+				for (const std::size_t index : pack.packedClaims)
+					claims[index].steppedDriversValid = true;
+			} else if (takeContacts) {
+				DispatchSurfacePrep();
 			}
 		}
 

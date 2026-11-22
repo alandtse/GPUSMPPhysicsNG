@@ -7,6 +7,7 @@
 #include "TriangleBvh.h"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -119,6 +120,36 @@ namespace SmpPhysics::GpuRig
 		Float4 translation{};
 	};
 	static_assert(sizeof(DriverWorld) == 32);
+
+	/** @brief A driver pose a_t of the way from a_from to a_to: the translation linearly, the rotation by normalised lerp along the shorter arc. */
+	[[nodiscard]] inline DriverWorld LerpDriverWorld(const DriverWorld& a_from, const DriverWorld& a_to, float a_t) noexcept
+	{
+		DriverWorld result;
+		const float dot = a_from.rotation.x * a_to.rotation.x + a_from.rotation.y * a_to.rotation.y + a_from.rotation.z * a_to.rotation.z +
+		                  a_from.rotation.w * a_to.rotation.w;
+		const float sign = dot < 0.0f ? -1.0f : 1.0f;
+		float x = a_from.rotation.x + (sign * a_to.rotation.x - a_from.rotation.x) * a_t;
+		float y = a_from.rotation.y + (sign * a_to.rotation.y - a_from.rotation.y) * a_t;
+		float z = a_from.rotation.z + (sign * a_to.rotation.z - a_from.rotation.z) * a_t;
+		float w = a_from.rotation.w + (sign * a_to.rotation.w - a_from.rotation.w) * a_t;
+		const float length = std::sqrt(x * x + y * y + z * z + w * w);
+		if (length > 1e-6f) {
+			x /= length;
+			y /= length;
+			z /= length;
+			w /= length;
+		} else {
+			x = a_to.rotation.x;
+			y = a_to.rotation.y;
+			z = a_to.rotation.z;
+			w = a_to.rotation.w;
+		}
+		result.rotation = { x, y, z, w };
+		result.translation = { a_from.translation.x + (a_to.translation.x - a_from.translation.x) * a_t,
+			a_from.translation.y + (a_to.translation.y - a_from.translation.y) * a_t,
+			a_from.translation.z + (a_to.translation.z - a_from.translation.z) * a_t, 0.0f };
+		return result;
+	}
 
 	/** @brief One posed collision surface's hierarchy, as a frame's AppendSurfaces writes it. */
 	struct SurfaceMeta

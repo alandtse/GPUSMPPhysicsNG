@@ -14,6 +14,11 @@ outfit suites pass except the checks below.
   proxy (`Colision`), as hdtSMP64 does. At rest on SE the 318 bones sit a mean 0.92 units (max 6.4) from hdtSMP64's, the hem
   strands match hdtSMP64's pose in 12 of 12 re-equips (hem strand A 24.0 and L 18.5 in the pelvis frame, hdtSMP64 24.0 and
   18.7).
+- **Skirts under fast movement** pose the collision surface at the pose the bodies began the step from, blended to the
+  frame's pose at each substep, as hdtSMP64 steps its bodies and collision on one clock. Running at 360 units/s, the
+  spheres behind a face on DD Elanor Timeless Elegance fell from 166 to about 40 on average and no skin shows through the
+  skirt in a full run; its rear strands still sit about 20 units from hdtSMP64's, because every contact takes the pelvis's
+  velocity, not that of the limb it touches.
 - **hdtSMP64's own reference is noisy** between runs, so small distance checks can flip.
 - **Wind** is not hdtSMP64's scale (its wind is over-strong). The default `WindStrength` is chosen so hair moves about as
   far as under hdtSMP64's default in a storm.
