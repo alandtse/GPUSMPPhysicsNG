@@ -56,6 +56,8 @@ namespace SettingsUi
 		int lastSelected{ -2 };                             ///< The item a List last scrolled to.
 		/** @brief A List's physics file paths per item, in the order of items; the filter box matches them as well as the names. */
 		std::function<std::vector<std::string>()> itemFilesFn;
+		/** @brief Each item's plugin file name, in item order, for the filter. */
+		std::function<std::vector<std::string>()> itemPluginsFn;
 		/** @brief A List shows a progress bar while this reports a total above zero: what is done of what. */
 		std::function<std::pair<std::size_t, std::size_t>()> progressFn;
 		/** @brief Whether the filter box has already asked for the data its filter needs. */
