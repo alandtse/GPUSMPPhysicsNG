@@ -40,6 +40,7 @@
 #include <numbers>
 #include <set>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
@@ -3375,6 +3376,11 @@ void SmpPhysicsFeature::StepClaims()
 		}
 
 		registrationsThisFrame = 0u;
+		simulatedNodes.clear();
+		for (const auto& entry : claims) {
+			for (const auto& node : entry.second.nodes)
+				simulatedNodes.insert(node.get());
+		}
 		std::vector<SmpPhysics::GpuSolver::FrameClaim> submissions;
 		{
 			ZoneScopedN("SmpPhysics::StepClaims");
@@ -3714,6 +3720,23 @@ void SmpPhysicsFeature::WriteBackPose(Claim& a_claim)
 		const SmpPhysics::Transform world = a_claim.kinematicInput[static_cast<std::size_t>(a_claim.treeKinematicParent[index])] * a_claim.gpuLastBones[index];
 		SmpPhysics::ToRotationMatrix(world.rotation, node->world.rotate.entry);
 		node->world.translate = RE::NiPoint3{ world.translation.x, world.translation.y, world.translation.z };
+	}
+
+	RE::NiUpdateData updateData{};
+	const std::function<void(RE::NiAVObject*)> propagate = [&](RE::NiAVObject* a_node) {
+		auto* parent = a_node ? a_node->AsNode() : nullptr;
+		if (!parent)
+			return;
+		for (auto& child : parent->GetChildren()) {
+			if (!child || simulatedNodes.contains(child.get()))
+				continue;
+			child->UpdateWorldData(&updateData);
+			propagate(child.get());
+		}
+	};
+	for (std::size_t index = 0; index < rig.bones.size(); ++index) {
+		if (!rig.bones[index].kinematic)
+			propagate(a_claim.nodes[index].get());
 	}
 }
 
