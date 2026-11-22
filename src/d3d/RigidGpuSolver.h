@@ -93,11 +93,11 @@ namespace SmpPhysics
 		 * @param a_worlds The GPU solver's world pose target.
 		 * @param a_outputs The GPU solver's root-relative output target.
 		 * @param a_contacts The GPU solver's per-bone merged contacts; with a_contactPass, bodies are moved out of the colliders it reports.
-		 * @param a_contactPass Records the GPU solver's contact passes for a substep (1-based) once the bodies' poses are exported.
+		 * @param a_contactPass Records the GPU solver's contact passes for a substep (1-based) once the bodies' poses are exported, and how far into the frame that substep begins, from 0 to under 1.
 		 */
 		[[nodiscard]] bool Dispatch(const std::vector<FrameClaim>& a_frame, ID3D11UnorderedAccessView* a_worlds,
 			ID3D11UnorderedAccessView* a_outputs, ID3D11ShaderResourceView* a_contacts = nullptr,
-			const std::function<void(std::uint32_t)>& a_contactPass = {});
+			const std::function<void(std::uint32_t, float)>& a_contactPass = {});
 
 	private:
 		struct Claim

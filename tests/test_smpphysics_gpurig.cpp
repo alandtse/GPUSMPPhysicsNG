@@ -1211,3 +1211,36 @@ TEST_CASE("A claim's statics pack at its slots the same way appended or rebuilt"
 		REQUIRE(carried);
 	}
 }
+
+TEST_CASE("A blended driver pose moves along the shorter arc and keeps its rotation unit length", "[smpphysics][gpurig]")
+{
+	GpuRig::DriverWorld from;
+	from.rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
+	from.translation = { 0.0f, 10.0f, -4.0f, 0.0f };
+	GpuRig::DriverWorld to;
+	const float half = std::sqrt(0.5f);
+	to.rotation = { 0.0f, 0.0f, half, half };
+	to.translation = { 8.0f, 10.0f, 4.0f, 0.0f };
+
+	const GpuRig::DriverWorld start = GpuRig::LerpDriverWorld(from, to, 0.0f);
+	CHECK(start.rotation.w == Approx(1.0f));
+	CHECK(start.translation.x == Approx(0.0f));
+
+	const GpuRig::DriverWorld finish = GpuRig::LerpDriverWorld(from, to, 1.0f);
+	CHECK(finish.rotation.z == Approx(half));
+	CHECK(finish.translation.z == Approx(4.0f));
+
+	const GpuRig::DriverWorld middle = GpuRig::LerpDriverWorld(from, to, 0.5f);
+	CHECK(middle.translation.x == Approx(4.0f));
+	CHECK(middle.translation.y == Approx(10.0f));
+	const float length = std::sqrt(middle.rotation.x * middle.rotation.x + middle.rotation.y * middle.rotation.y +
+								   middle.rotation.z * middle.rotation.z + middle.rotation.w * middle.rotation.w);
+	CHECK(length == Approx(1.0f));
+	CHECK(middle.rotation.z > 0.0f);
+
+	GpuRig::DriverWorld flipped = to;
+	flipped.rotation = { -to.rotation.x, -to.rotation.y, -to.rotation.z, -to.rotation.w };
+	const GpuRig::DriverWorld viaShort = GpuRig::LerpDriverWorld(from, flipped, 0.5f);
+	CHECK(viaShort.rotation.z == Approx(middle.rotation.z));
+	CHECK(viaShort.rotation.w == Approx(middle.rotation.w));
+}

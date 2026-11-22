@@ -69,6 +69,17 @@ namespace SmpPhysics
 			std::array<float, 64> steps{};
 			int count{};
 			float total{};
+
+			/** @brief How far into the frame's time step a_step begins, from 0 for the first to under 1; 1 when the frame covers no time. */
+			[[nodiscard]] float StartFraction(int a_step) const noexcept
+			{
+				if (!(total > 0.0f))
+					return 1.0f;
+				float before = 0.0f;
+				for (int index = 0; index < a_step && index < count; ++index)
+					before += steps[static_cast<std::size_t>(index)];
+				return before / total < 1.0f ? before / total : 1.0f;
+			}
 		};
 
 		/** @brief Adds a_interval seconds and returns the steps to run now. */
