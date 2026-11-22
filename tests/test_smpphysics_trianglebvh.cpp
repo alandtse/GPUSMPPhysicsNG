@@ -108,6 +108,7 @@ namespace
 		const Vec3& a_point, float a_reach, float a_penetration, float a_deepReach)
 	{
 		Contact best;
+		float bestRank = -std::numeric_limits<float>::infinity();
 		std::uint32_t bestIndex = std::numeric_limits<std::uint32_t>::max();
 		const std::vector<BvhNode>& nodes = a_bvh.Nodes();
 		if (nodes.empty() || !IsFiniteVector(a_point) || !std::isfinite(a_reach) || !(a_reach > 0.0f) || !std::isfinite(a_penetration))
@@ -168,7 +169,8 @@ namespace
 						continue;
 				}
 				const float depth = a_reach - distance;
-				if (depth < best.depth || (depth == best.depth && triangleIndex > bestIndex))
+				const float rank = -std::fabs(distance);
+				if (rank < bestRank || (rank == bestRank && triangleIndex > bestIndex))
 					continue;
 				const Vec3 projected = a_point - normal * distance;
 				const Vec3 toA = a - projected;
@@ -181,6 +183,7 @@ namespace
 					continue;
 				best.depth = depth;
 				best.normal = normal;
+				bestRank = rank;
 				bestIndex = triangleIndex;
 			}
 			node = entry.skip;

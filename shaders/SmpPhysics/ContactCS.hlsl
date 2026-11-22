@@ -152,7 +152,7 @@ bool BoxOverlapsNode(HairBvhNode a_node, float3 a_low, float3 a_high)
  * @param a_id The face's source index; of two faces at the same depth the lower index wins, so the pick is stable.
  */
 void OfferSurfaceFace(HairSurfaceTriangle a_face, uint a_id, float3 a_point, float a_reach, bool a_flipped,
-	float a_allowance, float a_behind, inout HairCollision::Contact a_best, inout uint a_bestId)
+	float a_allowance, float a_behind, inout HairCollision::Contact a_best, inout float a_bestRank, inout uint a_bestId)
 {
 	if (a_face.normalArea.w <= 0.0f)
 		return;
@@ -170,7 +170,8 @@ void OfferSurfaceFace(HairSurfaceTriangle a_face, uint a_id, float3 a_point, flo
 			return;
 	}
 	float depth = a_reach - distance;
-	if (depth < a_best.depth || (depth == a_best.depth && a_id >= a_bestId))
+	float rank = -abs(distance);
+	if (rank < a_bestRank || (rank == a_bestRank && a_id >= a_bestId))
 		return;
 	float3 projected = a_point - normal * distance;
 	float3 toA = a_face.a.xyz - projected;
@@ -184,6 +185,7 @@ void OfferSurfaceFace(HairSurfaceTriangle a_face, uint a_id, float3 a_point, flo
 		return;
 	a_best.depth = depth;
 	a_best.normal = normal;
+	a_bestRank = rank;
 	a_bestId = a_id;
 }
 
@@ -203,6 +205,7 @@ HairCollision::Contact QuerySurface(HairSurfaceMeta a_meta, float3 a_point, floa
 	float3 low = a_point - float3(extent, extent, extent);
 	float3 high = a_point + float3(extent, extent, extent);
 	uint bestId = kNoTriangle;
+	float bestRank = -1.0e30f;
 	uint node = 0u;
 	while (node < a_meta.base.z) {
 		HairBvhNode current = HairSurfaceNodes[a_meta.base.y + node];
@@ -215,7 +218,7 @@ HairCollision::Contact QuerySurface(HairSurfaceMeta a_meta, float3 a_point, floa
 			uint count = current.leaf & 7u;
 			for (uint index = 0u; index < count; ++index) {
 				HairSurfaceTriangle face = HairSurfaceTriangles[a_meta.base.x + first + index];
-				OfferSurfaceFace(face, asuint(face.a.w), a_point, a_reach, flipped, allowance, behind, best, bestId);
+				OfferSurfaceFace(face, asuint(face.a.w), a_point, a_reach, flipped, allowance, behind, best, bestRank, bestId);
 			}
 			node = current.skip;
 		} else {

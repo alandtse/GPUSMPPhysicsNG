@@ -130,6 +130,30 @@ TEST_CASE("The deepest of several faces wins", "[smpphysics][trianglegrid]")
 	CHECK(grid.Query({ 2.0f, -2.0f, 0.5f }, 1.0f, 0.4f).depth == Approx(0.9f));
 }
 
+TEST_CASE("A sphere outside a shell is not pushed through a face it is behind far away", "[smpphysics][trianglegrid]")
+{
+	Mesh stack = MakeFloor(5.0f);
+	for (const Vec3& corner : { Vec3{ -5.0f, -5.0f, 6.0f }, Vec3{ 5.0f, -5.0f, 6.0f }, Vec3{ 5.0f, 5.0f, 6.0f } }) {
+		stack.indices.push_back(static_cast<std::uint32_t>(stack.vertices.size()));
+		stack.vertices.push_back(corner);
+	}
+	const TriangleGrid grid = BuildGrid(stack);
+
+	CHECK(grid.Query({ 2.0f, -2.0f, 0.5f }, 1.0f, 0.4f).depth == Approx(0.5f));
+}
+
+TEST_CASE("A sphere behind several faces is pushed out through the nearest one", "[smpphysics][trianglegrid]")
+{
+	Mesh stack = MakeFloor(5.0f);
+	for (const Vec3& corner : { Vec3{ -5.0f, -5.0f, 3.0f }, Vec3{ 5.0f, -5.0f, 3.0f }, Vec3{ 5.0f, 5.0f, 3.0f } }) {
+		stack.indices.push_back(static_cast<std::uint32_t>(stack.vertices.size()));
+		stack.vertices.push_back(corner);
+	}
+	const TriangleGrid grid = BuildGrid(stack);
+
+	CHECK(grid.Query({ 2.0f, -2.0f, -1.0f }, 1.0f, 0.4f).depth == Approx(2.0f));
+}
+
 TEST_CASE("Degenerate and out-of-range triangles are skipped and a huge mesh gets bigger cells", "[smpphysics][trianglegrid]")
 {
 	Mesh mesh;

@@ -1809,9 +1809,9 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 			RegisterClothMeshes(claim.actorFormID, claim.cardGeometries);
 		claims.insert_or_assign(a_token, std::move(claim));
 	}
-	logger::info("{} Claimed '{}' for token {} ({} of the file's {} bones kept, {} missing from the skeleton, {} in groups no joint holds; {} dynamic, {} extra joints, {} collision spheres, {} of {} start inside a collider and are exempt, {} colliders, {} fitted, {} defaulted) in {} ms",
+	logger::info("{} Claimed '{}' for token {} ({} of the file's {} bones kept, {} missing from the skeleton, {} in groups no joint holds; {} dynamic, {} extra joints, {} collision spheres, {} of {} start inside a collider and are exempt, {} colliders, {} fitted, {} defaulted, {} layer pairs exempt) in {} ms",
 		kLogPrefix, path, a_token, boneCount, bonesInFile, bonesInFile - bonesOnSkeleton, bonesOnSkeleton - boneCount, dynamicCount, additionalJoints, sphereCount,
-		exemptSpheres, sphereCount, colliderCount, collision.fitted, collision.defaulted,
+		exemptSpheres, sphereCount, colliderCount, collision.fitted, collision.defaulted, collision.layerExempted,
 		std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - claimStart).count());
 	if (collision.retargetBehind > 0) {
 		logger::info("{} '{}': {} spheres settle inside a worn surface (gravity sags the rest up to {:.1f} units); {} joints turned up to {:.2f} rad, moving a bone at most {:.1f} units, {} spheres left inside{}",

@@ -1808,7 +1808,7 @@ bool SmpPhysicsFeature::BuildClaimCollision(const hdt::IMeshClaimContext& a_cont
 			driverWorld[index] = ToSolverTransform(a_collision.drivers[index]->world);
 		std::vector<SmpPhysics::SphereProbe> probes;
 		SmpPhysics::ProbeSpheres(a_collision.spheres, a_collision.colliders, a_collision.surfaces, boneRestWorld, driverWorld, probes);
-		a_collision.layerExempted = SmpPhysics::ExemptSurfacesBehind(probes, state.rigSurfaceShapes.size(), a_rig.bones.size(), a_collision.boneSurfaceMask);
+		a_collision.layerExempted = SmpPhysics::ExemptSurfacesBehind(probes, a_collision.surfaces, state.rigSurfaceShapes.size(), a_rig.bones.size(), a_collision.boneSurfaceMask);
 	}
 	std::vector<SmpPhysics::CollisionOverride> overrides;
 	{
