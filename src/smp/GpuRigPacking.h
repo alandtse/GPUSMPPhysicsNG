@@ -314,11 +314,8 @@ namespace SmpPhysics::GpuRig
 	[[nodiscard]] std::vector<float> BuildBoneReach(const SmpRig& a_rig, const std::vector<Transform>& a_restPose, float a_slack, float a_margin,
 		float a_linearScale = 1.0f);
 
-	/**
-	 * @brief Whether a solver pose, each bone in its kinematic root's frame, has a bone that is not finite or sits
-	 *        farther from that root than a_reach allows, which no pose of a connected strand can.
-	 */
-	[[nodiscard]] bool PoseExceedsReach(const SmpRig& a_rig, const std::vector<Transform>& a_bones, const std::vector<float>& a_reach);
+	/** @brief Whether every dynamic bone of a solver pose is finite; a size mismatch counts as finite. */
+	[[nodiscard]] bool PoseIsFinite(const SmpRig& a_rig, const std::vector<Transform>& a_bones);
 
 	/** @brief Packs one tree's contact input: the claim's surface records and bone span, and whether the rigid solver owns the tree. */
 	[[nodiscard]] TreeInput MakeTreeInput(std::uint32_t a_firstSurface, std::uint32_t a_surfaceCount, bool a_rigidContacts, std::uint32_t a_boneSpan) noexcept;
