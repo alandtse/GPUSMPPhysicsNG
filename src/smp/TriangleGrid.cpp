@@ -223,6 +223,7 @@ namespace SmpPhysics
 	Contact TriangleGrid::Query(const Vec3& a_point, float a_reach, float a_penetration, float a_deepReach) const noexcept
 	{
 		Contact best;
+		float bestRank = -std::numeric_limits<float>::infinity();
 		std::uint32_t bestIndex = std::numeric_limits<std::uint32_t>::max();
 		if (m_triangles.empty() || !IsFiniteVector(a_point) || !std::isfinite(a_reach) || !(a_reach > 0.0f) || !std::isfinite(a_penetration))
 			return best;
@@ -257,13 +258,16 @@ namespace SmpPhysics
 								continue;
 						}
 						const float depth = a_reach - distance;
+						// The nearest face decides: behind it the sphere is inside and leaves through it, in front of it the sphere is outside and only touches it.
+						const float rank = -std::fabs(distance);
 						// A GPU kernel enumerates the same triangles in another order, so an exact tie breaks on the lower index.
-						if (depth < best.depth || (depth == best.depth && triangleIndex > bestIndex))
+						if (rank < bestRank || (rank == bestRank && triangleIndex > bestIndex))
 							continue;
 						if (!ProjectsInside(triangle, a_point, normal, distance))
 							continue;
 						best.depth = depth;
 						best.normal = normal;
+						bestRank = rank;
 						bestIndex = triangleIndex;
 					}
 				}

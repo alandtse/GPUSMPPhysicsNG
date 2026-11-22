@@ -195,6 +195,7 @@ namespace SmpPhysics
 			std::uint32_t surfaceFirst{};                    ///< this claim's first record in the GPU surface metas
 			std::uint32_t surfaceCount{};                    ///< how many records the claim added to them
 			std::vector<GpuRig::TreeInput> inputs;           ///< One per tree, refreshed every submitted frame.
+			bool steppedDriversValid{};                      ///< The claim's driver slots in steppedDrivers hold its pose from the last frame the solver stepped.
 			std::uint64_t firstFrame{};                      ///< The first frame this claim's output is in the output buffer; zero until then.
 		};
 
@@ -231,8 +232,10 @@ namespace SmpPhysics
 		{
 			std::vector<GpuRig::TreeInput> treeInputs;
 			std::vector<GpuRig::DriverWorld> driverWorlds;
-			std::vector<std::size_t> startedClaims;               ///< Claims whose first-frame number this frame took.
-			std::vector<RigidGpuSolver::FrameClaim> rigidClaims;  ///< Claims the rigid-body solver steps this frame.
+			std::vector<std::size_t> startedClaims;                             ///< Claims whose first-frame number this frame took.
+			std::vector<std::size_t> packedClaims;                              ///< Every claim this frame packed.
+			std::vector<std::pair<std::uint32_t, std::uint32_t>> freshDrivers;  ///< Driver slot ranges, as offset and count, of claims with no earlier pose to blend from.
+			std::vector<RigidGpuSolver::FrameClaim> rigidClaims;                ///< Claims the rigid-body solver steps this frame.
 		};
 		void PrepareFrameSurfaces(const std::vector<FrameClaim>& a_claims);
 		[[nodiscard]] bool PackFrameClaims(const std::vector<FrameClaim>& a_claims, FramePack& a_pack);
@@ -252,11 +255,12 @@ namespace SmpPhysics
 		std::unique_ptr<Buffer> colliders;
 		std::unique_ptr<Buffer> inputs;
 		std::unique_ptr<Buffer> drivers;
-		std::unique_ptr<Buffer> boneTrees;   ///< Per bone slot, the tree slot it belongs to, or kNoTree for a kinematic bone.
-		std::unique_ptr<Buffer> contacts;    ///< Per bone slot, its merged contact at the start of the substep in flight.
-		std::unique_ptr<Buffer> boneCull;    ///< Per bone slot, which surfaces its spheres can reach and whether they are queried this substep.
-		std::unique_ptr<Buffer> sphereHits;  ///< Per sphere list entry, its contact at the start of the substep; sized with the list.
-		std::unique_ptr<Buffer> sphereList;  ///< Every claim's spheres, rewritten whole whenever the claims change.
+		std::unique_ptr<Buffer> driverDeltas;  ///< Per driver slot, how its pose changed over the step, which the contact pass turns into the surface's velocity.
+		std::unique_ptr<Buffer> boneTrees;     ///< Per bone slot, the tree slot it belongs to, or kNoTree for a kinematic bone.
+		std::unique_ptr<Buffer> contacts;      ///< Per bone slot, its merged contact at the start of the substep in flight.
+		std::unique_ptr<Buffer> boneCull;      ///< Per bone slot, which surfaces its spheres can reach and whether they are queried this substep.
+		std::unique_ptr<Buffer> sphereHits;    ///< Per sphere list entry, its contact at the start of the substep; sized with the list.
+		std::unique_ptr<Buffer> sphereList;    ///< Every claim's spheres, rewritten whole whenever the claims change.
 		std::uint32_t sphereListCapacity{};
 		std::vector<GpuRig::SphereRecord> sphereListShadow;  ///< The sphere list as uploaded, so an added claim appends to it instead of rebuilding it.
 		winrt::com_ptr<ID3D11ShaderResourceView> sphereListSrv;
@@ -309,6 +313,7 @@ namespace SmpPhysics
 		winrt::com_ptr<ID3D11ShaderResourceView> collidersSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> inputsSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> driversSrv;
+		winrt::com_ptr<ID3D11ShaderResourceView> driverDeltasSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> surfaceMetasSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> surfaceTrianglesSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> surfaceNodesSrv;
@@ -342,9 +347,10 @@ namespace SmpPhysics
 
 		std::vector<bool> freeBlocks;  ///< Blocks no claim holds, in units of kBlockSlots bone slots.
 		std::uint32_t slotCapacity{};
-		std::uint32_t treeHighWater{};    ///< One past the highest tree slot any claim uses; the dispatch bound.
-		std::uint32_t boneHighWater{};    ///< One past the highest bone slot any claim uses; the contact pass's dispatch bound.
-		std::uint32_t driverHighWater{};  ///< One past the highest driver slot any claim uses; how much of the driver buffer a frame writes.
+		std::uint32_t treeHighWater{};                    ///< One past the highest tree slot any claim uses; the dispatch bound.
+		std::uint32_t boneHighWater{};                    ///< One past the highest bone slot any claim uses; the contact pass's dispatch bound.
+		std::vector<GpuRig::DriverWorld> steppedDrivers;  ///< The driver buffer as it was the last frame the rigid solver stepped, which is where the bodies began this frame.
+		std::uint32_t driverHighWater{};                  ///< One past the highest driver slot any claim uses; how much of the driver buffer a frame writes.
 		std::uint64_t frameCounter{};
 		std::uint64_t nextSerial{};
 		bool staticsDirty{};

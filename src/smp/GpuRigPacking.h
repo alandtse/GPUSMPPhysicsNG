@@ -6,8 +6,11 @@
 #include "SolverCommon.h"
 #include "TriangleBvh.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 /**
@@ -82,8 +85,9 @@ namespace SmpPhysics::GpuRig
 	{
 		Float4 normalDepth{};
 		Float4 centreCollider{};
+		Float4 velocityValid{};  ///< xyz the surface point's velocity, w 1 when its driver was known
 	};
-	static_assert(sizeof(SphereHit) == 32);
+	static_assert(sizeof(SphereHit) == 48);
 
 	/** @brief A collider kind, mirroring Collider::Type in Collision.h and the shader's own check. */
 	enum class ColliderKind : std::uint32_t
@@ -120,6 +124,98 @@ namespace SmpPhysics::GpuRig
 	};
 	static_assert(sizeof(DriverWorld) == 32);
 
+	/** @brief A driver pose a_t of the way from a_from to a_to: the translation linearly, the rotation by normalised lerp along the shorter arc. */
+	[[nodiscard]] inline DriverWorld LerpDriverWorld(const DriverWorld& a_from, const DriverWorld& a_to, float a_t) noexcept
+	{
+		DriverWorld result;
+		const float dot = a_from.rotation.x * a_to.rotation.x + a_from.rotation.y * a_to.rotation.y + a_from.rotation.z * a_to.rotation.z +
+		                  a_from.rotation.w * a_to.rotation.w;
+		const float sign = dot < 0.0f ? -1.0f : 1.0f;
+		float x = a_from.rotation.x + (sign * a_to.rotation.x - a_from.rotation.x) * a_t;
+		float y = a_from.rotation.y + (sign * a_to.rotation.y - a_from.rotation.y) * a_t;
+		float z = a_from.rotation.z + (sign * a_to.rotation.z - a_from.rotation.z) * a_t;
+		float w = a_from.rotation.w + (sign * a_to.rotation.w - a_from.rotation.w) * a_t;
+		const float length = std::sqrt(x * x + y * y + z * z + w * w);
+		if (length > 1e-6f) {
+			x /= length;
+			y /= length;
+			z /= length;
+			w /= length;
+		} else {
+			x = a_to.rotation.x;
+			y = a_to.rotation.y;
+			z = a_to.rotation.z;
+			w = a_to.rotation.w;
+		}
+		result.rotation = { x, y, z, w };
+		result.translation = { a_from.translation.x + (a_to.translation.x - a_from.translation.x) * a_t,
+			a_from.translation.y + (a_to.translation.y - a_from.translation.y) * a_t,
+			a_from.translation.z + (a_to.translation.z - a_from.translation.z) * a_t, 0.0f };
+		return result;
+	}
+
+	/** @brief How one driver moved over the step: the rigid map from its pose when the bodies last stepped to its pose now, and 1 / the step's duration. */
+	struct DriverDelta
+	{
+		Float4 rotation{ 1.0f, 0.0f, 0.0f, 0.0f };  ///< w, x, y, z lane order
+		Float4 translation{};                       ///< xyz the translation, w 1 / the step's duration, 0 when the driver has no delta
+	};
+	static_assert(sizeof(DriverDelta) == 32);
+
+	/** @brief The delta that carries a point posed by a_from to where a_to poses it; a_total is the seconds between the two poses. */
+	[[nodiscard]] inline DriverDelta MakeDriverDelta(const DriverWorld& a_from, const DriverWorld& a_to, float a_total) noexcept
+	{
+		const auto load = [](const DriverWorld& a_world) {
+			Transform transform;
+			transform.rotation = Quat{ a_world.rotation.x, a_world.rotation.y, a_world.rotation.z, a_world.rotation.w }.Normalized();
+			transform.translation = { a_world.translation.x, a_world.translation.y, a_world.translation.z };
+			return transform;
+		};
+		DriverDelta result;
+		if (!(a_total > 0.0f))
+			return result;
+		const Transform delta = load(a_to) * load(a_from).Inverse();
+		result.rotation = { delta.rotation.w, delta.rotation.x, delta.rotation.y, delta.rotation.z };
+		result.translation = { delta.translation.x, delta.translation.y, delta.translation.z, 1.0f / a_total };
+		return result;
+	}
+
+	/** @brief A run of driver slots, as an offset and a count. */
+	using DriverRange = std::pair<std::uint32_t, std::uint32_t>;
+
+	/** @brief Sets each slot of a_ranges in a_out to the pose a_t of the way from a_from to a_to; every other slot of a_out is left as it was. */
+	inline void BlendDriverRanges(const std::vector<DriverWorld>& a_from, const std::vector<DriverWorld>& a_to, const std::vector<DriverRange>& a_ranges, float a_t,
+		std::vector<DriverWorld>& a_out) noexcept
+	{
+		const std::size_t size = std::min({ a_from.size(), a_to.size(), a_out.size() });
+		for (const auto& [offset, count] : a_ranges) {
+			for (std::size_t slot = offset; slot < std::size_t{ offset } + count && slot < size; ++slot)
+				a_out[slot] = LerpDriverWorld(a_from[slot], a_to[slot], a_t);
+		}
+	}
+
+	/** @brief Sets each slot of a_ranges in a_out to the delta from a_from to a_to over a_total seconds; every other slot of a_out is left as it was. */
+	inline void FillDriverDeltas(const std::vector<DriverWorld>& a_from, const std::vector<DriverWorld>& a_to, const std::vector<DriverRange>& a_ranges, float a_total,
+		std::vector<DriverDelta>& a_out) noexcept
+	{
+		const std::size_t size = std::min({ a_from.size(), a_to.size(), a_out.size() });
+		for (const auto& [offset, count] : a_ranges) {
+			for (std::size_t slot = offset; slot < std::size_t{ offset } + count && slot < size; ++slot)
+				a_out[slot] = MakeDriverDelta(a_from[slot], a_to[slot], a_total);
+		}
+	}
+
+	/** @brief The velocity of a_point, a world position the driver carried, under a_delta; zero when the delta is empty. */
+	[[nodiscard]] inline Vec3 DriverPointVelocity(const DriverDelta& a_delta, const Vec3& a_point) noexcept
+	{
+		if (!(a_delta.translation.w > 0.0f))
+			return {};
+		Transform delta;
+		delta.rotation = { a_delta.rotation.x, a_delta.rotation.y, a_delta.rotation.z, a_delta.rotation.w };
+		delta.translation = { a_delta.translation.x, a_delta.translation.y, a_delta.translation.z };
+		return (delta.TransformPoint(a_point) - a_point) * a_delta.translation.w;
+	}
+
 	/** @brief One posed collision surface's hierarchy, as a frame's AppendSurfaces writes it. */
 	struct SurfaceMeta
 	{
@@ -129,7 +225,7 @@ namespace SmpPhysics::GpuRig
 	};
 	static_assert(sizeof(SurfaceMeta) == 48);
 
-	/** @brief One posed triangle, in leaf order: its corners, its unit face normal with twice its area in w, and its source index in a.w. */
+	/** @brief One posed triangle, in leaf order: its corners, its unit face normal with twice its area in w, and its source index in a.w; b.w holds the global driver slot plus one that moves the face, 0 when unknown. */
 	struct SurfaceTriangle
 	{
 		Float4 a{};  ///< corner; w the source triangle index bit-cast to float
@@ -212,8 +308,10 @@ namespace SmpPhysics::GpuRig
 		std::int32_t collider{ -1 };
 		float normal[3]{};
 		float position[3]{};
+		float velocity[3]{};  ///< the contacted surface's velocity at the contact, from its driver's pose change over the step
+		std::uint32_t velocityValid{};
 	};
-	static_assert(sizeof(BoneContact) == 36);
+	static_assert(sizeof(BoneContact) == 52);
 
 	/** @brief One bone's root-relative result, which the host turns back into a world transform. */
 	struct BoneOutput

@@ -1024,7 +1024,8 @@ struct SmpPhysicsFeature::CollisionBuildState
 	int rightArmDriver{ -1 };
 	int lowerTorsoDriver{ -1 };
 	int groundDriver{ -1 };
-	bool clothRig{};  ///< The rig's per-vertex shapes are collision for others and its dynamic bones are skinned to triangle shapes, as a skirt's are.
+	bool clothRig{};         ///< The rig's per-vertex shapes are collision for others and its dynamic bones are skinned to triangle shapes, as a skirt's are.
+	bool spheresPerShape{};  ///< Spheres are built from each shape on its own, so a per-triangle shape skinned to simulated bones collides as hdtSMP64 has it.
 	std::map<std::string, int> rigBoneOfName;
 	std::vector<bool> dynamicBone;
 	std::vector<std::string> hairNames;                 ///< The meshes the rig builds its own shapes from, which are never body.
@@ -1087,8 +1088,9 @@ bool SmpPhysicsFeature::ResolveCollisionInputs(CollisionBuildState& s, std::stri
 		return false;
 	}
 	const auto skinsDynamic = [&](const RigShape& a_shape) { return SkinsToDynamicBone(FindMeshObject(a_context, meshRoot, a_shape.name), a_rig, a_context); };
-	s.clothRig = SmpPhysics::IsClothRig(shapes.vertexShapes.size(), static_cast<std::size_t>(std::ranges::count_if(shapes.vertexShapes, skinsDynamic)),
-		static_cast<std::size_t>(std::ranges::count_if(shapes.triangleShapes, skinsDynamic)));
+	const auto trianglesOnSimulatedBones = static_cast<std::size_t>(std::ranges::count_if(shapes.triangleShapes, skinsDynamic));
+	s.clothRig = SmpPhysics::IsClothRig(shapes.vertexShapes.size(), static_cast<std::size_t>(std::ranges::count_if(shapes.vertexShapes, skinsDynamic)), trianglesOnSimulatedBones);
+	s.spheresPerShape = SmpPhysics::BuildsSpheresPerShape(shapes.vertexShapes.size(), s.clothRig, trianglesOnSimulatedBones);
 	std::vector<const RigShape*> hairShapeCandidates = s.clothRig ? std::vector<const RigShape*>{ &shapes.triangleShapes.back() } : OrderHairShapes(shapes);
 	if (hairShapeCandidates.empty() && !shapes.triangleShapes.empty())
 		hairShapeCandidates.push_back(&shapes.triangleShapes.back());
@@ -1233,7 +1235,7 @@ bool SmpPhysicsFeature::BuildHairSpheres(CollisionBuildState& s, std::string& a_
 	}
 	if (std::ranges::find(sphereShapes, hairShape) == sphereShapes.end())
 		sphereShapes.push_back(hairShape);
-	const bool perShape = shapes.vertexShapes.empty() || s.clothRig;
+	const bool perShape = s.spheresPerShape;
 	if (perShape) {
 		for (const RigShape& shape : shapes.triangleShapes) {
 			if (&shape != hairShape)
@@ -1806,7 +1808,7 @@ bool SmpPhysicsFeature::BuildClaimCollision(const hdt::IMeshClaimContext& a_cont
 			driverWorld[index] = ToSolverTransform(a_collision.drivers[index]->world);
 		std::vector<SmpPhysics::SphereProbe> probes;
 		SmpPhysics::ProbeSpheres(a_collision.spheres, a_collision.colliders, a_collision.surfaces, boneRestWorld, driverWorld, probes);
-		a_collision.layerExempted = SmpPhysics::ExemptSurfacesBehind(probes, state.rigSurfaceShapes.size(), a_rig.bones.size(), a_collision.boneSurfaceMask);
+		a_collision.layerExempted = SmpPhysics::ExemptSurfacesBehind(probes, a_collision.surfaces, state.rigSurfaceShapes.size(), a_rig.bones.size(), a_collision.boneSurfaceMask);
 	}
 	std::vector<SmpPhysics::CollisionOverride> overrides;
 	{

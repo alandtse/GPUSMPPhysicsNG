@@ -8,6 +8,16 @@ using namespace SmpPhysics;
 
 namespace
 {
+	std::vector<SkinnedSurface> Surfaces(std::size_t a_count, std::size_t a_deepPush = SIZE_MAX)
+	{
+		std::vector<SkinnedSurface> surfaces(a_count);
+		for (SkinnedSurface& surface : surfaces)
+			surface.deepPush = false;
+		if (a_deepPush < a_count)
+			surfaces[a_deepPush].deepPush = true;
+		return surfaces;
+	}
+
 	SphereProbe Probe(int a_bone, float a_behind, int a_surface)
 	{
 		SphereProbe probe;
@@ -22,7 +32,7 @@ TEST_CASE("A bone authored behind a rig surface stops touching it", "[smpphysics
 {
 	std::vector<std::uint32_t> mask;
 
-	const std::size_t exempted = ExemptSurfacesBehind({ Probe(1, 3.0f, 2), Probe(1, 2.0f, 2) }, 4, 3, mask);
+	const std::size_t exempted = ExemptSurfacesBehind({ Probe(1, 3.0f, 2), Probe(1, 2.0f, 2) }, Surfaces(4), 4, 3, mask);
 
 	CHECK(exempted == 1);
 	REQUIRE(mask.size() == 3);
@@ -34,7 +44,7 @@ TEST_CASE("A sphere in front of its surface, or behind one the limit excludes, k
 {
 	std::vector<std::uint32_t> mask;
 
-	const std::size_t exempted = ExemptSurfacesBehind({ Probe(0, 0.0f, 1), Probe(0, kProbeLostBehind, 1), Probe(0, 5.0f, 4), Probe(0, 5.0f, -1) }, 4, 2, mask);
+	const std::size_t exempted = ExemptSurfacesBehind({ Probe(0, 0.0f, 1), Probe(0, kProbeLostBehind, 1), Probe(0, 5.0f, 4), Probe(0, 5.0f, -1) }, Surfaces(4), 4, 2, mask);
 
 	CHECK(exempted == 0);
 	CHECK(mask.empty());
@@ -44,8 +54,19 @@ TEST_CASE("Each surface bit is cleared independently", "[smpphysics][layerexempt
 {
 	std::vector<std::uint32_t> mask(2, 0xFFFFFFFFu);
 
-	ExemptSurfacesBehind({ Probe(0, 4.0f, 0), Probe(0, 4.0f, 3), Probe(1, 4.0f, 1) }, 8, 2, mask);
+	ExemptSurfacesBehind({ Probe(0, 4.0f, 0), Probe(0, 4.0f, 3), Probe(1, 4.0f, 1) }, Surfaces(8), 8, 2, mask);
 
 	CHECK(mask[0] == 0xFFFFFFF6u);
 	CHECK(mask[1] == 0xFFFFFFFDu);
+}
+
+TEST_CASE("A deep-push surface is never exempted", "[smpphysics][layerexempt]")
+{
+	std::vector<std::uint32_t> mask;
+
+	const std::size_t exempted = ExemptSurfacesBehind({ Probe(0, 4.0f, 1), Probe(0, 4.0f, 2) }, Surfaces(4, 1), 4, 1, mask);
+
+	CHECK(exempted == 1);
+	REQUIRE(mask.size() == 1);
+	CHECK(mask[0] == 0xFFFFFFFBu);
 }

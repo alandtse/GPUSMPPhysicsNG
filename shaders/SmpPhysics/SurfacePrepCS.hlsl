@@ -100,6 +100,30 @@ bool LoadPosedCorner(uint a_index, out float3 a_position)
 	return isfinite(posed.x) && isfinite(posed.y) && isfinite(posed.z);
 }
 
+/** @brief The global driver slot plus one that carries most of a vertex's weight, or 0 when none of its bones is driven. */
+uint DominantDriver(uint a_vertex)
+{
+	if (a_vertex >= VertexCount)
+		return 0u;
+	HairSurfacePrepVertex packed = HairPrepVertices[a_vertex];
+	uint bones[4] = { packed.bones.x, packed.bones.y, packed.bones.z, packed.bones.w };
+	float weights[4] = { packed.weights.x, packed.weights.y, packed.weights.z, packed.weights.w };
+	uint best = 0u;
+	float bestWeight = 0.0f;
+	[unroll] for (uint slot = 0u; slot < 4u; ++slot)
+	{
+		uint bone = bones[slot];
+		if (bone == kPrepInvalidSlot || bone >= BoneCount || !(weights[slot] > bestWeight))
+			continue;
+		uint driver = HairPrepBones[bone].driver.x;
+		if (driver == kPrepInvalidSlot)
+			continue;
+		best = driver + 1u;
+		bestWeight = weights[slot];
+	}
+	return best;
+}
+
 /** @brief One skin bone's world transform: the driver's pose composed with the bone's bind transform. */
 [numthreads(64, 1, 1)] void SurfaceBones(uint3 a_dispatchThreadId : SV_DispatchThreadID) {
 	uint bone = a_dispatchThreadId.x;
@@ -170,7 +194,11 @@ bool LoadPosedCorner(uint a_index, out float3 a_position)
 		float twiceArea = length(faceCross);
 		if (twiceArea > kPrepMinimumTriangleArea) {
 			record.a = float4(a, asfloat(prep.corners.w));
-			record.b = float4(b, 0.0f);
+			uint driver = DominantDriver(prep.corners.x);
+			uint second = DominantDriver(prep.corners.y);
+			if (second != 0u && second == DominantDriver(prep.corners.z))
+				driver = second;
+			record.b = float4(b, asfloat(driver));
 			record.c = float4(c, 0.0f);
 			record.normalArea = float4(faceCross / twiceArea, twiceArea);
 		}

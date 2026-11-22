@@ -282,6 +282,7 @@ namespace SmpPhysics
 		colliders = nullptr;
 		inputs = nullptr;
 		drivers = nullptr;
+		driverDeltas = nullptr;
 		worlds = nullptr;
 		outputs = nullptr;
 		boneTrees = nullptr;
@@ -298,6 +299,7 @@ namespace SmpPhysics
 		collidersSrv = nullptr;
 		inputsSrv = nullptr;
 		driversSrv = nullptr;
+		driverDeltasSrv = nullptr;
 		worldsSrv = nullptr;
 		worldsUav = nullptr;
 		outputsUav = nullptr;
@@ -317,6 +319,9 @@ namespace SmpPhysics
 		drivers = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::DriverWorld>(a_slots, false, true), nullptr, "SmpPhysics::PoolDrivers");
 		drivers->CreateSRV(StructuredSrvDesc(a_slots));
 		driversSrv = drivers->srv;
+		driverDeltas = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::DriverDelta>(a_slots, false, true), nullptr, "SmpPhysics::PoolDriverDeltas");
+		driverDeltas->CreateSRV(StructuredSrvDesc(a_slots));
+		driverDeltasSrv = driverDeltas->srv;
 		worlds = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneWorld>(a_slots, true, false), nullptr, "SmpPhysics::PoolWorlds");
 		worlds->CreateUAV(StructuredUavDesc(a_slots));
 		worlds->CreateSRV(StructuredSrvDesc(a_slots));
@@ -956,6 +961,9 @@ namespace SmpPhysics
 				a_pack.treeInputs[claim.boneOffset + static_cast<std::uint32_t>(tree)] = claim.inputs[tree];
 			}
 			const bool supplied = frameClaim.driverWorld && frameClaim.driverWorld->size() == claim.driverCount;
+			a_pack.packedClaims.push_back(found->second);
+			if (!frameClaim.hasPreviousInput || frameClaim.resetRequested || !claim.steppedDriversValid)
+				a_pack.freshDrivers.emplace_back(claim.driverOffset, claim.driverCount);
 			for (std::uint32_t index = 0; index < claim.driverCount; ++index) {
 				const Transform driver = supplied ? (*frameClaim.driverWorld)[index] : Transform{};
 				GpuRig::DriverWorld& packed = a_pack.driverWorlds[claim.driverOffset + index];
@@ -1089,7 +1097,7 @@ namespace SmpPhysics
 			surfacePrepActive ? surfacePrepMetasSrv.get() : surfaceMetasSrv.get(),
 			surfacePrepActive ? gpuSurfaceTrianglesSrv.get() : surfaceTrianglesSrv.get(),
 			surfacePrepActive ? gpuSurfaceNodesSrv.get() : surfaceNodesSrv.get(),
-			nullptr, sphereListSrv.get(), boneTreesSrv.get(), nullptr };
+			nullptr, sphereListSrv.get(), boneTreesSrv.get(), driverDeltasSrv.get() };
 		ID3D11UnorderedAccessView* contactTargets[kStepTargetCount] = { nullptr, worldsUav.get(), nullptr, contactsUav.get(),
 			nullptr, sphereHitsUav.get(), boneCullUav.get() };
 		ID3D11Buffer* constantView = constants->CB();
@@ -1163,15 +1171,49 @@ namespace SmpPhysics
 			}
 		}
 
-		DispatchSurfacePrep();
+		const bool takeContacts = !pack.rigidClaims.empty() && std::ranges::any_of(a_claims, [](const FrameClaim& a_claim) { return a_claim.rigidContacts; });
+		if (!takeContacts)
+			DispatchSurfacePrep();
 		if (!pack.rigidClaims.empty()) {
-			const auto contactPass = [this, &values](std::uint32_t) { DispatchContacts(values); };
-			const bool takeContacts = std::ranges::any_of(a_claims, [](const FrameClaim& a_claim) { return a_claim.rigidContacts; });
-			(void)rigidSolver.Dispatch(pack.rigidClaims, worldsUav.get(), outputsUav.get(), takeContacts ? contactsSrv.get() : nullptr, contactPass);
+			std::vector<GpuRig::DriverWorld> from = steppedDrivers.size() == pack.driverWorlds.size() ? steppedDrivers : pack.driverWorlds;
+			for (const auto& [offset, count] : pack.freshDrivers)
+				std::copy_n(pack.driverWorlds.begin() + offset, count, from.begin() + offset);
+			std::vector<GpuRig::DriverRange> liveDrivers;
+			liveDrivers.reserve(pack.packedClaims.size());
+			for (const std::size_t index : pack.packedClaims)
+				liveDrivers.emplace_back(claims[index].driverOffset, claims[index].driverCount);
+			std::vector<GpuRig::DriverWorld> blended = pack.driverWorlds;
+			std::vector<GpuRig::DriverDelta> deltas(pack.driverWorlds.size());
+			bool deltasUploaded = false;
+			const auto contactPass = [this, &values, &pack, &from, &blended, &deltas, &liveDrivers, &deltasUploaded](std::uint32_t, float a_fraction, float a_total) {
+				if (!pack.driverWorlds.empty()) {
+					GpuRig::BlendDriverRanges(from, pack.driverWorlds, liveDrivers, a_fraction, blended);
+					(void)UploadDiscard(globals::d3d::context, drivers->resource.get(), blended.data(), blended.size() * sizeof(GpuRig::DriverWorld));
+				}
+				if (!deltas.empty() && !deltasUploaded) {
+					GpuRig::FillDriverDeltas(from, pack.driverWorlds, liveDrivers, a_total, deltas);
+					(void)UploadDiscard(globals::d3d::context, driverDeltas->resource.get(), deltas.data(), deltas.size() * sizeof(GpuRig::DriverDelta));
+					deltasUploaded = true;
+				}
+				DispatchSurfacePrep();
+				DispatchContacts(values);
+			};
+			const bool stepped = rigidSolver.Dispatch(pack.rigidClaims, worldsUav.get(), outputsUav.get(), takeContacts ? contactsSrv.get() : nullptr, contactPass);
 			if (!rigidSolver.Available()) {
 				UndoFramePack(pack);
 				Fail("the rigid solver became unavailable; claimed hair stays at the engine's pose");
 				return false;
+			}
+			if (stepped) {
+				if (takeContacts && !pack.driverWorlds.empty())
+					(void)UploadDiscard(globals::d3d::context, drivers->resource.get(), pack.driverWorlds.data(), pack.driverWorlds.size() * sizeof(GpuRig::DriverWorld));
+				steppedDrivers = pack.driverWorlds;
+				for (Claim& claim : claims)
+					claim.steppedDriversValid = false;
+				for (const std::size_t index : pack.packedClaims)
+					claims[index].steppedDriversValid = true;
+			} else if (takeContacts) {
+				DispatchSurfacePrep();
 			}
 		}
 

@@ -36,6 +36,15 @@ Per call on SE, 10/20/30 characters: `ContactSpheres` 0.64/1.18/1.13 ms and `Rig
 (null driver) the same passes cost 0.33 to 0.75 ms and about 0.58 ms, so about 2.5 ms of an 11.1 ms frame at 20
 characters. Contact is the largest pass.
 
+## Cost of the skirt contact fix
+
+On SE, Tracy, 126 claims (30 characters in DD Elanor Timeless Elegance), every throttle lifted, one run per arm. Posing the
+collision surface on the bodies' clock and giving each contact its driver's velocity added 0.87 ms of main thread
+(`Step` 3.82 to 4.69 ms, all of it the per-substep contact callback) and 0.34 ms of GPU (`SurfacePrep` now runs per
+substep, 0.17 to 0.36 ms; `ContactSpheres` per call is unchanged). Bounding the callback's driver loop to the packed
+claims and building the delta once per step takes `Step` to 3.76 ms and the callback from 1.67 to 0.24 ms. Frame
+generation and the engine frame lock were not changed, so frame time is not reported.
+
 ## Things that did not help
 
 - Routing small islands to the sequential `RigidSolveIsland` kernel made `RigidSolve` slower (0.62 ms coloured-only

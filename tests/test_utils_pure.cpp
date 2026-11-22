@@ -134,3 +134,23 @@ TEST_CASE("A path with a name the system code page cannot hold still converts", 
 	const std::string expected = "Meshes/\xD0\xBF\xD0\xBE\xD0\xBB\xD0\xBD\xD1\x8B\xD0\xB9.xml";
 	CHECK(Util::PathUtf8(path) == expected);
 }
+
+TEST_CASE("A step's start fraction is the share of the frame before it", "[solver]")
+{
+	SmpPhysics::SmpStepClock clock;
+	const float tick = 1.0f / 60.0f;
+
+	const auto single = clock.Advance(tick);
+	REQUIRE(single.count == 1);
+	CHECK(single.StartFraction(0) == Approx(0.0f));
+
+	clock.Reset();
+	const auto several = clock.Advance(tick * 3.0f);
+	REQUIRE(several.count >= 3);
+	CHECK(several.StartFraction(0) == Approx(0.0f));
+	CHECK(several.StartFraction(1) == Approx(several.steps[0] / several.total));
+	CHECK(several.StartFraction(2) == Approx((several.steps[0] + several.steps[1]) / several.total));
+	CHECK(several.StartFraction(several.count) <= 1.0f);
+
+	CHECK(SmpPhysics::SmpStepClock::Frame{}.StartFraction(0) == Approx(1.0f));
+}

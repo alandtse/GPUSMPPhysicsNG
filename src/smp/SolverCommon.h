@@ -69,6 +69,17 @@ namespace SmpPhysics
 			std::array<float, 64> steps{};
 			int count{};
 			float total{};
+
+			/** @brief How far into the frame's time step a_step begins, from 0 for the first to under 1; 1 when the frame covers no time. */
+			[[nodiscard]] float StartFraction(int a_step) const noexcept
+			{
+				if (!(total > 0.0f))
+					return 1.0f;
+				float before = 0.0f;
+				for (int index = 0; index < a_step && index < count; ++index)
+					before += steps[static_cast<std::size_t>(index)];
+				return before / total < 1.0f ? before / total : 1.0f;
+			}
 		};
 
 		/** @brief Adds a_interval seconds and returns the steps to run now. */
@@ -113,12 +124,13 @@ namespace SmpPhysics
 	/**
 	 * @brief Stops a bone touching the surfaces its spheres were authored behind.
 	 * @param a_probes The spheres placed at rest, as ProbeSpheres reports them.
+	 * @param a_surfaces The collision surfaces; a deep-push one is never exempted, because it holds a sphere authored behind it out.
 	 * @param a_surfaceLimit Only surfaces below this index are exempted, so the body and worn armor keep colliding.
 	 * @param a_boneCount The number of rig bones; a_boneSurfaceMask is created with every surface allowed when empty.
 	 * @details One-sided cloth layers that lie one inside the other would otherwise push the inner layer through the outer one
 	 *          on a hard move and trap it there, because the face then holds it on the wrong side.
 	 * @return How many bone and surface pairs were exempted.
 	 */
-	std::size_t ExemptSurfacesBehind(const std::vector<SphereProbe>& a_probes, std::size_t a_surfaceLimit, std::size_t a_boneCount,
+	std::size_t ExemptSurfacesBehind(const std::vector<SphereProbe>& a_probes, const std::vector<SkinnedSurface>& a_surfaces, std::size_t a_surfaceLimit, std::size_t a_boneCount,
 		std::vector<std::uint32_t>& a_boneSurfaceMask);
 }
