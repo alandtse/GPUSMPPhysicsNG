@@ -282,6 +282,7 @@ namespace SmpPhysics
 		colliders = nullptr;
 		inputs = nullptr;
 		drivers = nullptr;
+		driverDeltas = nullptr;
 		worlds = nullptr;
 		outputs = nullptr;
 		boneTrees = nullptr;
@@ -298,6 +299,7 @@ namespace SmpPhysics
 		collidersSrv = nullptr;
 		inputsSrv = nullptr;
 		driversSrv = nullptr;
+		driverDeltasSrv = nullptr;
 		worldsSrv = nullptr;
 		worldsUav = nullptr;
 		outputsUav = nullptr;
@@ -317,6 +319,9 @@ namespace SmpPhysics
 		drivers = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::DriverWorld>(a_slots, false, true), nullptr, "SmpPhysics::PoolDrivers");
 		drivers->CreateSRV(StructuredSrvDesc(a_slots));
 		driversSrv = drivers->srv;
+		driverDeltas = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::DriverDelta>(a_slots, false, true), nullptr, "SmpPhysics::PoolDriverDeltas");
+		driverDeltas->CreateSRV(StructuredSrvDesc(a_slots));
+		driverDeltasSrv = driverDeltas->srv;
 		worlds = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneWorld>(a_slots, true, false), nullptr, "SmpPhysics::PoolWorlds");
 		worlds->CreateUAV(StructuredUavDesc(a_slots));
 		worlds->CreateSRV(StructuredSrvDesc(a_slots));
@@ -1092,7 +1097,7 @@ namespace SmpPhysics
 			surfacePrepActive ? surfacePrepMetasSrv.get() : surfaceMetasSrv.get(),
 			surfacePrepActive ? gpuSurfaceTrianglesSrv.get() : surfaceTrianglesSrv.get(),
 			surfacePrepActive ? gpuSurfaceNodesSrv.get() : surfaceNodesSrv.get(),
-			nullptr, sphereListSrv.get(), boneTreesSrv.get(), nullptr };
+			nullptr, sphereListSrv.get(), boneTreesSrv.get(), driverDeltasSrv.get() };
 		ID3D11UnorderedAccessView* contactTargets[kStepTargetCount] = { nullptr, worldsUav.get(), nullptr, contactsUav.get(),
 			nullptr, sphereHitsUav.get(), boneCullUav.get() };
 		ID3D11Buffer* constantView = constants->CB();
@@ -1174,11 +1179,17 @@ namespace SmpPhysics
 			for (const auto& [offset, count] : pack.freshDrivers)
 				std::copy_n(pack.driverWorlds.begin() + offset, count, from.begin() + offset);
 			std::vector<GpuRig::DriverWorld> blended(pack.driverWorlds.size());
-			const auto contactPass = [this, &values, &pack, &from, &blended](std::uint32_t, float a_fraction) {
+			std::vector<GpuRig::DriverDelta> deltas(pack.driverWorlds.size());
+			const auto contactPass = [this, &values, &pack, &from, &blended, &deltas](std::uint32_t, float a_fraction, float a_total) {
 				if (!pack.driverWorlds.empty()) {
 					for (std::size_t index = 0; index < blended.size(); ++index)
 						blended[index] = GpuRig::LerpDriverWorld(from[index], pack.driverWorlds[index], a_fraction);
 					(void)UploadDiscard(globals::d3d::context, drivers->resource.get(), blended.data(), blended.size() * sizeof(GpuRig::DriverWorld));
+				}
+				if (!deltas.empty()) {
+					for (std::size_t index = 0; index < deltas.size(); ++index)
+						deltas[index] = GpuRig::MakeDriverDelta(from[index], pack.driverWorlds[index], a_total);
+					(void)UploadDiscard(globals::d3d::context, driverDeltas->resource.get(), deltas.data(), deltas.size() * sizeof(GpuRig::DriverDelta));
 				}
 				DispatchSurfacePrep();
 				DispatchContacts(values);

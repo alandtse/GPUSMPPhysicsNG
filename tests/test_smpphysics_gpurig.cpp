@@ -1245,3 +1245,31 @@ TEST_CASE("A blended driver pose moves along the shorter arc and keeps its rotat
 	CHECK(viaShort.rotation.z == Approx(middle.rotation.z));
 	CHECK(viaShort.rotation.w == Approx(middle.rotation.w));
 }
+
+TEST_CASE("A driver delta gives the velocity of the points the driver carried", "[smpphysics][gpurig]")
+{
+	GpuRig::DriverWorld from;
+	from.rotation = { 1.0f, 0.0f, 0.0f, 0.0f };
+	from.translation = { 10.0f, 0.0f, 0.0f, 0.0f };
+	GpuRig::DriverWorld slid = from;
+	slid.translation = { 10.0f, 3.0f, 0.0f, 0.0f };
+
+	const GpuRig::DriverDelta slide = GpuRig::MakeDriverDelta(from, slid, 0.5f);
+	const Vec3 slideVelocity = GpuRig::DriverPointVelocity(slide, { 12.0f, 1.0f, 4.0f });
+	CHECK(slideVelocity.x == Approx(0.0f).margin(1e-4f));
+	CHECK(slideVelocity.y == Approx(6.0f).margin(1e-4f));
+	CHECK(slideVelocity.z == Approx(0.0f).margin(1e-4f));
+
+	GpuRig::DriverWorld turned = from;
+	const float half = std::sqrt(0.5f);
+	turned.rotation = { half, 0.0f, 0.0f, half };
+	const GpuRig::DriverDelta turn = GpuRig::MakeDriverDelta(from, turned, 1.0f);
+	const Vec3 pivotVelocity = GpuRig::DriverPointVelocity(turn, { 10.0f, 0.0f, 0.0f });
+	CHECK(pivotVelocity.x == Approx(0.0f).margin(1e-4f));
+	CHECK(pivotVelocity.y == Approx(0.0f).margin(1e-4f));
+	const Vec3 farVelocity = GpuRig::DriverPointVelocity(turn, { 12.0f, 0.0f, 0.0f });
+	CHECK(farVelocity.x == Approx(-2.0f).margin(1e-4f));
+	CHECK(farVelocity.y == Approx(2.0f).margin(1e-4f));
+
+	CHECK(GpuRig::DriverPointVelocity(GpuRig::MakeDriverDelta(from, slid, 0.0f), { 1.0f, 1.0f, 1.0f }).y == 0.0f);
+}

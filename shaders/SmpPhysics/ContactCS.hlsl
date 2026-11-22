@@ -82,6 +82,13 @@ StructuredBuffer<HairSurfaceMeta> HairSurfaces : register(t8);
 StructuredBuffer<HairSurfaceTriangle> HairSurfaceTriangles : register(t9);
 StructuredBuffer<HairBvhNode> HairSurfaceNodes : register(t10);
 StructuredBuffer<HairSphereRecord> HairSphereList : register(t12);
+struct HairDriverDelta
+{
+	float4 rotation;     // w, x, y, z lane order: the map from the driver's pose at the last step to its pose now
+	float4 translation;  // xyz translation, w = 1 / the step's seconds, 0 when the driver has no delta
+};
+
+StructuredBuffer<HairDriverDelta> HairDriverDeltas : register(t14);
 StructuredBuffer<uint> HairBoneTrees : register(t13);  // per bone slot: its tree slot, or kNoTree for a kinematic bone
 static const uint kNoTree = 0xFFFFFFFFu;  // mirrors kNoTree in GpuRigPacking.h
 static const uint kNoTriangle = 0xFFFFFFFFu;  // no face has offered itself yet
@@ -136,7 +143,10 @@ HairCollision::Contact QueryColliders(HairTreeStatic a_tree, float3 a_point, flo
 		HairCollision::Transform world = HairCollision::LoadTransform(rawWorld.rotation, rawWorld.translation);
 		if (!HairCollision::IsFiniteTransform(world))
 			continue;
+		const float depthBefore = best.depth;
 		HairCollision::MergeContact(best, LoadCollider(raw), world, a_point, a_radius, (int)index);
+		if (best.depth > depthBefore)
+			best.driver = raw.kind.y + 1u;
 	}
 	return best;
 }
@@ -185,6 +195,7 @@ void OfferSurfaceFace(HairSurfaceTriangle a_face, uint a_id, float3 a_point, flo
 		return;
 	a_best.depth = depth;
 	a_best.normal = normal;
+	a_best.driver = asuint(a_face.b.w);
 	a_bestRank = rank;
 	a_bestId = a_id;
 }
@@ -258,6 +269,8 @@ struct HairBoneContact
 	int collider;
 	float3 normal;
 	float3 position;
+	float3 velocity;
+	uint velocityValid;
 };
 
 RWStructuredBuffer<HairBoneContact> HairBoneContactsOut : register(u3);  // Contact's write view: per bone slot, its merged contact at the start of the substep
@@ -268,6 +281,8 @@ struct HairContactPartial
 	float weight;
 	float3 normalSum;
 	float3 positionSum;
+	float3 velocitySum;
+	bool velocityMissing;
 	float deepest;
 	int collider;
 };
@@ -278,6 +293,8 @@ HairContactPartial EmptyContactPartial()
 	result.weight = 0.0f;
 	result.normalSum = float3(0.0f, 0.0f, 0.0f);
 	result.positionSum = float3(0.0f, 0.0f, 0.0f);
+	result.velocitySum = float3(0.0f, 0.0f, 0.0f);
+	result.velocityMissing = false;
 	result.deepest = 0.0f;
 	result.collider = -1;
 	return result;
@@ -292,11 +309,17 @@ HairBoneContact FinishBoneContact(HairContactPartial a_partial)
 	result.collider = a_partial.collider;
 	result.normal = float3(0.0f, 0.0f, 0.0f);
 	result.position = float3(0.0f, 0.0f, 0.0f);
+	result.velocity = float3(0.0f, 0.0f, 0.0f);
+	result.velocityValid = 0u;
 	float length = sqrt(dot(a_partial.normalSum, a_partial.normalSum));
 	if (a_partial.weight > 0.0f && length > 0.0f) {
 		result.normal = a_partial.normalSum / length;
 		result.position = a_partial.positionSum / a_partial.weight;
 		result.depth = length / a_partial.weight;
+		if (!a_partial.velocityMissing) {
+			result.velocity = a_partial.velocitySum / a_partial.weight;
+			result.velocityValid = 1u;
+		}
 	}
 	return result;
 }
@@ -308,7 +331,20 @@ struct HairSphereHit
 	float3 normal;
 	float3 centre;
 	int collider;
+	float4 velocityValid;  // xyz the contacted surface point's velocity, w 1 when its driver is known
 };
+
+/** @brief The velocity of a point a driver carries, w 1 when the driver is known and has a delta. */
+float4 DriverPointVelocity(uint a_driverPlusOne, float3 a_point)
+{
+	if (a_driverPlusOne == 0u)
+		return float4(0.0f, 0.0f, 0.0f, 0.0f);
+	HairDriverDelta delta = HairDriverDeltas[a_driverPlusOne - 1u];
+	if (!(delta.translation.w > 0.0f))
+		return float4(0.0f, 0.0f, 0.0f, 0.0f);
+	HairCollision::Transform map = HairCollision::LoadTransform(delta.rotation, delta.translation);
+	return float4((map.translation + HairCollision::QuatRotate(map.rotation, a_point) - a_point) * delta.translation.w, 1.0f);
+}
 
 RWStructuredBuffer<HairSphereHit> HairSphereHits : register(u5);  // per sphere list entry
 RWStructuredBuffer<uint4> HairBoneCull : register(u6);            // per bone slot: x the surfaces its bound reaches, y a kCull state, z the colliders it touches
@@ -433,6 +469,7 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 	hit.normal = contact.normal;
 	hit.centre = centre;
 	hit.collider = contact.collider;
+	hit.velocityValid = contact.depth > 0.0f ? DriverPointVelocity(contact.driver, centre) : float4(0.0f, 0.0f, 0.0f, 0.0f);
 	HairSphereHits[index] = hit;
 }
 
@@ -458,6 +495,10 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 			partial.weight += squared;
 			partial.normalSum += hit.normal * (squared * hit.depth);
 			partial.positionSum += hit.centre * squared;
+			if (hit.velocityValid.w > 0.5f)
+				partial.velocitySum += hit.velocityValid.xyz * squared;
+			else
+				partial.velocityMissing = true;
 			if (hit.depth > partial.deepest) {
 				partial.deepest = hit.depth;
 				partial.collider = hit.collider;

@@ -83,8 +83,9 @@ namespace SmpPhysics::GpuRig
 	{
 		Float4 normalDepth{};
 		Float4 centreCollider{};
+		Float4 velocityValid{};  ///< xyz the surface point's velocity, w 1 when its driver was known
 	};
-	static_assert(sizeof(SphereHit) == 32);
+	static_assert(sizeof(SphereHit) == 48);
 
 	/** @brief A collider kind, mirroring Collider::Type in Collision.h and the shader's own check. */
 	enum class ColliderKind : std::uint32_t
@@ -151,6 +152,43 @@ namespace SmpPhysics::GpuRig
 		return result;
 	}
 
+	/** @brief How one driver moved over the step: the rigid map from its pose when the bodies last stepped to its pose now, and 1 / the step's duration. */
+	struct DriverDelta
+	{
+		Float4 rotation{ 1.0f, 0.0f, 0.0f, 0.0f };  ///< w, x, y, z lane order
+		Float4 translation{};                       ///< xyz the translation, w 1 / the step's duration, 0 when the driver has no delta
+	};
+	static_assert(sizeof(DriverDelta) == 32);
+
+	/** @brief The delta that carries a point posed by a_from to where a_to poses it; a_total is the seconds between the two poses. */
+	[[nodiscard]] inline DriverDelta MakeDriverDelta(const DriverWorld& a_from, const DriverWorld& a_to, float a_total) noexcept
+	{
+		const auto load = [](const DriverWorld& a_world) {
+			Transform transform;
+			transform.rotation = Quat{ a_world.rotation.x, a_world.rotation.y, a_world.rotation.z, a_world.rotation.w }.Normalized();
+			transform.translation = { a_world.translation.x, a_world.translation.y, a_world.translation.z };
+			return transform;
+		};
+		DriverDelta result;
+		if (!(a_total > 0.0f))
+			return result;
+		const Transform delta = load(a_to) * load(a_from).Inverse();
+		result.rotation = { delta.rotation.w, delta.rotation.x, delta.rotation.y, delta.rotation.z };
+		result.translation = { delta.translation.x, delta.translation.y, delta.translation.z, 1.0f / a_total };
+		return result;
+	}
+
+	/** @brief The velocity of a_point, a world position the driver carried, under a_delta; zero when the delta is empty. */
+	[[nodiscard]] inline Vec3 DriverPointVelocity(const DriverDelta& a_delta, const Vec3& a_point) noexcept
+	{
+		if (!(a_delta.translation.w > 0.0f))
+			return {};
+		Transform delta;
+		delta.rotation = { a_delta.rotation.x, a_delta.rotation.y, a_delta.rotation.z, a_delta.rotation.w };
+		delta.translation = { a_delta.translation.x, a_delta.translation.y, a_delta.translation.z };
+		return (delta.TransformPoint(a_point) - a_point) * a_delta.translation.w;
+	}
+
 	/** @brief One posed collision surface's hierarchy, as a frame's AppendSurfaces writes it. */
 	struct SurfaceMeta
 	{
@@ -160,7 +198,7 @@ namespace SmpPhysics::GpuRig
 	};
 	static_assert(sizeof(SurfaceMeta) == 48);
 
-	/** @brief One posed triangle, in leaf order: its corners, its unit face normal with twice its area in w, and its source index in a.w. */
+	/** @brief One posed triangle, in leaf order: its corners, its unit face normal with twice its area in w, and its source index in a.w; b.w holds the global driver slot plus one that moves the face, 0 when unknown. */
 	struct SurfaceTriangle
 	{
 		Float4 a{};  ///< corner; w the source triangle index bit-cast to float
@@ -243,8 +281,10 @@ namespace SmpPhysics::GpuRig
 		std::int32_t collider{ -1 };
 		float normal[3]{};
 		float position[3]{};
+		float velocity[3]{};  ///< the contacted surface's velocity at the contact, from its driver's pose change over the step
+		std::uint32_t velocityValid{};
 	};
-	static_assert(sizeof(BoneContact) == 36);
+	static_assert(sizeof(BoneContact) == 52);
 
 	/** @brief One bone's root-relative result, which the host turns back into a world transform. */
 	struct BoneOutput

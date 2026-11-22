@@ -14,6 +14,8 @@ struct HairBoneContact
 	int collider;
 	float3 normal;
 	float3 position;
+	float3 velocity;
+	uint velocityValid;
 };
 
 struct HairRigidBody

@@ -255,11 +255,12 @@ namespace SmpPhysics
 		std::unique_ptr<Buffer> colliders;
 		std::unique_ptr<Buffer> inputs;
 		std::unique_ptr<Buffer> drivers;
-		std::unique_ptr<Buffer> boneTrees;   ///< Per bone slot, the tree slot it belongs to, or kNoTree for a kinematic bone.
-		std::unique_ptr<Buffer> contacts;    ///< Per bone slot, its merged contact at the start of the substep in flight.
-		std::unique_ptr<Buffer> boneCull;    ///< Per bone slot, which surfaces its spheres can reach and whether they are queried this substep.
-		std::unique_ptr<Buffer> sphereHits;  ///< Per sphere list entry, its contact at the start of the substep; sized with the list.
-		std::unique_ptr<Buffer> sphereList;  ///< Every claim's spheres, rewritten whole whenever the claims change.
+		std::unique_ptr<Buffer> driverDeltas;  ///< Per driver slot, how its pose changed over the step, which the contact pass turns into the surface's velocity.
+		std::unique_ptr<Buffer> boneTrees;     ///< Per bone slot, the tree slot it belongs to, or kNoTree for a kinematic bone.
+		std::unique_ptr<Buffer> contacts;      ///< Per bone slot, its merged contact at the start of the substep in flight.
+		std::unique_ptr<Buffer> boneCull;      ///< Per bone slot, which surfaces its spheres can reach and whether they are queried this substep.
+		std::unique_ptr<Buffer> sphereHits;    ///< Per sphere list entry, its contact at the start of the substep; sized with the list.
+		std::unique_ptr<Buffer> sphereList;    ///< Every claim's spheres, rewritten whole whenever the claims change.
 		std::uint32_t sphereListCapacity{};
 		std::vector<GpuRig::SphereRecord> sphereListShadow;  ///< The sphere list as uploaded, so an added claim appends to it instead of rebuilding it.
 		winrt::com_ptr<ID3D11ShaderResourceView> sphereListSrv;
@@ -312,6 +313,7 @@ namespace SmpPhysics
 		winrt::com_ptr<ID3D11ShaderResourceView> collidersSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> inputsSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> driversSrv;
+		winrt::com_ptr<ID3D11ShaderResourceView> driverDeltasSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> surfaceMetasSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> surfaceTrianglesSrv;
 		winrt::com_ptr<ID3D11ShaderResourceView> surfaceNodesSrv;
