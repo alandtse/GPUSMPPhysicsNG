@@ -1178,18 +1178,22 @@ namespace SmpPhysics
 			std::vector<GpuRig::DriverWorld> from = steppedDrivers.size() == pack.driverWorlds.size() ? steppedDrivers : pack.driverWorlds;
 			for (const auto& [offset, count] : pack.freshDrivers)
 				std::copy_n(pack.driverWorlds.begin() + offset, count, from.begin() + offset);
-			std::vector<GpuRig::DriverWorld> blended(pack.driverWorlds.size());
+			std::vector<GpuRig::DriverRange> liveDrivers;
+			liveDrivers.reserve(pack.packedClaims.size());
+			for (const std::size_t index : pack.packedClaims)
+				liveDrivers.emplace_back(claims[index].driverOffset, claims[index].driverCount);
+			std::vector<GpuRig::DriverWorld> blended = pack.driverWorlds;
 			std::vector<GpuRig::DriverDelta> deltas(pack.driverWorlds.size());
-			const auto contactPass = [this, &values, &pack, &from, &blended, &deltas](std::uint32_t, float a_fraction, float a_total) {
+			bool deltasUploaded = false;
+			const auto contactPass = [this, &values, &pack, &from, &blended, &deltas, &liveDrivers, &deltasUploaded](std::uint32_t, float a_fraction, float a_total) {
 				if (!pack.driverWorlds.empty()) {
-					for (std::size_t index = 0; index < blended.size(); ++index)
-						blended[index] = GpuRig::LerpDriverWorld(from[index], pack.driverWorlds[index], a_fraction);
+					GpuRig::BlendDriverRanges(from, pack.driverWorlds, liveDrivers, a_fraction, blended);
 					(void)UploadDiscard(globals::d3d::context, drivers->resource.get(), blended.data(), blended.size() * sizeof(GpuRig::DriverWorld));
 				}
-				if (!deltas.empty()) {
-					for (std::size_t index = 0; index < deltas.size(); ++index)
-						deltas[index] = GpuRig::MakeDriverDelta(from[index], pack.driverWorlds[index], a_total);
+				if (!deltas.empty() && !deltasUploaded) {
+					GpuRig::FillDriverDeltas(from, pack.driverWorlds, liveDrivers, a_total, deltas);
 					(void)UploadDiscard(globals::d3d::context, driverDeltas->resource.get(), deltas.data(), deltas.size() * sizeof(GpuRig::DriverDelta));
+					deltasUploaded = true;
 				}
 				DispatchSurfacePrep();
 				DispatchContacts(values);

@@ -1273,3 +1273,64 @@ TEST_CASE("A driver delta gives the velocity of the points the driver carried", 
 
 	CHECK(GpuRig::DriverPointVelocity(GpuRig::MakeDriverDelta(from, slid, 0.0f), { 1.0f, 1.0f, 1.0f }).y == 0.0f);
 }
+
+TEST_CASE("Blending and delta helpers touch only the live driver ranges", "[smpphysics][gpurig]")
+{
+	GpuRig::DriverWorld from;
+	from.rotation = { 1.0f, 0.0f, 0.0f, 0.0f };
+	from.translation = { 1.0f, 0.0f, 0.0f, 0.0f };
+	GpuRig::DriverWorld to = from;
+	to.translation = { 5.0f, 0.0f, 0.0f, 0.0f };
+
+	const std::vector<GpuRig::DriverWorld> fromSlots(6, from);
+	const std::vector<GpuRig::DriverWorld> toSlots(6, to);
+	const std::vector<GpuRig::DriverRange> live{ { 1u, 2u }, { 4u, 1u } };
+
+	GpuRig::DriverWorld sentinel;
+	sentinel.translation = { -7.0f, 0.0f, 0.0f, 0.0f };
+	std::vector<GpuRig::DriverWorld> blended(6, sentinel);
+	GpuRig::BlendDriverRanges(fromSlots, toSlots, live, 0.5f, blended);
+	for (const std::size_t slot : { 1u, 2u, 4u })
+		CHECK(blended[slot].translation.x == Approx(3.0f).margin(1e-5f));
+	for (const std::size_t slot : { 0u, 3u, 5u })
+		CHECK(blended[slot].translation.x == -7.0f);
+
+	std::vector<GpuRig::DriverDelta> deltas(6);
+	GpuRig::FillDriverDeltas(fromSlots, toSlots, live, 0.5f, deltas);
+	for (const std::size_t slot : { 1u, 2u, 4u }) {
+		CHECK(deltas[slot].translation.x == Approx(4.0f).margin(1e-5f));
+		CHECK(deltas[slot].translation.w == Approx(2.0f).margin(1e-5f));
+	}
+	for (const std::size_t slot : { 0u, 3u, 5u })
+		CHECK(deltas[slot].translation.w == 0.0f);
+
+	const std::vector<GpuRig::DriverRange> pastTheEnd{ { 4u, 10u } };
+	GpuRig::BlendDriverRanges(fromSlots, toSlots, pastTheEnd, 0.5f, blended);
+	GpuRig::FillDriverDeltas(fromSlots, toSlots, pastTheEnd, 0.5f, deltas);
+	CHECK(blended.size() == 6);
+	CHECK(deltas.size() == 6);
+}
+
+TEST_CASE("A driver delta does not depend on the substep fraction a pose is blended at", "[smpphysics][gpurig]")
+{
+	GpuRig::DriverWorld from;
+	from.rotation = { 1.0f, 0.0f, 0.0f, 0.0f };
+	GpuRig::DriverWorld to;
+	const float half = std::sqrt(0.5f);
+	to.rotation = { half, 0.0f, 0.0f, half };
+	to.translation = { 3.0f, 2.0f, 1.0f, 0.0f };
+
+	const std::vector<GpuRig::DriverWorld> fromSlots{ from };
+	const std::vector<GpuRig::DriverWorld> toSlots{ to };
+	const std::vector<GpuRig::DriverRange> live{ { 0u, 1u } };
+	std::vector<GpuRig::DriverWorld> blended(1);
+	std::vector<GpuRig::DriverDelta> first(1);
+	std::vector<GpuRig::DriverDelta> second(1);
+	GpuRig::BlendDriverRanges(fromSlots, toSlots, live, 0.0f, blended);
+	GpuRig::FillDriverDeltas(fromSlots, toSlots, live, 1.0f / 60.0f, first);
+	GpuRig::BlendDriverRanges(fromSlots, toSlots, live, 0.5f, blended);
+	GpuRig::FillDriverDeltas(fromSlots, toSlots, live, 1.0f / 60.0f, second);
+	CHECK(first[0].rotation.w == second[0].rotation.w);
+	CHECK(first[0].translation.x == second[0].translation.x);
+	CHECK(first[0].translation.w == second[0].translation.w);
+}
