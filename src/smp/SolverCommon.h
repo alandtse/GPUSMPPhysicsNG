@@ -80,6 +80,15 @@ namespace SmpPhysics
 					before += steps[static_cast<std::size_t>(index)];
 				return before / total < 1.0f ? before / total : 1.0f;
 			}
+
+			/** @brief How far into the frame's time step a_step ends, from above 0 for the first to 1 for the last; 1 when the frame covers no time. */
+			[[nodiscard]] float EndFraction(int a_step) const noexcept
+			{
+				if (!(total > 0.0f) || a_step < 0 || a_step >= count)
+					return 1.0f;
+				const float after = StartFraction(a_step) + steps[static_cast<std::size_t>(a_step)] / total;
+				return after < 1.0f ? after : 1.0f;
+			}
 		};
 
 		/** @brief Adds a_interval seconds and returns the steps to run now. */
