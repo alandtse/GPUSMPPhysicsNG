@@ -53,7 +53,7 @@ TEST_CASE("A one-sided face holds a sphere up to its allowance behind it and ign
 	const TriangleGrid grid = BuildGrid(MakeFloor(5.0f));
 
 	CHECK(grid.Query({ 0.0f, 0.0f, -0.3f }, 1.0f, 0.4f).depth == Approx(1.3f));
-	CHECK(grid.Query({ 0.0f, 0.0f, -2.5f }, 1.0f, 0.4f).depth == 0.0f);
+	CHECK(grid.Query({ 0.0f, 0.0f, -(0.4f + kDeepPushReach + 0.1f) }, 1.0f, 0.4f).depth == 0.0f);
 }
 
 TEST_CASE("A one-sided face reaches kDeepPushReach behind itself at its full allowance", "[smpphysics][trianglegrid]")

@@ -17,7 +17,7 @@ namespace SmpPhysics
 	 *          than the shape's allowance; without this reach it would rest inside the mesh forever.
 	 * @note Mirrored by kDeepPushReach in shaders/Common/HairCollision.hlsli.
 	 */
-	inline constexpr float kDeepPushReach = 2.0f;
+	inline constexpr float kDeepPushReach = 8.0f;
 
 	/**
 	 * @brief A triangle soup bucketed into a uniform grid, for sphere contact queries against a skinned surface.
