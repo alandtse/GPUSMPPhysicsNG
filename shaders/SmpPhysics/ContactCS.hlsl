@@ -24,6 +24,8 @@ struct HairSphereRecord
 	float4 weights;       // x = the owning bone's weight, y = hdtSMP64's flexible, the depth scale
 };
 static const uint kNoSphereBone = 0xFFFFFFFFu;  // mirrors kNoSphereBone in GpuRigPacking.h
+static const float kPruneSlack = 1.0e-3f;        // keeps a face tied with the best one inside the shrunken search box
+static const uint kFarSearchNodeBudget = 256u;  // most BVH nodes the search past a one-sided surface's allowance visits
 
 struct HairCollider
 {
@@ -209,6 +211,7 @@ void OfferSurfaceFace(HairSurfaceTriangle a_face, uint a_id, float3 a_point, flo
 
 /**
  * @brief The deepest contact a sphere makes with one posed surface, the port of TriangleGrid::Query in TriangleGrid.cpp, enumerating through a BVH.
+ *        Only its second, deep search is capped by kFarSearchNodeBudget; TriangleGrid::Query and ProbeSpheres are not.
  * @param a_reach The sphere's radius plus the surface margin.
  */
 HairCollision::Contact QuerySurface(HairSurfaceMeta a_meta, float3 a_point, float a_reach)
@@ -217,30 +220,43 @@ HairCollision::Contact QuerySurface(HairSurfaceMeta a_meta, float3 a_point, floa
 	float penetration = a_meta.contact.y;
 	bool flipped = penetration < 0.0f;
 	float allowance = abs(penetration);
-	// Only a one-sided face has an inside a sphere can be stuck in, so only it reaches past its allowance.
-	float behind = penetration > 0.0f ? allowance + a_meta.contact.z : allowance;
-	float extent = max(a_reach, behind);
-	float3 low = a_point - float3(extent, extent, extent);
-	float3 high = a_point + float3(extent, extent, extent);
+	// Only a one-sided face has an inside a sphere can be stuck in, so only it is searched again past its allowance.
+	bool deep = penetration > 0.0f && a_meta.contact.z > 0.0f;
 	uint bestId = kNoTriangle;
 	float bestRank = -1.0e30f;
-	uint node = 0u;
-	while (node < a_meta.base.z) {
-		HairBvhNode current = HairSurfaceNodes[a_meta.base.y + node];
-		if (!BoxOverlapsNode(current, low, high)) {
-			node = current.skip;
-			continue;
-		}
-		if (current.leaf != 0u) {
-			uint first = current.leaf >> 3;
-			uint count = current.leaf & 7u;
-			for (uint index = 0u; index < count; ++index) {
-				HairSurfaceTriangle face = HairSurfaceTriangles[a_meta.base.x + first + index];
-				OfferSurfaceFace(face, asuint(face.a.w), a_point, a_reach, flipped, allowance, behind, best, bestRank, bestId);
+	for (uint turn = 0u; turn < (deep ? 2u : 1u) && bestId == kNoTriangle; ++turn) {
+		float behind = turn == 0u ? allowance : allowance + a_meta.contact.z;
+		float extent = max(a_reach, behind);
+		float3 low = a_point - float3(extent, extent, extent);
+		float3 high = a_point + float3(extent, extent, extent);
+		// A sphere in front of the surface accepts no face and would walk the whole deep box; one behind a face accepts early and the box shrink ends its walk.
+		uint budget = turn == 0u ? 0xFFFFFFFFu : kFarSearchNodeBudget;
+		uint visited = 0u;
+		uint node = 0u;
+		while (node < a_meta.base.z && visited < budget) {
+			visited = visited + 1u;
+			HairBvhNode current = HairSurfaceNodes[a_meta.base.y + node];
+			if (!BoxOverlapsNode(current, low, high)) {
+				node = current.skip;
+				continue;
 			}
-			node = current.skip;
-		} else {
-			node = node + 1u;
+			if (current.leaf != 0u) {
+				uint first = current.leaf >> 3;
+				uint count = current.leaf & 7u;
+				for (uint index = 0u; index < count; ++index) {
+					HairSurfaceTriangle face = HairSurfaceTriangles[a_meta.base.x + first + index];
+					OfferSurfaceFace(face, asuint(face.a.w), a_point, a_reach, flipped, allowance, behind, best, bestRank, bestId);
+				}
+				// A face can only replace the best one by lying no further from the point, so the search box shrinks to that distance.
+				if (-bestRank < extent) {
+					extent = -bestRank + kPruneSlack;
+					low = a_point - float3(extent, extent, extent);
+					high = a_point + float3(extent, extent, extent);
+				}
+				node = current.skip;
+			} else {
+				node = node + 1u;
+			}
 		}
 	}
 	return best;
