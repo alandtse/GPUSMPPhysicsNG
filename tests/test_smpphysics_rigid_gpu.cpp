@@ -3,6 +3,7 @@
 
 #include "rigid_gpu_harness.h"
 #include "rigid_trace_loader.h"
+#include "smp/Collision.h"
 #include "smp/RigidGpuPacking.h"
 #include "smp/RigidReference.h"
 
@@ -581,6 +582,59 @@ TEST_CASE("The rigid packing colours each island's constraints", "[smpphysics][r
 			CHECK(occurrences[constraint] == 1u);
 		}
 	}
+}
+
+TEST_CASE("Every dynamic body gets one contact constraint per contact lane", "[smpphysics][rigid_gpu][rigid_colored]")
+{
+	constexpr std::uint32_t kLanes{ SmpPhysics::kContactLanes };
+	constexpr std::uint32_t kBoneOffset{ 10 };
+	constexpr std::size_t kBodies{ 4 };
+	constexpr std::size_t kJoints{ kBodies - 1 };
+	World world;
+	for (std::size_t index = 0; index < kBodies; ++index) {
+		Body body;
+		body.kinematic = index == 0;
+		body.inverseMass = index == 0 ? 0.0f : 1.0f;
+		body.friction = 0.4f;
+		world.bodies.push_back(body);
+	}
+	for (std::size_t index = 0; index < kJoints; ++index) {
+		Generic6DofSpring2 constraint;
+		constraint.bodyA = static_cast<int>(index + 1);
+		constraint.bodyB = static_cast<int>(index);
+		world.constraints.push_back(constraint);
+	}
+
+	World unanchored = world;
+	unanchored.bodies[0].kinematic = false;
+	AppendBoneContacts(unanchored, kBoneOffset, kLanes);
+	CHECK(unanchored.constraints.size() == kJoints);
+
+	AppendBoneContacts(world, kBoneOffset, kLanes);
+	REQUIRE(world.constraints.size() == kJoints + (kBodies - 1) * kLanes);
+	const StepData packed = PackStep(world, 1.0f / 60.0f);
+	REQUIRE(packed.rowsFit);
+	REQUIRE(packed.colorsFit);
+	REQUIRE(packed.constraints.size() == world.constraints.size());
+	for (std::uint32_t body = 1; body < kBodies; ++body) {
+		for (std::uint32_t lane = 0; lane < kLanes; ++lane) {
+			const std::size_t index = kJoints + (body - 1) * kLanes + lane;
+			INFO("body " << body << " lane " << lane);
+			const Generic6DofSpring2& contact = world.constraints[index];
+			CHECK(contact.bodyA == static_cast<int>(body));
+			CHECK(contact.bodyB == 0);
+			CHECK(contact.contactSlot == (kBoneOffset + body) * kLanes + lane + 1u);
+			CHECK(contact.contactFriction == 0.4f * kSurfaceBodyFriction);
+			CHECK(packed.constraints[index].constraintFlags.y == contact.contactSlot);
+		}
+	}
+
+	REQUIRE(packed.islands.size() == 1);
+	CHECK(packed.islands[0].range.y == world.constraints.size());
+	CHECK(packed.islands[0].range.w == (kBodies - 1) * kLanes);
+	// A mid-chain body holds two joints and its lanes, and no two of them may share a colour.
+	CHECK(packed.islands[0].range.z == kLanes + 2u);
+	CHECK(packed.coloredConstraints.size() == world.constraints.size());
 }
 
 TEST_CASE("The GPU rigid solver reproduces non-Hookean springs, motors and servos", "[smpphysics][rigid_gpu]")

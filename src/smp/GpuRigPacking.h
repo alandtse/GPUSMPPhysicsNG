@@ -90,9 +90,11 @@ namespace SmpPhysics::GpuRig
 	{
 		Float4 normalDepth{};
 		Float4 centreCollider{};
-		Float4 velocityValid{};  ///< xyz the surface point's velocity, w 1 when its driver was known
+		Float4 velocityValid{};    ///< xyz the surface point's velocity, w 1 when its driver was known
+		std::uint32_t key{};       ///< the contacted driver's slot plus one, 0 when unknown
+		std::uint32_t keyOther{};  ///< a second driver the hit face is weighted to, 0 when none
 	};
-	static_assert(sizeof(SphereHit) == 48);
+	static_assert(sizeof(SphereHit) == 56);
 
 	/** @brief A collider kind, mirroring Collider::Type in Collision.h and the shader's own check. */
 	enum class ColliderKind : std::uint32_t
@@ -305,7 +307,7 @@ namespace SmpPhysics::GpuRig
 	};
 	static_assert(sizeof(BoneWorld) == 32);
 
-	/** @brief One bone's contacts merged into one at the start of a substep, as the shader's contact pass writes it. */
+	/** @brief One lane of a bone's contacts at the start of a substep, as the shader's contact pass writes it: kContactLanes per bone, lane l of bone b at b * kContactLanes + l. */
 	struct BoneContact
 	{
 		float depth{};

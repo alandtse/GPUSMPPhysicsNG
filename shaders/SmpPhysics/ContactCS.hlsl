@@ -149,8 +149,10 @@ HairCollision::Contact QueryColliders(HairTreeStatic a_tree, float3 a_point, flo
 			continue;
 		const float depthBefore = best.depth;
 		HairCollision::MergeContact(best, LoadCollider(raw), world, a_point, a_radius, (int)index);
-		if (best.depth > depthBefore)
+		if (best.depth > depthBefore) {
 			best.driver = raw.kind.y + 1u;
+			best.driverOther = 0u;
+		}
 	}
 	return best;
 }
@@ -200,6 +202,7 @@ void OfferSurfaceFace(HairSurfaceTriangle a_face, uint a_id, float3 a_point, flo
 	a_best.depth = depth;
 	a_best.normal = normal;
 	a_best.driver = asuint(a_face.b.w);
+	a_best.driverOther = asuint(a_face.c.w);
 	a_bestRank = rank;
 	a_bestId = a_id;
 }
@@ -277,7 +280,9 @@ struct HairBoneContact
 	uint velocityValid;
 };
 
-RWStructuredBuffer<HairBoneContact> HairBoneContactsOut : register(u3);  // Contact's write view: per bone slot, its merged contact at the start of the substep
+static const uint kContactLanes = 4u;  // mirrors kContactLanes in Collision.h
+
+RWStructuredBuffer<HairBoneContact> HairBoneContactsOut : register(u3);  // Contact's write view: kContactLanes per bone slot, its contacts at the start of the substep, one per contacted driver
 
 /** @brief The sphere sums of one bone, so that the serial and the cooperative merge finish the same arithmetic. */
 struct HairContactPartial
@@ -336,6 +341,8 @@ struct HairSphereHit
 	float3 centre;
 	int collider;
 	float4 velocityValid;  // xyz the contacted surface point's velocity, w 1 when its driver is known
+	uint key;              // the contacted driver's slot plus one, 0 when unknown; hits of one key merge into one lane
+	uint keyOther;         // a second driver the hit face is weighted to, 0 when none: hdtSMP64 credits a hit to every bone of the body vertex
 };
 
 /** @brief The velocity of a point a driver carries, w 1 when the driver is known and has a delta. */
@@ -489,10 +496,12 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 	hit.centre = centre;
 	hit.collider = contact.collider;
 	hit.velocityValid = contact.depth > 0.0f ? DriverPointVelocity(contact.driver, centre) : float4(0.0f, 0.0f, 0.0f, 0.0f);
+	hit.key = contact.driver;
+	hit.keyOther = contact.depth > 0.0f && contact.driverOther != contact.driver ? contact.driverOther : 0u;
 	HairSphereHits[index] = hit;
 }
 
-	/** @brief Merges each bone's sphere hits into the one contact the rigid solver reads, the port of the CPU BoneContact. */
+	/** @brief Merges each bone's sphere hits into one contact per contacted driver, kContactLanes at most, the port of the CPU ContactLanes. */
 	[numthreads(64, 1, 1)] void ContactReduce(uint3 a_dispatchThreadId : SV_DispatchThreadID)
 {
 	uint bone = a_dispatchThreadId.x;
@@ -501,28 +510,64 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 	uint4 cull = HairBoneCull[bone];
 	if (cull.y == kCullSkip)
 		return;
-	HairContactPartial partial = EmptyContactPartial();
+	HairContactPartial lanes[kContactLanes];
+	uint keys[kContactLanes];
+	uint used = 0u;
+	for (uint clearLane = 0u; clearLane < kContactLanes; ++clearLane) {
+		lanes[clearLane] = EmptyContactPartial();
+		keys[clearLane] = 0u;
+	}
 	if (cull.y == kCullWork) {
 		HairBoneSphere sphereRange = HairBoneSpheres[bone];
 		for (uint index = 0u; index < sphereRange.range.y; ++index) {
 			HairSphereHit hit = HairSphereHits[sphereRange.range.x + index];
 			if (!(hit.depth > 0.0f))
 				continue;
-			if (partial.weight > 0.0f && dot(partial.normalSum, hit.normal) < 0.0f)
-				continue;
-			float squared = hit.depth * hit.depth;
-			partial.weight += squared;
-			partial.normalSum += hit.normal * (squared * hit.depth);
-			partial.positionSum += hit.centre * squared;
-			if (hit.velocityValid.w > 0.5f)
-				partial.velocitySum += hit.velocityValid.xyz * squared;
-			else
-				partial.velocityMissing = true;
-			if (hit.depth > partial.deepest) {
-				partial.deepest = hit.depth;
-				partial.collider = hit.collider;
+			for (uint turn = 0u; turn < 2u; ++turn) {
+				uint key = turn == 0u ? hit.key : hit.keyOther;
+				if (turn == 1u && key == 0u)
+					break;
+				uint lane = used;
+				for (uint seen = 0u; seen < kContactLanes; ++seen) {
+					if (seen < used && lane == used && keys[seen] == key)
+						lane = seen;
+				}
+				if (lane == used) {
+					if (used < kContactLanes) {
+						keys[used] = key;
+						used = used + 1u;
+					} else {
+						lane = 0u;
+						float bestAligned = -2.0f;
+						for (uint candidate = 0u; candidate < kContactLanes; ++candidate) {
+							float sumLength = sqrt(dot(lanes[candidate].normalSum, lanes[candidate].normalSum));
+							float aligned = sumLength > 0.0f ? dot(lanes[candidate].normalSum, hit.normal) / sumLength : -1.0f;
+							if (aligned > bestAligned) {
+								bestAligned = aligned;
+								lane = candidate;
+							}
+						}
+					}
+				}
+				HairContactPartial partial = lanes[lane];
+				if (partial.weight > 0.0f && dot(partial.normalSum, hit.normal) < 0.0f)
+					continue;
+				float squared = hit.depth * hit.depth;
+				partial.weight += squared;
+				partial.normalSum += hit.normal * (squared * hit.depth);
+				partial.positionSum += hit.centre * squared;
+				if (hit.velocityValid.w > 0.5f)
+					partial.velocitySum += hit.velocityValid.xyz * squared;
+				else
+					partial.velocityMissing = true;
+				if (hit.depth > partial.deepest) {
+					partial.deepest = hit.depth;
+					partial.collider = hit.collider;
+				}
+				lanes[lane] = partial;
 			}
 		}
 	}
-	HairBoneContactsOut[bone] = FinishBoneContact(partial);
+	for (uint lane = 0u; lane < kContactLanes; ++lane)
+		HairBoneContactsOut[bone * kContactLanes + lane] = FinishBoneContact(lanes[lane]);
 }

@@ -221,6 +221,13 @@ namespace SmpPhysics::RigidGpu
 	}
 
 	/**
+	 * @brief Appends a_lanes bone-contact constraints per dynamic body, each against the world's first kinematic body.
+	 * @details Lane l of body b reads the contact buffer at (a_boneOffset + b) * a_lanes + l, stored plus one. A world
+	 *          with no kinematic body is left as it was.
+	 */
+	void AppendBoneContacts(RigidReference::World& a_world, std::uint32_t a_boneOffset, std::uint32_t a_lanes);
+
+	/**
 	 * @brief Packs one step: the bodies after BeginFrame, the constraint parameters, the solver scratch and the islands.
 	 * @param a_world The world after BeginFrame, so accumulatedForce holds the frame's forces.
 	 * @param a_timeStep The time step World::Step is given, which must be positive.

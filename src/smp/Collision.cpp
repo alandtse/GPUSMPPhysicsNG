@@ -288,6 +288,32 @@ namespace SmpPhysics
 		return length / weight;
 	}
 
+	void ContactLanes::Add(const Contact& a_contact, const Vec3& a_position, std::uint32_t a_key) noexcept
+	{
+		if (!(a_contact.depth > 0.0f))
+			return;
+		std::uint32_t lane = 0;
+		while (lane < used && keys[lane] != a_key)
+			++lane;
+		if (lane == used) {
+			if (used < kContactLanes) {
+				keys[used++] = a_key;
+			} else {
+				lane = 0;
+				float best = -2.0f;
+				for (std::uint32_t index = 0; index < kContactLanes; ++index) {
+					const float length = Length(lanes[index].normal);
+					const float aligned = length > 0.0f ? Dot(lanes[index].normal, a_contact.normal) / length : -1.0f;
+					if (aligned > best) {
+						best = aligned;
+						lane = index;
+					}
+				}
+			}
+		}
+		lanes[lane].Add(a_contact, a_position);
+	}
+
 	Collider FitHeadEllipsoid(const std::vector<Vec3>& a_verticesInDriver, int a_driverIndex)
 	{
 		if (a_verticesInDriver.size() < kMinimumEllipsoidVertices)

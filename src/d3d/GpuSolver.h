@@ -167,8 +167,8 @@ namespace SmpPhysics
 			std::uint32_t touching{};
 			float meanDepth{};
 			float maxDepth{};
-			std::vector<std::uint32_t> bones;           ///< rig bone indices that were touching
-			std::vector<GpuRig::BoneContact> contacts;  ///< the merged contact of each bone in bones, in the same order
+			std::vector<std::uint32_t> bones;           ///< the rig bone of each entry in contacts; a bone touching several drivers repeats
+			std::vector<GpuRig::BoneContact> contacts;  ///< every contact lane with depth, bone after bone; meanDepth and maxDepth are over these
 		};
 		/** @brief Asks for the contact buffer to be copied after the next dispatch; ContactStats reports it a few frames later. */
 		void RequestContactStats() const noexcept { contactStatsRequested = true; }

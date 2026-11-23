@@ -184,6 +184,27 @@ namespace SmpPhysics::RigidGpu
 		a_into.mostColors = std::max(a_into.mostColors, a_more.mostColors);
 	}
 
+	void AppendBoneContacts(RigidReference::World& a_world, std::uint32_t a_boneOffset, std::uint32_t a_lanes)
+	{
+		const auto anchor = std::ranges::find_if(a_world.bodies, [](const RigidReference::Body& a_body) { return a_body.kinematic; });
+		if (anchor == a_world.bodies.end())
+			return;
+		const int anchorIndex = static_cast<int>(anchor - a_world.bodies.begin());
+		const std::size_t bones = a_world.bodies.size();
+		for (std::size_t body = 0; body < bones; ++body) {
+			if (a_world.bodies[body].kinematic)
+				continue;
+			for (std::uint32_t lane = 0; lane < a_lanes; ++lane) {
+				RigidReference::Generic6DofSpring2 contact;
+				contact.bodyA = static_cast<int>(body);
+				contact.bodyB = anchorIndex;
+				contact.contactSlot = (a_boneOffset + static_cast<std::uint32_t>(body)) * a_lanes + lane + 1u;
+				contact.contactFriction = a_world.bodies[body].friction * RigidReference::kSurfaceBodyFriction;
+				a_world.constraints.push_back(contact);
+			}
+		}
+	}
+
 	StepData PackStep(const RigidReference::World& a_packed, float a_timeStep)
 	{
 		StepData data;

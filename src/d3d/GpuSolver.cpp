@@ -334,11 +334,11 @@ namespace SmpPhysics
 		boneTrees->CreateSRV(StructuredSrvDesc(a_slots));
 		boneTreesSrv = boneTrees->srv;
 		// The contact pass writes this through the UAV and the rigid solver reads it through the SRV, never both at once.
-		const std::vector<GpuRig::BoneContact> noContacts(a_slots);
+		const std::vector<GpuRig::BoneContact> noContacts(a_slots * kContactLanes);
 		D3D11_SUBRESOURCE_DATA noContactsData{ noContacts.data(), 0, 0 };
-		contacts = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneContact>(a_slots, true, false), &noContactsData, "SmpPhysics::PoolContacts");
-		contacts->CreateUAV(StructuredUavDesc(a_slots));
-		contacts->CreateSRV(StructuredSrvDesc(a_slots));
+		contacts = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneContact>(a_slots * kContactLanes, true, false), &noContactsData, "SmpPhysics::PoolContacts");
+		contacts->CreateUAV(StructuredUavDesc(a_slots * kContactLanes));
+		contacts->CreateSRV(StructuredSrvDesc(a_slots * kContactLanes));
 		contactsUav = contacts->uav;
 		contactsSrv = contacts->srv;
 		boneCull = std::make_unique<Buffer>(StructuredBufferDesc<std::array<std::uint32_t, 4>>(a_slots, true, false), nullptr, "SmpPhysics::PoolBoneCull");
@@ -407,8 +407,8 @@ namespace SmpPhysics
 		if (!contacts || !context || a_count == 0)
 			return;
 		constexpr UINT recordSize = static_cast<UINT>(sizeof(GpuRig::BoneContact));
-		const std::vector<GpuRig::BoneContact> noContacts(a_count);
-		const D3D11_BOX range{ a_offset * recordSize, 0, 0, (a_offset + a_count) * recordSize, 1, 1 };
+		const std::vector<GpuRig::BoneContact> noContacts(a_count * kContactLanes);
+		const D3D11_BOX range{ a_offset * kContactLanes * recordSize, 0, 0, (a_offset + a_count) * kContactLanes * recordSize, 1, 1 };
 		context->UpdateSubresource(contacts->resource.get(), 0, &range, noContacts.data(), 0, 0);
 	}
 
@@ -1219,7 +1219,7 @@ namespace SmpPhysics
 
 		if (!contactStagingPending && contactStatsRequested.exchange(false)) {
 			if (!contactStaging || contactStagingSlots != slotCapacity) {
-				const Buffer staging(StagingBufferDesc(slotCapacity * static_cast<std::uint32_t>(sizeof(GpuRig::BoneContact))), nullptr, "SmpPhysics::PoolContactReadback");
+				const Buffer staging(StagingBufferDesc(slotCapacity * kContactLanes * static_cast<std::uint32_t>(sizeof(GpuRig::BoneContact))), nullptr, "SmpPhysics::PoolContactReadback");
 				contactStaging = staging.resource;
 				contactStagingSlots = slotCapacity;
 			}
@@ -1273,17 +1273,23 @@ namespace SmpPhysics
 					ContactStat stat;
 					stat.token = claim.token;
 					for (std::uint32_t bone = 0; bone < claim.boneCount && claim.boneOffset + bone < contactStagingSlots; ++bone) {
-						const float depth = data[claim.boneOffset + bone].depth;
-						if (!(depth > 0.0f))
-							continue;
-						++stat.touching;
-						stat.bones.push_back(bone);
-						stat.contacts.push_back(data[claim.boneOffset + bone]);
-						stat.meanDepth += depth;
-						stat.maxDepth = std::max(stat.maxDepth, depth);
+						bool touching = false;
+						for (std::uint32_t lane = 0; lane < kContactLanes; ++lane) {
+							const GpuRig::BoneContact& contact = data[(claim.boneOffset + bone) * kContactLanes + lane];
+							const float depth = contact.depth;
+							if (!(depth > 0.0f))
+								continue;
+							touching = true;
+							stat.bones.push_back(bone);
+							stat.contacts.push_back(contact);
+							stat.meanDepth += depth;
+							stat.maxDepth = std::max(stat.maxDepth, depth);
+						}
+						if (touching)
+							++stat.touching;
 					}
-					if (stat.touching)
-						stat.meanDepth /= static_cast<float>(stat.touching);
+					if (!stat.contacts.empty())
+						stat.meanDepth /= static_cast<float>(stat.contacts.size());
 					stats.push_back(stat);
 				}
 				context->Unmap(contactStaging.get(), 0);

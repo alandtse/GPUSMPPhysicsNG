@@ -137,6 +137,24 @@ namespace SmpPhysics
 		[[nodiscard]] float Result(Vec3& a_normal, Vec3& a_position) const noexcept;
 	};
 
+	/** @brief Contacts one bone keeps apart, one per contacted driver; mirrors kContactLanes in ContactCS.hlsl. */
+	inline constexpr std::uint32_t kContactLanes{ 4 };
+
+	/**
+	 * @brief hdtSMP64 merges a bone's contacts per contacted body bone, so two body bones give the bone two contacts.
+	 * @details A contact joins the lane of its key; a new key takes a free lane, or with none left the lane whose
+	 *          merged normal is closest to the contact's. The CPU twin of ContactReduce in ContactCS.hlsl.
+	 */
+	struct ContactLanes
+	{
+		std::array<ContactMerge, kContactLanes> lanes{};
+		std::array<std::uint32_t, kContactLanes> keys{};
+		std::uint32_t used{};
+
+		/** @param a_key What the contact touched: its driver slot plus one, 0 when unknown. */
+		void Add(const Contact& a_contact, const Vec3& a_position, std::uint32_t a_key) noexcept;
+	};
+
 	/** @brief One mesh vertex and the bones it is skinned to, as the mesh reader finds them. */
 	struct SkinnedVertex
 	{

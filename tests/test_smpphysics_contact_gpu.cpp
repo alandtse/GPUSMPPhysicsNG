@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <vector>
 
@@ -64,6 +65,7 @@ namespace
 		Transform driver;
 		std::vector<SkinnedSurface> surfaces;
 		float contactSkin{ kContactSkin };
+		std::uint32_t driverCount{ 1 };  ///< every driver sits at driver
 	};
 
 	Scene MakeScene()
@@ -100,27 +102,48 @@ namespace
 		return scene;
 	}
 
-	/** @brief The merged contact the CPU makes for one bone, the oracle for ContactReduce. */
-	GpuRig::BoneContact ExpectedContact(const Scene& a_scene, std::size_t a_bone)
+	GpuRig::BoneContact ToBoneContact(const ContactMerge& a_merge)
 	{
-		ContactMerge merge;
-		for (const BoneSphere& sphere : a_scene.spheres[a_bone]) {
-			const Vec3 centre = a_scene.boneWorld[a_bone].TransformPoint(sphere.centerLocal);
-			const Contact contact = QueryColliders(a_scene.colliders, { a_scene.driver }, centre, sphere.radius + a_scene.contactSkin, sphere.exemptMask);
-			merge.Add(contact, centre);
-		}
 		GpuRig::BoneContact expected;
 		Vec3 normal{};
 		Vec3 position{};
-		expected.depth = merge.Result(normal, position);
-		expected.deepest = merge.deepest;
-		expected.collider = merge.collider;
+		expected.depth = a_merge.Result(normal, position);
+		expected.deepest = a_merge.deepest;
+		expected.collider = a_merge.collider;
 		expected.normal[0] = normal.x;
 		expected.normal[1] = normal.y;
 		expected.normal[2] = normal.z;
 		expected.position[0] = position.x;
 		expected.position[1] = position.y;
 		expected.position[2] = position.z;
+		return expected;
+	}
+
+	/** @brief The single contact the CPU merges for one bone, the oracle for a bone that touches one driver. */
+	GpuRig::BoneContact ExpectedContact(const Scene& a_scene, std::size_t a_bone)
+	{
+		ContactMerge merge;
+		for (const BoneSphere& sphere : a_scene.spheres[a_bone]) {
+			const Vec3 centre = a_scene.boneWorld[a_bone].TransformPoint(sphere.centerLocal);
+			const Contact contact = QueryColliders(a_scene.colliders, std::vector<Transform>(a_scene.driverCount, a_scene.driver), centre, sphere.radius + a_scene.contactSkin, sphere.exemptMask);
+			merge.Add(contact, centre);
+		}
+		return ToBoneContact(merge);
+	}
+
+	/** @brief The contact lanes the CPU makes for one bone of a scene without surfaces, each collider keyed by its driver. */
+	std::array<GpuRig::BoneContact, kContactLanes> ExpectedLanes(const Scene& a_scene, std::size_t a_bone)
+	{
+		ContactLanes lanes;
+		for (const BoneSphere& sphere : a_scene.spheres[a_bone]) {
+			const Vec3 centre = a_scene.boneWorld[a_bone].TransformPoint(sphere.centerLocal);
+			const Contact contact = QueryColliders(a_scene.colliders, std::vector<Transform>(a_scene.driverCount, a_scene.driver), centre, sphere.radius + a_scene.contactSkin, sphere.exemptMask);
+			if (contact.collider >= 0)
+				lanes.Add(contact, centre, static_cast<std::uint32_t>(a_scene.colliders[static_cast<std::size_t>(contact.collider)].driverIndex + 1));
+		}
+		std::array<GpuRig::BoneContact, kContactLanes> expected;
+		for (std::size_t lane = 0; lane < kContactLanes; ++lane)
+			expected[lane] = ToBoneContact(lanes.lanes[lane]);
 		return expected;
 	}
 
@@ -223,14 +246,14 @@ namespace
 		std::vector<GpuRig::DriverDelta> driverDeltas;
 	};
 
-	/** @brief Dispatches the three contact passes over a scene and returns each bone's merged contact; a skipped bone keeps the sentinel. */
-	std::vector<GpuRig::BoneContact> RunPasses(const Scene& a_scene, const PassOptions& a_options)
+	/** @brief Dispatches the three contact passes over a scene and returns every bone's contact lanes, kContactLanes per bone; a skipped bone keeps the sentinel in each. */
+	std::vector<GpuRig::BoneContact> RunLanes(const Scene& a_scene, const PassOptions& a_options)
 	{
 		const ContactKernels& kernels = LoadKernels();
 		ID3D11Device* device = kernels.gpu.device.Get();
 		ID3D11DeviceContext* context = kernels.gpu.context.Get();
 
-		const GpuRig::CollisionData collision = GpuRig::PackCollision(a_scene.spheres, a_scene.colliders, 1);
+		const GpuRig::CollisionData collision = GpuRig::PackCollision(a_scene.spheres, a_scene.colliders, a_scene.driverCount);
 		std::vector<GpuRig::SphereRecord> sphereList = collision.sphereList;
 		std::size_t cursor = 0;
 		for (std::size_t bone = 0; bone < kBoneCount; ++bone)
@@ -239,7 +262,7 @@ namespace
 
 		std::vector<GpuRig::TreeStatic> trees(kTreeCount);
 		for (GpuRig::TreeStatic& tree : trees)
-			tree.contact = { 0u, static_cast<std::uint32_t>(collision.colliders.size()), 0u, 1u };
+			tree.contact = { 0u, static_cast<std::uint32_t>(collision.colliders.size()), 0u, a_scene.driverCount };
 
 		std::vector<GpuRig::TreeInput> inputs(kTreeCount);
 		for (GpuRig::TreeInput& input : inputs)
@@ -253,7 +276,7 @@ namespace
 			worlds[bone].rotation = { 1.0f, 0.0f, 0.0f, 0.0f };
 			worlds[bone].translation = { translation.x, translation.y, translation.z, 0.0f };
 		}
-		const std::vector<GpuRig::DriverWorld> drivers{ { { 1.0f, 0.0f, 0.0f, 0.0f }, { a_scene.driver.translation.x, a_scene.driver.translation.y, a_scene.driver.translation.z, 0.0f } } };
+		const std::vector<GpuRig::DriverWorld> drivers(a_scene.driverCount, { { 1.0f, 0.0f, 0.0f, 0.0f }, { a_scene.driver.translation.x, a_scene.driver.translation.y, a_scene.driver.translation.z, 0.0f } });
 		GpuRig::SurfaceFrame surfaceFrame;
 		std::uint32_t firstMeta = 0;
 		std::uint32_t metaCount = 0;
@@ -263,7 +286,7 @@ namespace
 			input.surface.x = firstMeta;
 			input.surface.y = metaCount;
 		}
-		const std::vector<GpuRig::BoneContact> contacts(kBoneCount, Sentinel());
+		const std::vector<GpuRig::BoneContact> contacts(kBoneCount * kContactLanes, Sentinel());
 		const std::vector<std::uint32_t> boneTrees(kBoneTrees.begin(), kBoneTrees.end());
 		const std::vector<float> hits(sphereList.size() * 12);
 		const std::vector<std::uint32_t> cull(kBoneCount * 4);
@@ -272,9 +295,9 @@ namespace
 		std::array<ComPtr<ID3D11Buffer>, 7> targetBuffers;
 		targetBuffers[1] = CreateTyped(device, worlds, D3D11_BIND_UNORDERED_ACCESS);
 		targetBuffers[3] = CreateTyped(device, contacts, D3D11_BIND_UNORDERED_ACCESS);
-		targetBuffers[5] = CreateStructured(device, 48, sphereList.size(), D3D11_BIND_UNORDERED_ACCESS);
+		targetBuffers[5] = CreateStructured(device, sizeof(GpuRig::SphereHit), sphereList.size(), D3D11_BIND_UNORDERED_ACCESS);
 		targetBuffers[6] = CreateStructured(device, 16, kBoneCount, D3D11_BIND_UNORDERED_ACCESS);
-		const std::array<std::size_t, 7> targetCounts{ 0, kBoneCount, 0, kBoneCount, 0, sphereList.size(), kBoneCount };
+		const std::array<std::size_t, 7> targetCounts{ 0, kBoneCount, 0, kBoneCount * kContactLanes, 0, sphereList.size(), kBoneCount };
 		std::array<ID3D11UnorderedAccessView*, 7> targets{};
 		std::array<ComPtr<ID3D11UnorderedAccessView>, 7> targetViews;
 		for (std::size_t slot = 0; slot < targets.size(); ++slot) {
@@ -340,7 +363,34 @@ namespace
 		context->CSSetUnorderedAccessViews(0, static_cast<UINT>(noTargets.size()), noTargets.data(), nullptr);
 		context->CSSetShaderResources(0, static_cast<UINT>(noSources.size()), noSources.data());
 		context->CSSetShader(nullptr, nullptr, 0);
-		return ReadBack<GpuRig::BoneContact>(device, context, targetBuffers[3].Get(), kBoneCount);
+		return ReadBack<GpuRig::BoneContact>(device, context, targetBuffers[3].Get(), kBoneCount * kContactLanes);
+	}
+
+	bool IsSkipped(const GpuRig::BoneContact& a_contact)
+	{
+		return a_contact.depth == kSentinelDepth;
+	}
+
+	bool IsEmptyLane(const GpuRig::BoneContact& a_contact)
+	{
+		const GpuRig::BoneContact empty;
+		return std::memcmp(&a_contact, &empty, sizeof(empty)) == 0;
+	}
+
+	/** @brief Runs a scene whose bones each touch one driver at most and returns lane 0 of every bone; the other lanes must be empty, or skipped with it. */
+	std::vector<GpuRig::BoneContact> RunPasses(const Scene& a_scene, const PassOptions& a_options)
+	{
+		const std::vector<GpuRig::BoneContact> lanes = RunLanes(a_scene, a_options);
+		std::vector<GpuRig::BoneContact> first(kBoneCount);
+		for (std::size_t bone = 0; bone < kBoneCount; ++bone) {
+			first[bone] = lanes[bone * kContactLanes];
+			for (std::size_t lane = 1; lane < kContactLanes; ++lane) {
+				INFO("bone " << bone << " lane " << lane);
+				const GpuRig::BoneContact& other = lanes[bone * kContactLanes + lane];
+				REQUIRE((IsSkipped(first[bone]) ? IsSkipped(other) : IsEmptyLane(other)));
+			}
+		}
+		return first;
 	}
 
 	void RequireMatches(const GpuRig::BoneContact& a_actual, const GpuRig::BoneContact& a_expected, std::size_t a_bone)
@@ -355,10 +405,6 @@ namespace
 		}
 	}
 
-	bool IsSkipped(const GpuRig::BoneContact& a_contact)
-	{
-		return a_contact.depth == kSentinelDepth;
-	}
 }
 
 TEST_CASE("The scene exercises a contact, an exemption and a bone out of reach", "[smpphysics][contact_gpu]")
@@ -488,4 +534,130 @@ TEST_CASE("A contact with no driver delta bound reports no velocity", "[smpphysi
 	const std::vector<GpuRig::BoneContact> contacts = RunPasses(MakeScene(), {});
 	for (const GpuRig::BoneContact& contact : contacts)
 		CHECK(contact.velocityValid == 0u);
+}
+
+/** @brief Two unit balls on two drivers, with bone 0 resting one sphere on top of the first and one against the side of the second. */
+Scene MakeTwoDriverScene()
+{
+	Scene scene;
+	scene.driver = Transform{};
+	scene.driverCount = 2;
+	Collider under;
+	under.type = Collider::Type::Ellipsoid;
+	under.driverIndex = 0;
+	under.halfExtents = { 1.0f, 1.0f, 1.0f };
+	Collider beside = under;
+	beside.driverIndex = 1;
+	beside.center = { 1.5f, 0.0f, 1.5f };
+	scene.colliders = { under, beside };
+
+	scene.boneWorld.resize(kBoneCount);
+	scene.spheres.resize(kBoneCount);
+	for (std::size_t bone = 0; bone < kBoneCount; ++bone) {
+		scene.boneWorld[bone].translation = { 0.0f, 0.0f, 1.0f + 40.0f * static_cast<float>(bone) };
+		scene.spheres[bone].push_back({ { 0.0f, 0.0f, 0.0f }, 0.1f, 0u });
+	}
+	scene.spheres[0].push_back({ { 0.55f, 0.0f, 0.5f }, 0.1f, 0u });
+	return scene;
+}
+
+TEST_CASE("A bone touching two drivers keeps one contact for each", "[smpphysics][contact_gpu]")
+{
+	const Scene scene = MakeTwoDriverScene();
+	const GpuRig::BoneContact merged = ExpectedContact(scene, 0);
+	// One merged contact would point between the two surfaces and hold the bone off neither.
+	REQUIRE(merged.normal[0] < -0.5f);
+	REQUIRE(merged.normal[2] > 0.2f);
+
+	const std::vector<GpuRig::BoneContact> lanes = RunLanes(scene, {});
+	const std::array<GpuRig::BoneContact, kContactLanes> expected = ExpectedLanes(scene, 0);
+	for (std::size_t lane = 0; lane < kContactLanes; ++lane)
+		RequireMatches(lanes[lane], expected[lane], lane);
+
+	CHECK(lanes[0].collider == 0);
+	CHECK(lanes[0].depth == Approx(0.12f).margin(1.0e-3f));
+	CHECK(lanes[0].normal[2] == Approx(1.0f).margin(1.0e-3f));
+	CHECK(lanes[0].position[2] == Approx(1.0f).margin(1.0e-4f));
+	CHECK(lanes[1].collider == 1);
+	CHECK(lanes[1].depth == Approx(0.17f).margin(1.0e-3f));
+	CHECK(lanes[1].normal[0] == Approx(-1.0f).margin(1.0e-3f));
+	CHECK(lanes[1].position[0] == Approx(0.55f).margin(1.0e-4f));
+	CHECK(lanes[1].position[2] == Approx(1.5f).margin(1.0e-4f));
+	for (std::size_t lane = 2; lane < kContactLanes; ++lane)
+		CHECK(IsEmptyLane(lanes[lane]));
+	for (std::size_t lane = 0; lane < kContactLanes; ++lane)
+		CHECK(IsEmptyLane(lanes[kContactLanes + lane]));
+}
+
+TEST_CASE("A bone touching one driver keeps the single merged contact in lane 0", "[smpphysics][contact_gpu]")
+{
+	const Scene scene = MakeScene();
+	const std::vector<GpuRig::BoneContact> lanes = RunLanes(scene, {});
+	for (std::size_t bone = 0; bone < kBoneCount; ++bone) {
+		RequireMatches(lanes[bone * kContactLanes], ExpectedContact(scene, bone), bone);
+		for (std::size_t lane = 1; lane < kContactLanes; ++lane) {
+			INFO("bone " << bone << " lane " << lane);
+			CHECK(IsEmptyLane(lanes[bone * kContactLanes + lane]));
+		}
+	}
+}
+
+namespace
+{
+	constexpr std::size_t kCrowdedDrivers{ kContactLanes + 1 };
+	constexpr float kCrowdedSpacing{ 3.0f };
+	/** @brief The tilt of each sphere's normal about Y; the last is nearest the third, whose lane it must join. */
+	constexpr std::array<float, kCrowdedDrivers> kCrowdedTilt{ -0.6f, -0.2f, 0.2f, 0.6f, 0.25f };
+	constexpr std::size_t kCrowdedSharedLane{ 2 };
+
+	/** @brief A row of unit balls, one per driver and one more than there are lanes, with bone 0 resting one sphere on each. */
+	Scene MakeCrowdedScene()
+	{
+		static_assert(kContactLanes == 4, "kCrowdedTilt lists one sphere per lane and one more");
+		Scene scene;
+		scene.driver = Transform{};
+		scene.driverCount = static_cast<std::uint32_t>(kCrowdedDrivers);
+		scene.boneWorld.resize(kBoneCount);
+		scene.spheres.resize(kBoneCount);
+		for (std::size_t bone = 1; bone < kBoneCount; ++bone) {
+			scene.boneWorld[bone].translation = { 0.0f, 0.0f, 40.0f * static_cast<float>(bone) };
+			scene.spheres[bone].push_back({ { 0.0f, 0.0f, 0.0f }, 0.1f, 0u });
+		}
+		for (std::size_t index = 0; index < kCrowdedDrivers; ++index) {
+			Collider ball;
+			ball.type = Collider::Type::Ellipsoid;
+			ball.driverIndex = static_cast<int>(index);
+			ball.halfExtents = { 1.0f, 1.0f, 1.0f };
+			ball.center = { kCrowdedSpacing * static_cast<float>(index), 0.0f, 0.0f };
+			scene.colliders.push_back(ball);
+			const float distance = index + 1 == kCrowdedDrivers ? 0.97f : 0.95f;
+			scene.spheres[0].push_back({ { ball.center.x + distance * std::sin(kCrowdedTilt[index]), 0.0f, distance * std::cos(kCrowdedTilt[index]) }, 0.1f, 0u });
+		}
+		return scene;
+	}
+}
+
+TEST_CASE("More contacted drivers than lanes fold into the best aligned lane", "[smpphysics][contact_gpu]")
+{
+	const Scene scene = MakeCrowdedScene();
+	const std::vector<GpuRig::BoneContact> lanes = RunLanes(scene, {});
+	const std::array<GpuRig::BoneContact, kContactLanes> expected = ExpectedLanes(scene, 0);
+	for (std::size_t lane = 0; lane < kContactLanes; ++lane) {
+		RequireMatches(lanes[lane], expected[lane], lane);
+		CHECK(lanes[lane].depth > 0.0f);
+		CHECK(lanes[lane].collider == static_cast<int>(lane));
+	}
+
+	// The fifth sphere is not dropped: it pulls the shared lane's position off the third sphere, toward its own.
+	const Vec3& own = scene.spheres[0][kCrowdedSharedLane].centerLocal;
+	const Vec3& extra = scene.spheres[0][kContactLanes].centerLocal;
+	const float ownWeight = 0.17f * 0.17f;
+	const float extraWeight = 0.15f * 0.15f;
+	CHECK(lanes[kCrowdedSharedLane].position[0] == Approx((own.x * ownWeight + extra.x * extraWeight) / (ownWeight + extraWeight)).margin(0.1f));
+	CHECK(lanes[kCrowdedSharedLane].position[0] > own.x + 1.0f);
+	CHECK(lanes[kCrowdedSharedLane].deepest == Approx(0.17f).margin(1.0e-3f));
+	for (std::size_t lane = 0; lane < kContactLanes; ++lane) {
+		if (lane != kCrowdedSharedLane)
+			CHECK(lanes[lane].position[0] == Approx(scene.spheres[0][lane].centerLocal.x).margin(1.0e-4f));
+	}
 }

@@ -76,6 +76,7 @@ namespace HairCollision
 		float3 normal;
 		int collider;
 		uint driver;  // the global driver slot that carries the contacted surface or collider, plus one; 0 when unknown
+		uint driverOther;  // a second driver the contacted face is weighted to, plus one; 0 when it has none
 	};
 
 	Quat QuatIdentity()
@@ -243,6 +244,7 @@ namespace HairCollision
 		result.normal = float3(0.0f, 0.0f, 0.0f);
 		result.collider = -1;
 		result.driver = 0u;
+		result.driverOther = 0u;
 		return result;
 	}
 
@@ -257,6 +259,7 @@ namespace HairCollision
 			a_best.normal = outward;
 			a_best.collider = a_index;
 			a_best.driver = 0u;
+			a_best.driverOther = 0u;
 		}
 	}
 

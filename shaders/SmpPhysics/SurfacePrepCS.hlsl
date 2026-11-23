@@ -124,6 +124,50 @@ uint DominantDriver(uint a_vertex)
 	return best;
 }
 
+/** @brief The driver, plus one, that carries the most of a face's weight after a_first, or 0: hdtSMP64 credits a hit to every bone of the body vertex. */
+uint SecondDriver(uint3 a_corners, uint a_first)
+{
+	uint candidates[12];
+	float totals[12];
+	uint count = 0u;
+	for (uint corner = 0u; corner < 3u; ++corner) {
+		uint vertex = a_corners[corner];
+		if (vertex >= VertexCount)
+			continue;
+		HairSurfacePrepVertex packed = HairPrepVertices[vertex];
+		uint bones[4] = { packed.bones.x, packed.bones.y, packed.bones.z, packed.bones.w };
+		float weights[4] = { packed.weights.x, packed.weights.y, packed.weights.z, packed.weights.w };
+		for (uint slot = 0u; slot < 4u; ++slot) {
+			uint bone = bones[slot];
+			if (bone == kPrepInvalidSlot || bone >= BoneCount || !(weights[slot] > 0.0f))
+				continue;
+			uint driver = HairPrepBones[bone].driver.x;
+			if (driver == kPrepInvalidSlot || driver + 1u == a_first)
+				continue;
+			uint found = count;
+			for (uint seen = 0u; seen < count; ++seen) {
+				if (candidates[seen] == driver + 1u)
+					found = seen;
+			}
+			if (found == count) {
+				candidates[count] = driver + 1u;
+				totals[count] = 0.0f;
+				count = count + 1u;
+			}
+			totals[found] += weights[slot];
+		}
+	}
+	uint best = 0u;
+	float bestTotal = 0.0f;
+	for (uint index = 0u; index < count; ++index) {
+		if (totals[index] > bestTotal) {
+			bestTotal = totals[index];
+			best = candidates[index];
+		}
+	}
+	return best;
+}
+
 /** @brief One skin bone's world transform: the driver's pose composed with the bone's bind transform. */
 [numthreads(64, 1, 1)] void SurfaceBones(uint3 a_dispatchThreadId : SV_DispatchThreadID) {
 	uint bone = a_dispatchThreadId.x;
@@ -199,7 +243,7 @@ uint DominantDriver(uint a_vertex)
 			if (second != 0u && second == DominantDriver(prep.corners.z))
 				driver = second;
 			record.b = float4(b, asfloat(driver));
-			record.c = float4(c, 0.0f);
+			record.c = float4(c, asfloat(SecondDriver(prep.corners.xyz, driver)));
 			record.normalArea = float4(faceCross / twiceArea, twiceArea);
 		}
 	}
