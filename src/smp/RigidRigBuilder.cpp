@@ -39,14 +39,14 @@ namespace SmpPhysics
 			body.inverseMass = Reciprocal(mass);
 			body.inverseInertiaLocal = { Reciprocal(a_bone.inertia.x * scale5), Reciprocal(a_bone.inertia.y * scale5),
 				Reciprocal(a_bone.inertia.z * scale5) };
-			body.linearDamping = a_bone.linearDamping;
-			body.angularDamping = a_bone.angularDamping;
+			body.linearDamping = std::clamp(a_bone.linearDamping * a_params.dampingScale, 0.0f, 1.0f);
+			body.angularDamping = std::clamp(a_bone.angularDamping * a_params.dampingScale, 0.0f, 1.0f);
 			body.friction = a_bone.friction;
 			body.gravity = { 0.0f, 0.0f, -a_params.gravity * a_params.gravityScale * a_bone.gravityFactor * mass };
 			return body;
 		}
 
-		RigidReference::RotationalMotor BuildAngularAxis(const RigJoint& a_joint, int a_axis, float a_scale)
+		RigidReference::RotationalMotor BuildAngularAxis(const RigJoint& a_joint, int a_axis, float a_scale, const SolverParams& a_params)
 		{
 			const auto component = [a_axis](const Vec3& a_value) {
 				return a_axis == 0 ? a_value.x : (a_axis == 1 ? a_value.y : a_value.z);
@@ -65,9 +65,9 @@ namespace SmpPhysics
 			motor.targetVelocity = component(a_joint.angularTargetVelocity);
 			motor.maxMotorForce = component(a_joint.angularMaxMotorForce);
 			motor.springEnabled = a_joint.angularSpringsEnabled;
-			motor.springStiffness = component(a_joint.angularStiffness) * a_scale * a_scale * a_scale * a_scale * a_scale;
+			motor.springStiffness = component(a_joint.angularStiffness) * a_scale * a_scale * a_scale * a_scale * a_scale * a_params.stiffnessScale;
 			motor.springStiffnessLimited = a_joint.angularStiffnessLimited;
-			motor.springDamping = component(a_joint.angularDamping);
+			motor.springDamping = component(a_joint.angularDamping) * a_params.dampingScale;
 			motor.springDampingLimited = a_joint.springDampingLimited;
 			motor.equilibrium = component(a_joint.angularEquilibrium);
 			motor.nonHookeanStiffness = component(a_joint.angularNonHookeanStiffness);
@@ -75,7 +75,8 @@ namespace SmpPhysics
 			return motor;
 		}
 
-		RigidReference::Generic6DofSpring2 BuildConstraint(const RigJoint& a_joint, const std::vector<Transform>& a_restWorld, float a_scale)
+		RigidReference::Generic6DofSpring2 BuildConstraint(const RigJoint& a_joint, const std::vector<Transform>& a_restWorld, float a_scale,
+			const SolverParams& a_params)
 		{
 			RigJoint scaledJoint = a_joint;
 			if (scaledJoint.frameKind != FrameKind::FrameInLerp)
@@ -100,16 +101,16 @@ namespace SmpPhysics
 			constraint.linear.targetVelocity = ToReference(a_joint.linearTargetVelocity);
 			constraint.linear.maxMotorForce = ToReference(a_joint.linearMaxMotorForce);
 			constraint.linear.springEnabled = { a_joint.linearSpringsEnabled, a_joint.linearSpringsEnabled, a_joint.linearSpringsEnabled };
-			constraint.linear.springStiffness = ToReference(a_joint.linearStiffness * (a_scale * a_scale * a_scale));
+			constraint.linear.springStiffness = ToReference(a_joint.linearStiffness * (a_scale * a_scale * a_scale) * a_params.stiffnessScale);
 			constraint.linear.springStiffnessLimited = { a_joint.linearStiffnessLimited, a_joint.linearStiffnessLimited, a_joint.linearStiffnessLimited };
-			constraint.linear.springDamping = ToReference(a_joint.linearDamping);
+			constraint.linear.springDamping = ToReference(a_joint.linearDamping * a_params.dampingScale);
 			constraint.linear.springDampingLimited = { a_joint.springDampingLimited, a_joint.springDampingLimited, a_joint.springDampingLimited };
 			constraint.linear.equilibrium = ToReference(a_joint.linearEquilibrium * a_scale);
 			constraint.linear.bounce = ToReference(a_joint.linearBounce);
 			constraint.linear.nonHookeanStiffness = ToReference(a_joint.linearNonHookeanStiffness);
 			constraint.linear.nonHookeanDamping = ToReference(a_joint.linearNonHookeanDamping);
 			for (int axis = 0; axis < 3; ++axis)
-				constraint.angular[static_cast<std::size_t>(axis)] = BuildAngularAxis(a_joint, axis, a_scale);
+				constraint.angular[static_cast<std::size_t>(axis)] = BuildAngularAxis(a_joint, axis, a_scale, a_params);
 			if (a_joint.useLinearReferenceFrameA != a_joint.reversed) {
 				std::swap(constraint.bodyA, constraint.bodyB);
 				std::swap(constraint.frameA, constraint.frameB);
@@ -129,9 +130,9 @@ namespace SmpPhysics
 
 		world.constraints.reserve(a_rig.joints.size() + a_rig.additionalJoints.size());
 		for (const RigJoint& joint : a_rig.joints)
-			world.constraints.push_back(BuildConstraint(joint, a_restWorld, a_scale));
+			world.constraints.push_back(BuildConstraint(joint, a_restWorld, a_scale, a_params));
 		for (const RigJoint& joint : a_rig.additionalJoints)
-			world.constraints.push_back(BuildConstraint(joint, a_restWorld, a_scale));
+			world.constraints.push_back(BuildConstraint(joint, a_restWorld, a_scale, a_params));
 		return world;
 	}
 

@@ -385,3 +385,104 @@ TEST_CASE("A centerOfMassTransform rotation too small for the old check still ke
 	parsed.rig.bones.back().comTransform.rotation = Quat{ 0.9999995f, 0.001f, 0.0f, 0.0f };
 	CHECK_FALSE(NodeFromBody(parsed.rig, 1.0f).empty());
 }
+
+namespace
+{
+	constexpr std::string_view kSpringXml = R"XML(<?xml version="1.0" encoding="utf-8"?>
+<system xmlns="http://www.example.com/hdt">
+	<bone name="Head"><mass>0</mass></bone>
+	<bone name="Hair01">
+		<mass>0.1</mass>
+		<inertia x="16" y="8" z="4"/>
+		<linearDamping>0.75</linearDamping>
+		<angularDamping>0.5</angularDamping>
+	</bone>
+	<generic-constraint bodyA="Hair01" bodyB="Head">
+		<linearLowerLimit x="-1" y="-2" z="-3"/>
+		<linearUpperLimit x="1" y="2" z="3"/>
+		<linearStiffness x="4" y="5" z="6"/>
+		<linearDamping x="0.1" y="0.2" z="0.3"/>
+		<angularLowerLimit x="-0.6" y="-0.5" z="-0.4"/>
+		<angularUpperLimit x="0.6" y="0.5" z="0.4"/>
+		<angularStiffness x="3" y="4" z="5"/>
+		<angularDamping x="0.1" y="0.2" z="0.3"/>
+	</generic-constraint>
+</system>
+)XML";
+
+	RigidReference::World BuildSprings(const SmpRig& a_rig, float a_stiffnessScale, float a_dampingScale)
+	{
+		SolverParams params;
+		params.stiffnessScale = a_stiffnessScale;
+		params.dampingScale = a_dampingScale;
+		const std::vector<Transform> rest(a_rig.bones.size());
+		return BuildRigidWorld(a_rig, rest, 1.0f, params);
+	}
+}
+
+TEST_CASE("Stiffness and damping scales of 1 leave the file's springs and body damping as authored", "[smpphysics][rigid_rig]")
+{
+	const ParseResult parsed = ParseSmpXml(kSpringXml);
+	REQUIRE(parsed.status == ParseStatus::Ok);
+	const RigJoint& authored = parsed.rig.joints[0];
+	const RigidReference::World world = BuildSprings(parsed.rig, 1.0f, 1.0f);
+	const RigidReference::Generic6DofSpring2& joint = world.constraints[0];
+	CHECK(joint.angular[0].springStiffness == authored.angularStiffness.x);
+	CHECK(joint.angular[2].springStiffness == authored.angularStiffness.z);
+	CHECK(joint.angular[1].springDamping == authored.angularDamping.y);
+	CHECK(joint.linear.springStiffness.y == authored.linearStiffness.y);
+	CHECK(joint.linear.springDamping.z == authored.linearDamping.z);
+	CHECK(world.bodies[1].linearDamping == parsed.rig.bones[1].linearDamping);
+	CHECK(world.bodies[1].angularDamping == parsed.rig.bones[1].angularDamping);
+}
+
+TEST_CASE("The stiffness scale multiplies angular and linear spring stiffness and nothing else", "[smpphysics][rigid_rig]")
+{
+	const ParseResult parsed = ParseSmpXml(kSpringXml);
+	REQUIRE(parsed.status == ParseStatus::Ok);
+	constexpr float kStiffnessScale = 2.5f;
+	const RigidReference::World unit = BuildSprings(parsed.rig, 1.0f, 1.0f);
+	const RigidReference::World scaled = BuildSprings(parsed.rig, kStiffnessScale, 1.0f);
+	for (std::size_t axis = 0; axis < 3; ++axis) {
+		CHECK(scaled.constraints[0].angular[axis].springStiffness == Approx(unit.constraints[0].angular[axis].springStiffness * kStiffnessScale));
+		CHECK(scaled.constraints[0].angular[axis].springDamping == unit.constraints[0].angular[axis].springDamping);
+	}
+	CHECK(scaled.constraints[0].linear.springStiffness.x == Approx(unit.constraints[0].linear.springStiffness.x * kStiffnessScale));
+	CHECK(scaled.constraints[0].linear.springStiffness.z == Approx(unit.constraints[0].linear.springStiffness.z * kStiffnessScale));
+	CHECK(scaled.constraints[0].linear.springDamping.y == unit.constraints[0].linear.springDamping.y);
+	CHECK(scaled.bodies[1].linearDamping == unit.bodies[1].linearDamping);
+	CHECK(scaled.bodies[1].angularDamping == unit.bodies[1].angularDamping);
+}
+
+TEST_CASE("The damping scale multiplies spring damping and body damping, which stays within 0 to 1", "[smpphysics][rigid_rig]")
+{
+	const ParseResult parsed = ParseSmpXml(kSpringXml);
+	REQUIRE(parsed.status == ParseStatus::Ok);
+	constexpr float kDampingScale = 1.5f;
+	const RigidReference::World unit = BuildSprings(parsed.rig, 1.0f, 1.0f);
+	const RigidReference::World scaled = BuildSprings(parsed.rig, 1.0f, kDampingScale);
+	for (std::size_t axis = 0; axis < 3; ++axis) {
+		CHECK(scaled.constraints[0].angular[axis].springDamping == Approx(unit.constraints[0].angular[axis].springDamping * kDampingScale));
+		CHECK(scaled.constraints[0].angular[axis].springStiffness == unit.constraints[0].angular[axis].springStiffness);
+	}
+	CHECK(scaled.constraints[0].linear.springDamping.y == Approx(unit.constraints[0].linear.springDamping.y * kDampingScale));
+	CHECK(scaled.constraints[0].linear.springStiffness.y == unit.constraints[0].linear.springStiffness.y);
+	CHECK(scaled.bodies[1].angularDamping == Approx(0.75f));
+	CHECK(scaled.bodies[1].linearDamping == 1.0f);
+	CHECK(BuildSprings(parsed.rig, 1.0f, 10.0f).bodies[1].angularDamping == 1.0f);
+}
+
+TEST_CASE("Stiffness and damping scales of 0 remove the springs' pull and all damping", "[smpphysics][rigid_rig]")
+{
+	const ParseResult parsed = ParseSmpXml(kSpringXml);
+	REQUIRE(parsed.status == ParseStatus::Ok);
+	const RigidReference::World world = BuildSprings(parsed.rig, 0.0f, 0.0f);
+	for (std::size_t axis = 0; axis < 3; ++axis) {
+		CHECK(world.constraints[0].angular[axis].springStiffness == 0.0f);
+		CHECK(world.constraints[0].angular[axis].springDamping == 0.0f);
+	}
+	CHECK(world.constraints[0].linear.springStiffness.z == 0.0f);
+	CHECK(world.constraints[0].linear.springDamping.z == 0.0f);
+	CHECK(world.bodies[1].linearDamping == 0.0f);
+	CHECK(world.bodies[1].angularDamping == 0.0f);
+}

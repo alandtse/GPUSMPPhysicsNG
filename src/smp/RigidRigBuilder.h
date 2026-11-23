@@ -21,7 +21,9 @@ namespace SmpPhysics
 	 * @param a_scale The actor's node scale. SMP rebuilds each dynamic body's mass as m * s^3 and its inertia as
 	 *                I * s^5, and scales each constraint's frame origins and linear limits by s and its angular
 	 *                spring stiffness by s^5.
-	 * @param a_params Supplies the gravity every body is weighted by its own gravity factor for.
+	 * @param a_params Supplies the gravity every body is weighted by its own gravity factor for, the stiffness
+	 *                 scale of every joint spring, and the damping scale of every joint spring and body; a body's
+	 *                 scaled damping is kept within 0 to 1, which the step's (1 - damping)^dt needs.
 	 * @details Spring limits are the file's raw values: Bullet caps them inside the constraint, which the
 	 *          reference and the compute solver both do.
 	 */
