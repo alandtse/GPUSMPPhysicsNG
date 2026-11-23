@@ -19,7 +19,11 @@ struct HairSphereRecord
 {
 	float4 centreRadius;  // xyz = centre in the bone's rest frame, w = radius
 	uint4 exempt;         // x = rest-exemption mask, y = the slot of the bone the sphere belongs to
+	float4 other[4];      // per other skin bone: xyz = the vertex in that bone's rest frame, w = its weight
+	uint4 otherBone;      // the other bones' slots, kNoSphereBone when unused
+	float4 weights;       // x = the owning bone's weight, y = hdtSMP64's flexible, the depth scale
 };
+static const uint kNoSphereBone = 0xFFFFFFFFu;  // mirrors kNoSphereBone in GpuRigPacking.h
 
 struct HairCollider
 {
@@ -462,10 +466,25 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 	HairBoneWorld world = HairBoneWorlds[bone];
 	HairCollision::Transform pose = HairCollision::LoadTransform(world.rotation, world.translation);
 	float3 centre = pose.translation + HairCollision::QuatRotate(pose.rotation, sphere.centreRadius.xyz);
+	// hdtSMP64 collides the skinned vertex, a weight blend over its bones, not a copy riding one bone.
+	float total = sphere.weights.x;
+	float3 blended = centre * total;
+	for (uint other = 0u; other < 4u; ++other) {
+		uint otherSlot = sphere.otherBone[other];
+		if (otherSlot == kNoSphereBone)
+			continue;
+		HairBoneWorld otherWorld = HairBoneWorlds[otherSlot];
+		HairCollision::Transform otherPose = HairCollision::LoadTransform(otherWorld.rotation, otherWorld.translation);
+		float weight = sphere.other[other].w;
+		blended += (otherPose.translation + HairCollision::QuatRotate(otherPose.rotation, sphere.other[other].xyz)) * weight;
+		total += weight;
+	}
+	if (total > 0.0f && all(isfinite(blended)))
+		centre = blended / total;
 	HairCollision::Contact contact = QueryContacts(HairTrees[tree], input.surface, cull.x, cull.z, centre,
 		sphere.centreRadius.w + input.contact.z, sphere.exempt.x);
 	HairSphereHit hit;
-	hit.depth = contact.depth > 0.0f ? contact.depth : 0.0f;
+	hit.depth = contact.depth > 0.0f ? contact.depth * sphere.weights.y : 0.0f;
 	hit.normal = contact.normal;
 	hit.centre = centre;
 	hit.collider = contact.collider;

@@ -3,6 +3,7 @@
 #include "Math.h"
 #include "Utils/SkinVertexBlock.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -49,6 +50,14 @@ namespace SmpPhysics
 	 */
 	inline constexpr std::size_t kMaximumExemptColliders = 32;
 
+	/** @brief Another bone a sphere's vertex is skinned to: where that bone carries the vertex, and how much of it. */
+	struct SphereInfluence
+	{
+		int bone{ -1 };  ///< rig bone, or -1 for an unused slot
+		Vec3 local;      ///< the vertex in that bone's rest frame
+		float weight{};
+	};
+
 	/** @brief One collision sphere of a dynamic bone, in that bone's rest frame. */
 	struct BoneSphere
 	{
@@ -60,6 +69,9 @@ namespace SmpPhysics
 		 *          such a collider must not shove it, or the safety clamp fights the spring every frame.
 		 */
 		std::uint32_t exemptMask{};
+		float weight{ 1.0f };                                         ///< the owning bone's skin weight on the vertex
+		float flexible{ 1.0f };                                       ///< the vertex's summed weight on dynamic bones, hdtSMP64's flexible: it scales the contact depth
+		std::array<SphereInfluence, Util::kSkinInfluences> others{};  ///< the vertex's other rig bones; the sphere sits at the weighted blend, as hdtSMP64 collides the skinned vertex
 	};
 
 	/**
@@ -133,6 +145,15 @@ namespace SmpPhysics
 		float weight[Util::kSkinInfluences]{};
 	};
 
+	/** @brief The rest of a vertex's skinning, for a vertex ReduceHairSpheres is handed one owning bone at a time. */
+	struct VertexBlend
+	{
+		std::array<SphereInfluence, Util::kSkinInfluences> others{};  ///< local is in the same space the owner's position is given in
+		float ownerWeight{ 1.0f };                                    ///< the owning bone's own skin weight on the vertex; 0 when it owns the vertex only through a triangle
+		float marginMultiplier{ -1.0f };                              ///< the vertex's weight-blended margin multiplier, as hdtSMP64 sizes it; negative uses the owning bone's
+		float flexible{ 1.0f };
+	};
+
 	/**
 	 * @brief A mesh vertex skinned by its bones' current world transforms, as the renderer would draw it.
 	 * @param a_vertex The vertex, with its position in mesh space and its skinning slots filled in.
@@ -161,7 +182,7 @@ namespace SmpPhysics
 	 */
 	[[nodiscard]] std::vector<std::vector<BoneSphere>> ReduceHairSpheres(const std::vector<SkinnedVertex>& a_vertices,
 		const std::vector<Transform>& a_meshToBone, const std::vector<bool>& a_dynamicBone, float a_margin,
-		const std::vector<float>& a_marginMultiplier = {});
+		const std::vector<float>& a_marginMultiplier = {}, const std::vector<VertexBlend>& a_blend = {});
 
 	/**
 	 * @brief Fits an ellipsoid to a head mesh's vertices, already expressed in the head driver's frame.

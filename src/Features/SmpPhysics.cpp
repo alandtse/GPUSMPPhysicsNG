@@ -663,6 +663,8 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->CollisionAuditJson(a_args); });
 	FEATURE_QUERY("surfacePoints", "List a claim's posed collision-surface vertices (default surface Colision) in world space as flat x, y, z values, for comparing the body proxy with another solver's.",
 		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->SurfacePointsJson(a_args); });
+	FEATURE_QUERY("spherePoints", "List the rig bones of an actor's claims whose name contains a substring, each with its world position and its contact spheres' world centres and radii.",
+		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->SpherePointsJson(a_args); });
 	FEATURE_QUERY("surfaceCheck", "Copy back a submitted frame's GPU collision-surface pass and compare it with the CPU reference for the same driver poses, answering with the check the previous call requested (call twice, a frame apart), reporting how many triangle and node records were compared, the largest component error of each and how many records, node boxes and node topologies differ; no mismatches and a zero error means the GPU pass reproduces the reference exactly up to float rounding, and the check needs a submitted frame with the GPU backend active.",
 		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->SurfaceCheckJson(); });
 }

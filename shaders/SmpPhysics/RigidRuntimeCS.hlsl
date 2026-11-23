@@ -246,12 +246,13 @@ void CalculateVelocity(in HairRigidSolver::Transform a_from, in HairRigidSolver:
 	if (index >= HairRigidRuntimeBodyCount)
 		return;
 	const HairRigidBody record = HairRigidBodies[index];
-	if (record.flags.x != 0u)
-		return;
 	const HairRigidBodyMeta meta = HairRigidMeta[index];
-	if (meta.slots.y == kNoBody)
+	// A kinematic body's pose is exported too: a sphere blends the poses of every bone its vertex is skinned to.
+	if (record.flags.x == 0u && meta.slots.y == kNoBody)
 		return;
-	const HairRigidSolver::Transform world = HairRigidSolver::Compose(LoadBodyPose(record), LoadPose(meta.nodeRotation, meta.nodeTranslation));
+	HairRigidSolver::Transform world = LoadBodyPose(record);
+	if (record.flags.x == 0u)
+		world = HairRigidSolver::Compose(world, LoadPose(meta.nodeRotation, meta.nodeTranslation));
 	HairBoneWorld worldOut;
 	worldOut.rotation = StoreChainRotation(HairRigidSolver::QuatSafeNormalize(HairRigidSolver::RotationFromBasis(world.basis)));
 	worldOut.translation = float4(world.origin, 0.0f);

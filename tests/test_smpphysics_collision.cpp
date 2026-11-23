@@ -191,6 +191,28 @@ TEST_CASE("Hair sphere radius is the shape margin, never zero", "[SmpPhysics]")
 		REQUIRE(sphere.radius > 0.0f);
 }
 
+TEST_CASE("A hair sphere carries its vertex's other bones, weights and blended margin", "[SmpPhysics]")
+{
+	std::vector<Transform> meshToBone(2);
+	meshToBone[1].translation = { 0.0f, 0.0f, -5.0f };
+	const std::vector<bool> dynamic = { true, false };
+	VertexBlend blend;
+	blend.ownerWeight = 0.75f;
+	blend.flexible = 0.75f;
+	blend.marginMultiplier = 2.0f;
+	blend.others[0] = { 1, { 1.0f, 2.0f, 3.0f }, 0.25f };
+	const std::vector<std::vector<BoneSphere>> spheres = ReduceHairSpheres({ WeightedVertex({ 1.0f, 2.0f, 3.0f }, 0, 1.0f) }, meshToBone, dynamic, 0.5f, {}, { blend });
+	REQUIRE(spheres[0].size() == 1);
+	const BoneSphere& sphere = spheres[0][0];
+	CHECK(sphere.weight == Approx(0.75f));
+	CHECK(sphere.flexible == Approx(0.75f));
+	CHECK(sphere.radius == Approx(1.0f));
+	REQUIRE(sphere.others[0].bone == 1);
+	CHECK(sphere.others[0].weight == Approx(0.25f));
+	CHECK(sphere.others[0].local.z == Approx(-2.0f));
+	CHECK(sphere.others[1].bone == -1);
+}
+
 TEST_CASE("A head ellipsoid follows the vertex cloud's principal axes", "[SmpPhysics]")
 {
 	// A box 20 x 6 x 2 long, so its long axis is X.

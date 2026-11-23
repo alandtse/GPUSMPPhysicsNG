@@ -421,6 +421,26 @@ TEST_CASE("The passes find a bone's penetration of a skinned surface as the CPU 
 	CHECK(probes[3].depth == 0.0f);
 }
 
+TEST_CASE("A sphere sits at the blend of its vertex's bones and its depth is scaled by flexible", "[smpphysics][contact_gpu]")
+{
+	const Scene rigid = MakeSurfaceScene();
+	const std::vector<GpuRig::BoneContact> before = RunPasses(rigid, {});
+	REQUIRE(before[0].depth > 0.0f);
+	REQUIRE(before[2].depth > 0.0f);
+
+	Scene blended = rigid;
+	blended.spheres[0][0].weight = 0.75f;
+	blended.spheres[0][0].others[0] = { 1, { 0.0f, 0.0f, 0.0f }, 0.25f };
+	blended.spheres[2][0].flexible = 0.5f;
+	const std::vector<GpuRig::BoneContact> after = RunPasses(blended, {});
+
+	const Vec3 expected = rigid.boneWorld[0].translation * 0.75f + rigid.boneWorld[1].translation * 0.25f;
+	CHECK(after[0].position[0] == Approx(expected.x).margin(1.0e-4f));
+	CHECK(after[0].position[2] == Approx(expected.z).margin(1.0e-4f));
+	CHECK(after[0].depth == Approx(before[0].depth - (expected.z - rigid.boneWorld[0].translation.z)).margin(1.0e-3f));
+	CHECK(after[2].depth == Approx(before[2].depth * 0.5f).margin(1.0e-4f));
+}
+
 TEST_CASE("The passes find the deep push reach of a surface as the CPU probe does", "[smpphysics][contact_gpu]")
 {
 	std::vector<SphereProbe> probes;

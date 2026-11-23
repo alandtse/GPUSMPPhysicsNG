@@ -135,8 +135,18 @@ namespace SmpPhysics::GpuRig
 			packed.bound = { bound.centre.x, bound.centre.y, bound.centre.z, bound.radius };
 			for (const BoneSphere& sphere : spheres) {
 				// The rest-exemption masks are one bit per claim-local collider, so laying the claim out does not move them.
-				data.sphereList.push_back({ { sphere.centerLocal.x, sphere.centerLocal.y, sphere.centerLocal.z, sphere.radius },
-					{ sphere.exemptMask, 0u, 0u, 0u } });
+				SphereRecord record{ { sphere.centerLocal.x, sphere.centerLocal.y, sphere.centerLocal.z, sphere.radius },
+					{ sphere.exemptMask, 0u, 0u, 0u } };
+				record.weights = { sphere.weight, sphere.flexible, 0.0f, 0.0f };
+				std::uint32_t* otherBone[4] = { &record.otherBone.x, &record.otherBone.y, &record.otherBone.z, &record.otherBone.w };
+				for (std::size_t other = 0; other < sphere.others.size(); ++other) {
+					const SphereInfluence& influence = sphere.others[other];
+					if (influence.bone < 0 || !(influence.weight > 0.0f))
+						continue;
+					record.other[other] = { influence.local.x, influence.local.y, influence.local.z, influence.weight };
+					*otherBone[other] = static_cast<std::uint32_t>(influence.bone);
+				}
+				data.sphereList.push_back(record);
 			}
 		}
 
@@ -276,8 +286,14 @@ namespace SmpPhysics::GpuRig
 			const BoneSpheres& packed = a_rig.collision.spheres[bone];
 			for (std::uint32_t member = 0; member < packed.range.y; ++member) {
 				const std::size_t record = packed.range.x + member;
-				if (record < statics.sphereList.size())
-					statics.sphereList[record].exempt.y = a_boneOffset + static_cast<std::uint32_t>(bone);
+				if (record >= statics.sphereList.size())
+					continue;
+				SphereRecord& sphere = statics.sphereList[record];
+				sphere.exempt.y = a_boneOffset + static_cast<std::uint32_t>(bone);
+				for (std::uint32_t* other : { &sphere.otherBone.x, &sphere.otherBone.y, &sphere.otherBone.z, &sphere.otherBone.w }) {
+					if (*other != kNoSphereBone)
+						*other += a_boneOffset;
+				}
 			}
 		}
 		return statics;

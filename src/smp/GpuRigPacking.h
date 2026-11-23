@@ -72,13 +72,18 @@ namespace SmpPhysics::GpuRig
 	};
 	static_assert(sizeof(BoneSpheres) == 32);
 
+	inline constexpr std::uint32_t kNoSphereBone = 0xFFFFFFFFu;  ///< mirrors kNoSphereBone in ContactCS.hlsl
+
 	/** @brief One per-vertex collision sphere, in its bone's own rest frame. */
 	struct SphereRecord
 	{
-		Float4 centreRadius{};  ///< xyz centre, w radius
-		Uint4 exempt{};         ///< x one bit per claim-local collider this sphere was authored inside
+		Float4 centreRadius{};                                                          ///< xyz centre, w radius
+		Uint4 exempt{};                                                                 ///< x one bit per claim-local collider this sphere was authored inside
+		Float4 other[4]{};                                                              ///< per other skin bone: xyz the vertex in that bone's rest frame, w its weight
+		Uint4 otherBone{ kNoSphereBone, kNoSphereBone, kNoSphereBone, kNoSphereBone };  ///< the other bones' slots
+		Float4 weights{ 1.0f, 1.0f, 0.0f, 0.0f };                                       ///< x the owning bone's weight, y the depth scale
 	};
-	static_assert(sizeof(SphereRecord) == 32);
+	static_assert(sizeof(SphereRecord) == 128);
 
 	/** @brief One sphere's contact at the start of a substep, as ContactCS.hlsl's HairSphereHit holds it. */
 	struct SphereHit

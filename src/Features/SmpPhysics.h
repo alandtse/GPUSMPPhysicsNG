@@ -261,6 +261,8 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] json CollisionAuditJson(const json& a_args) const;
 	/** @brief Lists a claim's posed collision-surface vertices in world space, as flat x, y, z values. Args: actorFormID, optionally surface (default Colision). */
 	[[nodiscard]] json SurfacePointsJson(const json& a_args) const;
+	/** @brief Lists, per rig bone whose name matches, the bone's world position and its contact spheres' world centres and radii. Args: actorFormID, optionally bones (a substring of the bone name, default empty for all). */
+	[[nodiscard]] json SpherePointsJson(const json& a_args) const;
 	/** @brief Moves a test character so a strand of its hair lies in the cast HIGGS makes from a player hand's palm, for grab tests with injected controllers. */
 	void PlaceCrowdHairAtHand(const json& a_args);
 	/** @brief Arms a per-frame capture of the solver's poses, taken right after the claims are stepped. Args: actorFormID, prefix, frames. */

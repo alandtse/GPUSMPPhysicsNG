@@ -194,15 +194,16 @@ namespace SmpPhysics
 
 	std::vector<std::vector<BoneSphere>> ReduceHairSpheres(const std::vector<SkinnedVertex>& a_vertices,
 		const std::vector<Transform>& a_meshToBone, const std::vector<bool>& a_dynamicBone, float a_margin,
-		const std::vector<float>& a_marginMultiplier)
+		const std::vector<float>& a_marginMultiplier, const std::vector<VertexBlend>& a_blend)
 	{
 		std::vector<std::vector<BoneSphere>> result(a_meshToBone.size());
-		std::vector<std::vector<Vec3>> clusters(a_meshToBone.size());
+		std::vector<std::vector<BoneSphere>> clusters(a_meshToBone.size());
 		float margin = a_margin;
 		if (!std::isfinite(margin) || margin < 0.0f)
 			margin = 0.0f;
 
-		for (const SkinnedVertex& vertex : a_vertices) {
+		for (std::size_t vertexIndex = 0; vertexIndex < a_vertices.size(); ++vertexIndex) {
+			const SkinnedVertex& vertex = a_vertices[vertexIndex];
 			if (!IsFiniteVector(vertex.position))
 				continue;
 			for (std::size_t slot = 0; slot < Util::kSkinInfluences; ++slot) {
@@ -212,18 +213,37 @@ namespace SmpPhysics
 				const std::size_t boneIndex = static_cast<std::size_t>(bone);
 				if (boneIndex >= a_dynamicBone.size() || !a_dynamicBone[boneIndex] || !IsFiniteTransform(a_meshToBone[boneIndex]))
 					continue;
-				clusters[boneIndex].push_back(a_meshToBone[boneIndex].TransformPoint(vertex.position));
+				BoneSphere sphere;
+				sphere.centerLocal = a_meshToBone[boneIndex].TransformPoint(vertex.position);
+				if (vertexIndex < a_blend.size()) {
+					const VertexBlend& blend = a_blend[vertexIndex];
+					sphere.weight = blend.ownerWeight;
+					if (blend.marginMultiplier >= 0.0f)
+						sphere.radius = std::max(margin * blend.marginMultiplier, kMinimumSphereRadius);
+					sphere.flexible = blend.flexible;
+					for (std::size_t other = 0; other < blend.others.size(); ++other) {
+						const SphereInfluence& influence = blend.others[other];
+						if (influence.bone < 0 || static_cast<std::size_t>(influence.bone) >= a_meshToBone.size() || !(influence.weight > 0.0f) || !IsFiniteVector(influence.local))
+							continue;
+						sphere.others[other] = { influence.bone, a_meshToBone[static_cast<std::size_t>(influence.bone)].TransformPoint(influence.local), influence.weight };
+					}
+				}
+				clusters[boneIndex].push_back(sphere);
 			}
 		}
 
 		for (std::size_t bone = 0; bone < clusters.size(); ++bone) {
-			const std::vector<Vec3>& cluster = clusters[bone];
+			const std::vector<BoneSphere>& cluster = clusters[bone];
 			const std::size_t wanted = std::min<std::size_t>(kMaxContactSpheresPerBone, cluster.size());
 			result[bone].reserve(wanted);
 			const float multiplier = bone < a_marginMultiplier.size() && std::isfinite(a_marginMultiplier[bone]) ? std::max(a_marginMultiplier[bone], 0.0f) : 1.0f;
 			const float radius = std::max(margin * multiplier, kMinimumSphereRadius);
-			for (std::size_t index = 0; index < wanted; ++index)
-				result[bone].push_back({ cluster[index * cluster.size() / wanted], radius });
+			for (std::size_t index = 0; index < wanted; ++index) {
+				BoneSphere sphere = cluster[index * cluster.size() / wanted];
+				if (!(sphere.radius > 0.0f))
+					sphere.radius = radius;
+				result[bone].push_back(sphere);
+			}
 		}
 		return result;
 	}
