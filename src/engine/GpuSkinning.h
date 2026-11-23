@@ -48,6 +48,7 @@ namespace SmpPhysics
 		struct Capture
 		{
 			bool valid{};
+			std::uint32_t engineFrame{};  ///< The engine frame the skin instance was drawn in when this was read.
 			std::uint32_t boneCount{};
 			std::vector<std::uint32_t> slots;
 			std::vector<SkinRows> current;         ///< What this class bound to b10.

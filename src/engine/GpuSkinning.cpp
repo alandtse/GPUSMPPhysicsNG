@@ -651,6 +651,7 @@ namespace SmpPhysics
 		const auto boneCount = static_cast<std::uint32_t>(a_entry.slots.size());
 		Capture capture;
 		capture.boneCount = boneCount;
+		capture.engineFrame = a_skin->frameID;
 		capture.slots = a_entry.slots;
 		const auto read = [&](ID3D11Buffer* a_source, std::vector<SkinRows>& a_rows) {
 			context->CopyResource(resources.staging.get(), a_source);

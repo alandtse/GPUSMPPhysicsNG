@@ -2,6 +2,7 @@
 #include "smp/CardVertices.h"
 #include "smp/ClaimPolicy.h"
 #include "smp/ClothRig.h"
+#include "smp/PatchProbe.h"
 #include "smp/RestRetarget.h"
 
 #include "RE/A/Actor.h"
@@ -19,6 +20,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cctype>
 #include <cfloat>
 #include <chrono>
@@ -335,6 +337,27 @@ namespace
 	Vec3 Posed(const SkinnedShape& a_shape, std::size_t a_vertex)
 	{
 		return SmpPhysics::SkinVertexToWorld(VertexOf(a_shape, a_vertex), a_shape.boneWorld, a_shape.skinToBone);
+	}
+
+	/** @brief A vertex skinned by the palette matrices the GPU bound for drawing it. */
+	Vec3 PosedByRows(const SkinnedShape& a_shape, std::size_t a_vertex, const std::vector<SmpPhysics::SkinRows>& a_rows)
+	{
+		float total = 0.0f;
+		Vec3 sum{};
+		const Vec3 position = a_shape.positions[a_vertex];
+		for (std::size_t slot = 0; slot < Util::kSkinInfluences; ++slot) {
+			const int bone = a_shape.bones[a_vertex][slot];
+			const float weight = a_shape.weights[a_vertex][slot];
+			if (bone < 0 || static_cast<std::size_t>(bone) >= a_rows.size() || weight <= 0.0f)
+				continue;
+			const SmpPhysics::SkinRows& m = a_rows[static_cast<std::size_t>(bone)];
+			sum = sum + Vec3{ m[0] * position.x + m[1] * position.y + m[2] * position.z + m[3],
+				m[4] * position.x + m[5] * position.y + m[6] * position.z + m[7],
+				m[8] * position.x + m[9] * position.y + m[10] * position.z + m[11] } *
+			                weight;
+			total += weight;
+		}
+		return total > 0.0f ? sum / total : position;
 	}
 
 	/** @brief A geometry's vertices in world space, skinned to the current pose when the shape carries skinning. */
@@ -929,6 +952,32 @@ namespace
 	}
 }
 
+json SmpPhysicsFeature::SurfacePointsJson(const json& a_args) const
+{
+	const RE::FormID formID = a_args.value("actorFormID", 0u);
+	const std::string name = a_args.value("surface", std::string("Colision"));
+	if (formID == 0)
+		return { { "error", "actorFormID is required" } };
+	const std::scoped_lock lock(stateMutex);
+	for (const auto& entry : claims) {
+		const Claim& claim = entry.second;
+		if (claim.actorFormID != formID)
+			continue;
+		for (const SmpPhysics::SkinnedSurface& surface : claim.surfaces) {
+			if (surface.name != name)
+				continue;
+			json flat = json::array();
+			for (const SmpPhysics::Vec3& point : SmpPhysics::PoseSurface(surface, claim.driverWorld)) {
+				flat.push_back(point.x);
+				flat.push_back(point.y);
+				flat.push_back(point.z);
+			}
+			return { { "name", name }, { "file", claim.physicsFile }, { "points", std::move(flat) } };
+		}
+	}
+	return { { "error", "no claim of that actor has that surface" } };
+}
+
 json SmpPhysicsFeature::CollisionAuditJson(const json& a_args) const
 {
 	const RE::FormID formID = a_args.value("actorFormID", 0u);
@@ -989,6 +1038,296 @@ json SmpPhysicsFeature::CollisionAuditJson(const json& a_args) const
 		return result;
 	}
 	return MeasureMeshPenetration(root, hairName, targetName, std::move(result), solverWorld);
+}
+
+struct SmpPhysicsFeature::PatchProbeState
+{
+	struct Row
+	{
+		std::int32_t frame{};
+		std::uint32_t measured{};
+		std::uint32_t outside{};
+		float maxOutside{};
+		std::uint32_t worst{};
+		std::uint32_t lag{};
+		std::string bone;
+		Vec3 skinCentre{};
+		Vec3 clothCentre{};
+		SmpPhysics::PatchSample drawn;
+		bool skinCaptured{};
+		bool clothCaptured{};
+		std::uint32_t skinFrame{};
+		std::uint32_t clothFrame{};
+		float clothShiftMean{};
+		float clothShiftMax{};
+		float wallMs{};
+		float gameDelta{};
+		float probeMs{};
+	};
+
+	static constexpr std::size_t kCapacity = 4096;
+
+	RE::FormID actor{};
+	std::string skinName;
+	std::string clothName;
+	RE::NiPointer<RE::NiAVObject> skinObject;
+	RE::NiPointer<RE::NiAVObject> clothObject;
+	SkinnedShape skin;
+	SkinnedShape cloth;
+	std::vector<std::uint32_t> skinVertices;
+	std::vector<std::uint32_t> clothVertices;
+	std::vector<std::uint32_t> faces;
+	std::vector<Vec3> skinPoints;
+	std::vector<Vec3> clothPoints;
+	float orientation{ 1.0f };
+	float reach{ 6.0f };
+	float threshold{ 0.05f };
+	bool drawn{};
+	std::uint32_t drawnEvery{ 1 };
+	std::uint32_t sampleIndex{};
+	std::chrono::steady_clock::time_point lastSample{};
+	std::uint32_t lastSkinCapture{};
+	std::uint32_t lastClothCapture{};
+	std::vector<Row> rows;
+	std::size_t next{};
+};
+
+namespace
+{
+	std::int32_t PresentedFrame()
+	{
+		static std::int32_t* counter = reinterpret_cast<std::int32_t*>(REL::RelocationID(525008, 411489).address());
+		return counter ? std::atomic_ref<std::int32_t>(*counter).load(std::memory_order_relaxed) : -1;
+	}
+
+	void RefreshBoneWorlds(SkinnedShape& a_shape)
+	{
+		for (std::size_t bone = 0; bone < a_shape.skinBones.size(); ++bone) {
+			if (a_shape.skinBones[bone] != nullptr)
+				a_shape.boneWorld[bone] = ToSolverTransform(a_shape.skinBones[bone]->world);
+		}
+	}
+}
+
+json SmpPhysicsFeature::StartPatchProbe(const json& a_args)
+{
+	const std::scoped_lock lock(stateMutex);
+	if (a_args.value("stop", false)) {
+		patchProbe.reset();
+		return { { "stopped", true } };
+	}
+	const RE::FormID formID = a_args.value("actorFormID", 0u);
+	auto* actor = formID != 0 ? RE::TESForm::LookupByID<RE::Actor>(formID) : nullptr;
+	RE::NiAVObject* root = actor ? actor->Get3D() : nullptr;
+	if (!root)
+		return { { "error", "the actor is not loaded" } };
+	auto state = std::make_shared<PatchProbeState>();
+	state->actor = formID;
+	state->skinName = a_args.value("skinMesh", std::string("3BA"));
+	state->clothName = a_args.value("clothMesh", std::string("dress"));
+	state->reach = a_args.value("reach", 6.0f);
+	state->threshold = a_args.value("threshold", 0.05f);
+	state->drawn = a_args.value("drawn", false);
+	state->drawnEvery = std::max<std::uint32_t>(a_args.value("drawnEvery", 1u), 1u);
+	const float clothNear = a_args.value("near", 8.0f);
+	std::vector<std::string> boneNames{ "Butt", "Pelvis" };
+	if (a_args.contains("bones") && a_args["bones"].is_array()) {
+		boneNames.clear();
+		for (const auto& name : a_args["bones"])
+			if (name.is_string())
+				boneNames.push_back(name.get<std::string>());
+	}
+	state->skinObject.reset(root->GetObjectByName(RE::BSFixedString(state->skinName.c_str())));
+	state->clothObject.reset(root->GetObjectByName(RE::BSFixedString(state->clothName.c_str())));
+	if (!state->skinObject || !state->clothObject)
+		return { { "error", "the skin or cloth mesh is not below the actor" } };
+	std::string reason;
+	if (!ReadSkinnedVertices(state->skinObject.get(), state->skin, reason))
+		return { { "error", std::format("the skin mesh {}", reason) } };
+	if (!ReadSkinnedShape(state->clothObject.get(), state->cloth, reason))
+		return { { "error", std::format("the cloth mesh {}", reason) } };
+
+	std::vector<Vec3> restSkin;
+	const std::size_t stride = static_cast<std::size_t>(std::max(a_args.value("stride", 1), 1));
+	std::size_t eligible = 0;
+	for (std::size_t vertex = 0; vertex < state->skin.positions.size(); ++vertex) {
+		const int bone = SmpPhysics::DominantBone(VertexOf(state->skin, vertex), static_cast<int>(state->skin.skinBones.size()));
+		const RE::NiAVObject* node = bone >= 0 ? state->skin.skinBones[static_cast<std::size_t>(bone)] : nullptr;
+		const char* name = node != nullptr ? node->name.c_str() : nullptr;
+		if (!name)
+			continue;
+		const std::string_view view(name);
+		const bool wanted = std::any_of(boneNames.begin(), boneNames.end(), [&](const std::string& part) { return view.find(part) != std::string_view::npos; });
+		if (wanted && eligible++ % stride == 0) {
+			state->skinVertices.push_back(static_cast<std::uint32_t>(vertex));
+			restSkin.push_back(Posed(state->skin, vertex));
+		}
+	}
+	if (state->skinVertices.empty())
+		return { { "error", "no skin vertex belongs to a bone with one of the given names" } };
+
+	std::vector<Vec3> clothPosed(state->cloth.positions.size());
+	for (std::size_t vertex = 0; vertex < clothPosed.size(); ++vertex)
+		clothPosed[vertex] = Posed(state->cloth, vertex);
+	Vec3 centre{};
+	for (const Vec3& point : clothPosed)
+		centre = centre + point;
+	centre = centre / static_cast<float>(std::max<std::size_t>(clothPosed.size(), 1));
+	float outwardness = 0.0f;
+	std::vector<char> usedVertex(clothPosed.size(), 0);
+	std::vector<std::uint32_t> remap(clothPosed.size(), 0);
+	const std::size_t faceCount = state->cloth.triangles.size() / 3;
+	for (std::size_t face = 0; face < faceCount; ++face) {
+		const std::uint16_t* indices = state->cloth.triangles.data() + face * 3;
+		if (indices[0] >= clothPosed.size() || indices[1] >= clothPosed.size() || indices[2] >= clothPosed.size())
+			continue;
+		const Vec3& first = clothPosed[indices[0]];
+		outwardness += SmpPhysics::Dot(SmpPhysics::Cross(clothPosed[indices[1]] - first, clothPosed[indices[2]] - first), (first + clothPosed[indices[1]] + clothPosed[indices[2]]) / 3.0f - centre);
+		bool close = false;
+		for (int corner = 0; corner < 3 && !close; ++corner) {
+			for (const Vec3& point : restSkin) {
+				const Vec3 offset = clothPosed[indices[corner]] - point;
+				if (SmpPhysics::Dot(offset, offset) < clothNear * clothNear) {
+					close = true;
+					break;
+				}
+			}
+		}
+		if (!close)
+			continue;
+		for (int corner = 0; corner < 3; ++corner) {
+			if (!usedVertex[indices[corner]]) {
+				usedVertex[indices[corner]] = 1;
+				remap[indices[corner]] = static_cast<std::uint32_t>(state->clothVertices.size());
+				state->clothVertices.push_back(indices[corner]);
+			}
+			state->faces.push_back(remap[indices[corner]]);
+		}
+	}
+	if (state->faces.empty())
+		return { { "error", "no cloth face lies near the chosen skin vertices" } };
+	state->orientation = outwardness < 0.0f ? -1.0f : 1.0f;
+	state->skinPoints.resize(state->skinVertices.size());
+	state->clothPoints.resize(state->clothVertices.size());
+	state->rows.reserve(PatchProbeState::kCapacity);
+	const json setup = { { "skinPoints", state->skinVertices.size() }, { "clothVertices", state->clothVertices.size() }, { "clothFaces", state->faces.size() / 3 }, { "orientation", state->orientation } };
+	patchProbe = std::move(state);
+	return setup;
+}
+
+void SmpPhysicsFeature::SamplePatchProbe()
+{
+	const auto probeStart = std::chrono::steady_clock::now();
+	const std::scoped_lock lock(stateMutex);
+	PatchProbeState* state = patchProbe.get();
+	if (!state)
+		return;
+	auto* actor = RE::TESForm::LookupByID<RE::Actor>(state->actor);
+	RE::NiAVObject* root = actor ? actor->Get3D() : nullptr;
+	if (!root || root->GetObjectByName(RE::BSFixedString(state->skinName.c_str())) != state->skinObject.get() || root->GetObjectByName(RE::BSFixedString(state->clothName.c_str())) != state->clothObject.get()) {
+		patchProbe.reset();
+		return;
+	}
+	RefreshBoneWorlds(state->skin);
+	RefreshBoneWorlds(state->cloth);
+	for (std::size_t index = 0; index < state->skinVertices.size(); ++index)
+		state->skinPoints[index] = Posed(state->skin, state->skinVertices[index]);
+	for (std::size_t index = 0; index < state->clothVertices.size(); ++index)
+		state->clothPoints[index] = Posed(state->cloth, state->clothVertices[index]);
+	const SmpPhysics::PatchSample sample = SmpPhysics::MeasureSkinOutsideCloth(state->skinPoints, state->clothPoints, state->faces, state->orientation, state->reach, state->threshold);
+	std::uint32_t lag = 0;
+	for (const auto& entry : claims) {
+		if (entry.second.actorFormID == state->actor && entry.second.gpuAppliedFrame != 0u)
+			lag = std::max<std::uint32_t>(lag, static_cast<std::uint32_t>(gpuSolver.Frame() - entry.second.gpuAppliedFrame));
+	}
+	const Transform toLocal = ToSolverTransform(root->world).Inverse();
+	Vec3 skinSum{};
+	for (const Vec3& point : state->skinPoints)
+		skinSum = skinSum + point;
+	Vec3 clothSum{};
+	for (const Vec3& point : state->clothPoints)
+		clothSum = clothSum + point;
+	const Vec3 skinCentre = toLocal.TransformPoint(skinSum / static_cast<float>(std::max<std::size_t>(state->skinPoints.size(), 1)));
+	const Vec3 clothCentre = toLocal.TransformPoint(clothSum / static_cast<float>(std::max<std::size_t>(state->clothPoints.size(), 1)));
+	std::string faceBone;
+	if (sample.outside > 0 && sample.worstFace * 3 < state->faces.size()) {
+		for (std::size_t corner = 0; corner < 3; ++corner) {
+			const std::uint32_t vertex = state->clothVertices[state->faces[sample.worstFace * 3 + corner]];
+			for (std::size_t slot = 0; slot < Util::kSkinInfluences; ++slot) {
+				const int bone = state->cloth.bones[vertex][slot];
+				const float weight = state->cloth.weights[vertex][slot];
+				const RE::NiAVObject* node = bone >= 0 ? state->cloth.skinBones[static_cast<std::size_t>(bone)] : nullptr;
+				if (node != nullptr && weight > 0.05f)
+					faceBone += std::format("{}:{:.2f} ", node->name.c_str() ? node->name.c_str() : "?", weight);
+			}
+			faceBone += "| ";
+		}
+	}
+	std::vector<Vec3> drawnSkin = state->skinPoints;
+	std::vector<Vec3> drawnCloth = state->clothPoints;
+	bool skinCaptured = false;
+	bool clothCaptured = false;
+	std::uint32_t skinFrame = 0;
+	std::uint32_t clothFrame = 0;
+	const auto instanceOf = [](RE::NiAVObject* a_object) -> RE::NiSkinInstance* {
+		auto* geometry = a_object ? a_object->AsGeometry() : nullptr;
+		return geometry ? geometry->GetGeometryRuntimeData().skinInstance.get() : nullptr;
+	};
+	if (state->drawn && state->sampleIndex++ % state->drawnEvery == 0) {
+		const SmpPhysics::GpuSkinning::Capture skinCapture = gpuSkinning.RequestCapture(instanceOf(state->skinObject.get()));
+		const SmpPhysics::GpuSkinning::Capture clothCapture = gpuSkinning.RequestCapture(instanceOf(state->clothObject.get()));
+		const auto rowsOf = [](const SmpPhysics::GpuSkinning::Capture& a_capture) -> const std::vector<SmpPhysics::SkinRows>& {
+			return a_capture.batchCurrent.empty() ? a_capture.current : a_capture.batchCurrent;
+		};
+		if (skinCapture.valid) {
+			skinCaptured = true;
+			skinFrame = skinCapture.engineFrame;
+			for (std::size_t index = 0; index < state->skinVertices.size(); ++index)
+				drawnSkin[index] = PosedByRows(state->skin, state->skinVertices[index], rowsOf(skinCapture));
+		}
+		if (clothCapture.valid && clothCapture.engineFrame != state->lastClothCapture) {
+			state->lastClothCapture = clothCapture.engineFrame;
+			clothCaptured = true;
+			clothFrame = clothCapture.engineFrame;
+			for (std::size_t index = 0; index < state->clothVertices.size(); ++index) {
+				const std::uint32_t vertex = state->clothVertices[index];
+				drawnCloth[index] = state->clothPoints[index] + (PosedByRows(state->cloth, vertex, rowsOf(clothCapture)) - PosedByRows(state->cloth, vertex, clothCapture.engineCurrent));
+			}
+		}
+	}
+	float shiftSum = 0.0f;
+	float shiftMax = 0.0f;
+	for (std::size_t index = 0; index < drawnCloth.size(); ++index) {
+		const Vec3 offset = drawnCloth[index] - state->clothPoints[index];
+		const float length = SmpPhysics::Length(offset);
+		shiftSum += length;
+		shiftMax = std::max(shiftMax, length);
+	}
+	const SmpPhysics::PatchSample drawnSample = skinCaptured || clothCaptured ? SmpPhysics::MeasureSkinOutsideCloth(drawnSkin, drawnCloth, state->faces, state->orientation, state->reach, state->threshold) : sample;
+	const auto now = std::chrono::steady_clock::now();
+	const float wallMs = state->lastSample.time_since_epoch().count() == 0 ? 0.0f : std::chrono::duration<float, std::milli>(now - state->lastSample).count();
+	state->lastSample = now;
+	const PatchProbeState::Row row{ PresentedFrame(), sample.measured, sample.outside, sample.maxOutside, sample.worst, lag, std::move(faceBone), skinCentre, clothCentre, drawnSample, skinCaptured, clothCaptured, skinFrame, clothFrame, shiftSum / static_cast<float>(std::max<std::size_t>(drawnCloth.size(), 1)), shiftMax, wallMs, globals::game::deltaTime ? *globals::game::deltaTime : 0.0f, std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - probeStart).count() };
+	if (state->rows.size() < PatchProbeState::kCapacity) {
+		state->rows.push_back(row);
+	} else {
+		state->rows[state->next] = row;
+		state->next = (state->next + 1) % PatchProbeState::kCapacity;
+	}
+}
+
+json SmpPhysicsFeature::PatchProbeRowsJson() const
+{
+	const std::scoped_lock lock(stateMutex);
+	const PatchProbeState* state = patchProbe.get();
+	if (!state)
+		return { { "active", false }, { "rows", json::array() } };
+	json rows = json::array();
+	for (std::size_t offset = 0; offset < state->rows.size(); ++offset) {
+		const PatchProbeState::Row& row = state->rows[(state->next + offset) % state->rows.size()];
+		rows.push_back({ row.frame, row.measured, row.outside, row.maxOutside, row.worst, row.lag, row.bone, row.skinCentre.x, row.skinCentre.y, row.skinCentre.z, row.clothCentre.x, row.clothCentre.y, row.clothCentre.z, row.drawn.outside, row.drawn.maxOutside, row.drawn.measured, row.skinCaptured, row.clothCaptured, row.skinFrame, row.clothFrame, row.clothShiftMean, row.clothShiftMax, row.wallMs, row.gameDelta, row.probeMs });
+	}
+	return { { "active", true }, { "skinPoints", state->skinVertices.size() }, { "clothFaces", state->faces.size() / 3 }, { "rows", std::move(rows) } };
 }
 
 /** @brief What the pieces of BuildClaimCollision hand to each other. */

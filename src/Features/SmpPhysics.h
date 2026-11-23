@@ -259,6 +259,8 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] json KinematicCheckJson(const json& a_args) const;
 	/** @brief Reports, on demand, the collision proxies this feature built for an actor and how deep its hair mesh sinks into a target mesh. Args: actorFormID, optionally with hairMesh and targetMesh together. */
 	[[nodiscard]] json CollisionAuditJson(const json& a_args) const;
+	/** @brief Lists a claim's posed collision-surface vertices in world space, as flat x, y, z values. Args: actorFormID, optionally surface (default Colision). */
+	[[nodiscard]] json SurfacePointsJson(const json& a_args) const;
 	/** @brief Moves a test character so a strand of its hair lies in the cast HIGGS makes from a player hand's palm, for grab tests with injected controllers. */
 	void PlaceCrowdHairAtHand(const json& a_args);
 	/** @brief Arms a per-frame capture of the solver's poses, taken right after the claims are stepped. Args: actorFormID, prefix, frames. */
@@ -445,6 +447,7 @@ private:
 		[[nodiscard]] SmpPhysics::Transform BoneWorld(std::size_t a_bone) const;
 		/** @brief BoneWorld's position of every bone, empty where the bone has no node. */
 		[[nodiscard]] std::vector<std::optional<SmpPhysics::Vec3>> BonePositions() const;
+		std::uint64_t gpuAppliedFrame{};                  ///< The solver frame the held pose was computed in.
 		std::vector<SmpPhysics::Transform> gpuLastBones;  ///< The last pose the GPU returned, held while the next readback is not ready.
 		std::vector<float> boneReach;                     ///< Per rig bone, how far from its kinematic root a strand can place it, for diagnostics only; see GpuRig::BuildBoneReach.
 		int firstKinematicBone{ -1 };
@@ -631,6 +634,11 @@ private:
 	/** @brief Measures the mesh surface each of a_claim's bones drives, for the wind drag. */
 	void MeasureWindAreas(Claim& a_claim);
 	void RecordBoneFrame();
+	struct PatchProbeState;
+	/** @brief Starts measuring, once per frame, how far an actor's worn skin shape lies in front of its cloth shape around the hips. */
+	json StartPatchProbe(const json& a_args);
+	void SamplePatchProbe();
+	[[nodiscard]] json PatchProbeRowsJson() const;
 	/** @brief Adds the angles of the recording's claim's simulated joints, in the frames the solver limits them in, to a recorded frame. */
 	void RecordJointFrame(json& a_frame);
 	/** @brief Reuses a cached parse for a_path, or reads and parses the file once. */
@@ -664,7 +672,8 @@ private:
 	mutable std::mutex windProbeMutex;
 	std::optional<WindProbeRequest> windProbeRequest;
 	json windProbeResult = json::object();
-	mutable std::mutex stateMutex;  ///< Guards everything below, and nothing is called into hdtSMP64 while it is held.
+	std::shared_ptr<PatchProbeState> patchProbe;  ///< Guarded by stateMutex.
+	mutable std::mutex stateMutex;                ///< Guards everything below, and nothing is called into hdtSMP64 while it is held.
 	std::string linkStatus;
 	SmpPhysics::BodyScanWindows bodyScanWindows;  ///< The actors an equip or load event has just touched.
 	SmpPhysics::RefitGuard refitGuard;            ///< Spaces out the soft reloads each actor asks for.

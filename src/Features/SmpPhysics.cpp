@@ -474,6 +474,10 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->SimulateGpuFailure(); });
 	FEATURE_COMMAND("recordBones", "Capture, once per frame right after hair is stepped, the head-frame pose of an actor's nodes whose names start with a prefix. Args: actorFormID (number), prefix (string), frames (number, default 300), world (bool, also record each node's world position and rotation matrix, for the tuning bench), extraNodes (array of exact node names to record as well, e.g. the head), joints (bool, also record each simulated joint's angles, Euler XYZ in radians in the joint frame the solver limits, of the claim whose physics file contains jointFilter, a string, default the first claim of the actor).",
 		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->StartBoneRecording(a_args); });
+	FEATURE_COMMAND("patchProbe", "Start (or with stop true, end) measuring once per frame how far an actor's skin shape (skinMesh, default 3BA) lies in front of its cloth shape (clothMesh, default dress), over the vertices whose dominant bone name contains one of bones (default Butt, Pelvis) and the cloth faces within near units (default 8) of them at start. Skinned from the nodes' current world transforms after the solver wrote its pose back. Args: actorFormID, skinMesh, clothMesh, bones (array), near, reach (default 6), threshold (default 0.05), stride (default 1: measure every Nth skin vertex, so the probe costs less per frame). Read the rows with patchProbeRows.",
+		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->StartPatchProbe(a_args); });
+	FEATURE_QUERY("patchProbeRows", "The frames measured by patchProbe as rows [presented frame, skin points measured, points in front of the cloth, greatest distance in front, index of that point], oldest first, plus the probe's setup.",
+		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->PatchProbeRowsJson(); });
 	FEATURE_QUERY("recordedBones", "Return the frames captured by recordBones: active flag, node names, and per frame the time, head world position and node head-frame positions; with joints, jointInfo (the claim's file, each joint's child and parent bone and its lower and upper limits) and per frame the joint angles in the same order.",
 		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->RecordedBonesJson(); });
 	FEATURE_COMMAND("probeBodyContact", "Hang a test capsule below a claimed actor's first kinematic hair bone, as if another body stood there, so hair contact with other bodies can be checked without arranging two actors. Args: actorFormID (number), enabled (bool, default true), offset ([x, y, z] game units from the bone, default zero), length (number, how far the capsule reaches straight down, default 40), radius (number, default 6). The claim status lists the capsules in use under externalCapsules.",
@@ -657,6 +661,8 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->SkinPaletteCheckJson(a_args); });
 	FEATURE_QUERY("collisionAudit", "Report, on demand, the collision proxies this feature built for an actor: per claim, how many spheres it has and how many of those start inside a collider and are exempt from it, then every collider's type, its driver node, its radius, whether it was fitted to the worn meshes or left at a default, and how many skinned body vertices the fit used; per claim, spheresBehindFace counts the spheres whose centre sits behind the nearest one-sided armor face by more than the allowance and skin, deepestBehindFace is the deepest of them, retargetBehindSpheres, retargetResidualSpheres, retargetedJoints, retargetKeptAuthored, retargetMaxAngle, retargetMaxBoneMove and retargetSagMaxMove say what the claim-time rest retarget did about spheres that settle behind a worn surface once the rest sags under gravity, and spheresInsideShell (with insideShellBones per hair bone) counts the spheres now inside a worn shell by the retarget's own measure, the distance straight out from the body axis to the face the hair would exit through, so the two agree when the hair settled where the retarget predicted; spheresBehindOutwardFace how many of those faces point away from the body axis (an outer plate rather than an inner lining), behindFaceDepthBuckets counts them at up to 1, 2, 4, 8, 16 and more units behind, behindFaceBones counts them per hair bone, behindFaceSurfaces counts them per surface as [outward-facing, inward-facing] lists over the same depth buckets, and behindBySphere lists each sphere's distance behind its nearest face, so a run before and after a pull shows which spheres ended up under the armor; every posed collision surface adds its triangle count, margin, penetration allowances and world-space bounds next to the head driver. Args: actorFormID (number), optionally with hairMesh and targetMesh together, which also measures how deep the hair mesh sinks into the target mesh, skinning both with the nodes' current world transforms so hdtSMP64-driven and claimed hair can be compared, with the GPU solver's pose for the bones it moves unless pose is \"engine\"; overlaps true, with neither mesh given, measures every ordered pair of the claim's own shapes whose tags let them collide and lists, per pair, how many vertices of the first sit behind the second and how deep. When any hair vertex lies behind the target it also reports insideBounds (low/high corners in the head frame), insideByHeight (counts per 10 unit bucket of head-frame height) and insideByBone (the hair bones owning most of those vertices, with their mean depth).",
 		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->CollisionAuditJson(a_args); });
+	FEATURE_QUERY("surfacePoints", "List a claim's posed collision-surface vertices (default surface Colision) in world space as flat x, y, z values, for comparing the body proxy with another solver's.",
+		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->SurfacePointsJson(a_args); });
 	FEATURE_QUERY("surfaceCheck", "Copy back a submitted frame's GPU collision-surface pass and compare it with the CPU reference for the same driver poses, answering with the check the previous call requested (call twice, a frame apart), reporting how many triangle and node records were compared, the largest component error of each and how many records, node boxes and node topologies differ; no mismatches and a zero error means the GPU pass reproduces the reference exactly up to float rounding, and the check needs a submitted frame with the GPU backend active.",
 		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->SurfaceCheckJson(); });
 }
@@ -1436,6 +1442,7 @@ RE::BSEventNotifyControl SmpPhysicsFeature::FrameSyncListener::ProcessEvent(
 		feature.hairTarget.Tick(feature.crowdWigs);
 		feature.StepClaims();
 		feature.RecordBoneFrame();
+		feature.SamplePatchProbe();
 	} catch (const std::exception& error) {
 		logger::error("{} the frame step failed: {}", kLogPrefix, error.what());
 	}
@@ -3793,8 +3800,10 @@ bool SmpPhysicsFeature::StepClaim(Claim& a_claim, const RE::NiPoint3& a_cameraPo
 
 	const bool applyGpu = gpuDrives && a_gpuResult && a_gpuResult->bones.size() == boneCount;
 	if (applyGpu && !a_gpuResult->failed) {
-		if (SmpPhysics::GpuRig::PoseIsFinite(a_claim.parsed->rig, a_gpuResult->bones))
+		if (SmpPhysics::GpuRig::PoseIsFinite(a_claim.parsed->rig, a_gpuResult->bones)) {
 			a_claim.gpuLastBones = a_gpuResult->bones;
+			a_claim.gpuAppliedFrame = a_gpuResult->frame;
+		}
 	}
 	const bool holdGpu = gpuDrives && a_claim.gpuLastBones.size() == boneCount;
 
