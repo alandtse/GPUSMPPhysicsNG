@@ -199,6 +199,35 @@ TEST_CASE("A grab pin pulls a rigid hair claim's bone toward the hand", "[smpphy
 	CHECK(held[tip].translation.y - free[tip].translation.y > 1.0f);
 }
 
+TEST_CASE("A blocking poll returns the result of the frame just submitted", "[smpphysics][d3d]")
+{
+	WarpDevice gpu;
+	const ParseResult parsed = ParseSmpXml(kRigXml);
+	REQUIRE(parsed.status == ParseStatus::Ok);
+	const std::vector<Transform> rest(parsed.rig.bones.size());
+	GpuSolver solver;
+	std::string reason;
+	REQUIRE(solver.AddClaim(1, parsed.rig, rest, SolverParams{}, {}, {}, {}, reason));
+
+	std::vector<GpuSolver::FrameClaim> frame(1);
+	frame[0].token = 1;
+	frame[0].kinematicWorld = &rest;
+	frame[0].deltaTime = 1.0f / 60.0f;
+	solver.waitForReadback = true;
+	std::vector<GpuSolver::ClaimResult> results;
+	for (int step = 0; step < 3; ++step) {
+		frame[0].hasPreviousInput = step > 0;
+		REQUIRE(solver.SubmitFrame(frame));
+		REQUIRE(solver.Poll(results));
+		REQUIRE(results.size() == 1);
+		CHECK(results[0].frame == solver.Frame());
+		CHECK_FALSE(results[0].failed);
+		REQUIRE(results[0].bones.size() == rest.size());
+		for (const Transform& bone : results[0].bones)
+			CHECK(std::isfinite(bone.translation.x));
+	}
+}
+
 TEST_CASE("Resource names are stored under the narrow debug-name GUID so RenderDoc reads them as text", "[smpphysics][d3d]")
 {
 	ComPtr<ID3D11Device> device;

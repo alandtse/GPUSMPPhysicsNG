@@ -1303,7 +1303,7 @@ namespace SmpPhysics
 			if (!readback.pending)
 				continue;
 			D3D11_MAPPED_SUBRESOURCE mapped{};
-			const HRESULT result = context->Map(readback.buffer.get(), 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
+			const HRESULT result = context->Map(readback.buffer.get(), 0, D3D11_MAP_READ, waitForReadback ? 0 : D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
 			if (result == DXGI_ERROR_WAS_STILL_DRAWING)
 				continue;
 			if (FAILED(result)) {

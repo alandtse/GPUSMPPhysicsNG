@@ -743,6 +743,7 @@ void PluginUi::Register()
 		Header("Performance"),
 		Check("Skin from the GPU solver", "Draws hair the GPU solver simulates from its current result. Off, hair follows the result a few frames late.", &settings.GpuSkinning),
 		Check("Batch the skin palette", "Builds every skinned mesh's matrices once per frame instead of once per draw.", &settings.BatchSkinPalette),
+		Check("Apply results in the same frame", "Waits for the GPU solver so each frame is drawn with its own result. Off, results arrive one to two frames late and fast-moving body parts can show through cloth.", &settings.SameFrameResults),
 	};
 	model.status = [&feature] {
 		const auto status = feature.GetUiStatus();

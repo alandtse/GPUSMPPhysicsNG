@@ -73,7 +73,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	DebugMaxActors,
 	ShowSkeletonDebug,
 	BatchSkinPalette,
-	FlushAfterSubmit)
+	FlushAfterSubmit,
+	SameFrameResults)
 
 using namespace SmpPhysicsLimits;
 
@@ -897,6 +898,11 @@ json SmpPhysicsFeature::BuildStatusJson() const
 		result["culledSmall"] = std::count_if(claims.begin(), claims.end(), [](const auto& a_entry) { return a_entry.second.culledSmall; });
 		result["totalStepMicroseconds"] = totalStepMicroseconds;
 		result["gpuAvailable"] = gpuSolver.Available();
+		result["syncWaitMsAvg"] = syncWaitMs.Average();
+		result["syncWaitMsMax"] = syncWaitMs.Max();
+		result["syncTotalMsAvg"] = syncTotalMs.Average();
+		result["syncTotalMsMax"] = syncTotalMs.Max();
+		result["syncSamples"] = syncWaitMs.Count();
 		result["gpuClaimCount"] = gpuSolver.ClaimCount();
 		result["gpuRigidClaimCount"] = gpuSolver.Rigid().ClaimCount();
 		result["gpuRigidAvailable"] = gpuSolver.Rigid().Available();
@@ -3437,11 +3443,37 @@ void SmpPhysicsFeature::StepClaims()
 		}
 		bodyShapeActors.clear();
 
+		const auto submitStart = std::chrono::steady_clock::now();
 		bool submitted = false;
 		{
 			ZoneScopedN("SmpPhysics::Submit");
 			gpuSolver.SetFlushAfterSubmit(settings.FlushAfterSubmit);
 			submitted = !submissions.empty() && gpuSolver.SubmitFrame(submissions);
+		}
+		if (submitted && settings.SameFrameResults) {
+			ZoneScopedN("SmpPhysics::SyncReadback");
+			std::vector<SmpPhysics::GpuSolver::ClaimResult> fresh;
+			gpuSolver.waitForReadback = true;
+			const auto waitStart = std::chrono::steady_clock::now();
+			bool polled = false;
+			{
+				ZoneScopedN("SmpPhysics::SyncReadbackWait");
+				polled = gpuSolver.Poll(fresh);
+			}
+			syncWaitMs.Add(std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - waitStart).count());
+			if (polled) {
+				for (const SmpPhysics::GpuSolver::ClaimResult& result : fresh) {
+					const auto found = claims.find(result.token);
+					if (found == claims.end() || result.failed || !found->second.parsed || result.frame < found->second.gpuAppliedFrame ||
+						result.bones.size() != found->second.parsed->rig.bones.size() || !SmpPhysics::GpuRig::PoseIsFinite(found->second.parsed->rig, result.bones))
+						continue;
+					found->second.gpuLastBones = result.bones;
+					found->second.gpuAppliedFrame = result.frame;
+					WriteBackPose(found->second);
+				}
+			}
+			gpuSolver.waitForReadback = false;
+			syncTotalMs.Add(std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - submitStart).count());
 		}
 		const auto worldsView = gpuSolver.WorldsView();
 		for (auto& entry : claims) {
