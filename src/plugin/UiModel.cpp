@@ -712,36 +712,36 @@ void PluginUi::Register()
 	model.title = "Settings";
 	model.rows = {
 		Header("Simulation"),
-		Check("Enable GPU SMP physics", "While enabled, meshes whose physics file describes a bone chain are simulated here instead of by hdtSMP64. Every other mesh stays with hdtSMP64.", &settings.Enabled, [&feature, &settings] {
+		Check("Enable GPU SMP physics", "Simulates meshes whose physics file describes a bone chain on the GPU, in place of hdtSMP64 (the CPU physics mod). Every other mesh stays with hdtSMP64; off hands them all back.", &settings.Enabled, [&feature, &settings] {
 			if (settings.Enabled)
 				feature.ReevaluateAllActors();
 			else
 				feature.ReevaluateClaimedActors();
 		}),
-		Check("Collide with the body", "Hair is kept out of the head, neck and shoulders and off the ground.", &settings.CollisionEnabled, reclaim),
-		Check("Simulate head parts", "Hair, wigs and other head parts.", &settings.ClaimHeadParts, reclaim),
-		Check("Simulate armor", "Armor and clothing with physics.", &settings.ClaimArmor, reclaim),
-		Check("React to nearby bodies and hands", "Other characters, the player's VR hands and held weapons or objects push the hair.", &settings.BodyContacts),
+		Check("Collide with the body", "Keeps GPU-simulated hair, cloth and armor out of the character's body and off the ground.", &settings.CollisionEnabled, reclaim),
+		Check("Simulate head parts", "Hair, wigs and other head parts, simulated on the GPU.", &settings.ClaimHeadParts, reclaim),
+		Check("Simulate armor", "Armor and clothing with physics, simulated on the GPU.", &settings.ClaimArmor, reclaim),
+		Check("React to nearby bodies and hands", "Other characters, the player's VR hands and held weapons or objects push GPU-simulated hair and cloth.", &settings.BodyContacts),
 		VrOnly(Check("Hold hair with a closed hand", "Closing a hand on a strand of hair holds it to the hand until the hand opens.", &settings.GrabStrands)),
 		Header("Capes and cloaks"),
 		Check("Capes rest on the floor", "A cape stops at the floor under the character instead of hanging through it.", &settings.ClothFloor),
 		Check("Capes react to loose objects", "A cape is pushed by loose objects the physics world moves.", &settings.ClothObjects),
 		Check("Drape capes on the body", "A cape authored to hang over armor is turned in toward the body it is worn on.", &settings.DrapeCloth),
-		Check("Collide hair with capes and cloth", "Hair rests on top of a cape simulated on the same character.", &settings.ClothCollision),
+		Check("Collide hair with capes and cloth", "GPU-simulated hair rests on top of a cape simulated on the same character.", &settings.ClothCollision),
 		Header("Physics"),
-		Slide("Gravity scale", "Multiplies the mod author's value; 1 leaves it as authored. Press Re-evaluate actors to apply it to hair that is already simulated.", &settings.GravityScale, kMinScale, kMaxScale, "%.2f"),
-		Slide("Stiffness scale", "Multiplies the mod author's value; 1 leaves it as authored. Press Re-evaluate actors to apply it to hair that is already simulated.", &settings.StiffnessScale, kMinScale, kMaxScale, "%.2f"),
-		Slide("Damping scale", "Multiplies the mod author's value; 1 leaves it as authored. Press Re-evaluate actors to apply it to hair that is already simulated.", &settings.DampingScale, kMinScale, kMaxScale, "%.2f"),
-		Slide("Wind strength", "How hard the weather's wind pushes hair and cloth outdoors; 0 switches wind off, the default is 6. Its scale differs from hdtSMP64's.", &settings.WindStrength, 0.0f, kMaxWindStrength, "%.1f"),
+		Slide("Gravity scale", "How hard gravity pulls GPU-simulated meshes; 1 is as the mod author set it. Press Re-evaluate actors to apply it to meshes already simulated.", &settings.GravityScale, kMinScale, kMaxScale, "%.2f"),
+		Slide("Stiffness scale", "How strongly GPU-simulated joints spring back to rest; 1 is as the mod author set it. Press Re-evaluate actors to apply it to meshes already simulated.", &settings.StiffnessScale, kMinScale, kMaxScale, "%.2f"),
+		Slide("Damping scale", "How quickly GPU-simulated motion dies out; 1 is as the mod author set it. Press Re-evaluate actors to apply it to meshes already simulated.", &settings.DampingScale, kMinScale, kMaxScale, "%.2f"),
+		Slide("Wind strength", "How hard the weather's wind pushes GPU-simulated hair and cloth outdoors; 0 switches wind off, the default is 6. Its scale differs from hdtSMP64's.", &settings.WindStrength, 0.0f, kMaxWindStrength, "%.1f"),
 		Header("Limits and culling"),
 		Slide("Simulation distance", "Game units from the camera beyond which claims are not stepped.", &settings.SimulationDistance, kMinSimulationDistance, kMaxSimulationDistance, "%.0f"),
-		SlideInt("Maximum claims", "Meshes beyond this count keep being simulated by hdtSMP64.", &settings.MaxClaims, kMinClaims, kMaxClaims),
+		SlideInt("Maximum claims", "Physics files beyond this count stay with hdtSMP64 on the CPU.", &settings.MaxClaims, kMinClaims, kMaxClaims),
 		SlideInt("Simulation budget", "The most physics files simulated each frame, nearest to the camera first.", &settings.MaxSimulatedClaims, kMinClaims, kMaxClaims),
-		Slide("Minimum screen size (%)", "Stops simulating hair that covers less than this share of the screen height for a while; 0 switches it off.", &settings.MinScreenSizePercent, 0.0f, kMaxScreenSizePercent, "%.1f"),
-		Check("Skip hair that is out of view", "Stops simulating hair that has stayed out of view for half a second and is not close to the camera.", &settings.CullOffscreen),
-		Note("Hair that was skipped restarts from rest when it comes back, which can show as a brief pop."),
+		Slide("Minimum screen size (%)", "Stops simulating meshes that cover less than this share of the screen height for a while; 0 switches it off.", &settings.MinScreenSizePercent, 0.0f, kMaxScreenSizePercent, "%.1f"),
+		Check("Skip physics that is out of view", "Stops simulating meshes that have stayed out of view for half a second and is not close to the camera.", &settings.CullOffscreen),
+		Note("Physics that was skipped restarts from rest when it comes back, which can show as a brief pop."),
 		Header("Performance"),
-		Check("Skin from the GPU solver", "Draws hair the GPU solver simulates from its current result. Off, hair follows the result a few frames late.", &settings.GpuSkinning),
+		Check("Skin from the GPU solver", "Draws meshes the GPU solver simulates from its current result. Off, they follow the result a few frames late.", &settings.GpuSkinning),
 		Check("Batch the skin palette", "Builds every skinned mesh's matrices once per frame instead of once per draw.", &settings.BatchSkinPalette),
 	};
 	model.status = [&feature] {
@@ -875,7 +875,7 @@ void PluginUi::Register()
 		NotDeveloperNote(),
 		NeedsDeveloperMode(VrOnly(Check("Show grab debug", "Draws the strands hands hold, those in reach, and the hair hands push.", &settings.ShowGrabDebug))),
 		NeedsDeveloperMode(Check("Show collider debug", "Outlines the head, body and armor proxies and other bodies' capsules that hair collides with.", &settings.ShowColliderDebug)),
-		NeedsDeveloperMode(Check("Show joint debug", "Draws each simulated bone from its parent, coloured by who simulates it: lime is the GPU, amber is claimed but not stepped, grey is inactive, purple is hdtSMP64 on the CPU. Orange marks stretched or squeezed joints.", &settings.ShowJointDebug)),
+		NeedsDeveloperMode(Check("Show joint debug", "Draws each simulated bone from its parent, coloured by who simulates it: lime is the GPU, amber is claimed but not stepped, grey is inactive, purple is hdtSMP64 (CPU). Orange marks stretched or squeezed joints.", &settings.ShowJointDebug)),
 		NeedsDeveloperMode(Check("Show skeleton debug", "Draws the skeletons of nearby actors and the player's hands.", &settings.ShowSkeletonDebug)),
 		NeedsDeveloperMode(SlideInt("Overlay actors", "Most actors the overlays draw, nearest first.", &settings.DebugMaxActors, 1, kMaxDebugActors)),
 		Header("Shaders"),
