@@ -4,6 +4,7 @@
 #include "Features/SmpPhysics/CrowdHairParts.h"
 #include "Features/SmpPhysics/CrowdWigs.h"
 #include "Features/SmpPhysics/HairTarget.h"
+#include "Features/SmpPhysics/HdtSolverConfig.h"
 
 #include "Feature.h"
 #include "d3d/GpuSolver.h"
@@ -255,6 +256,8 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] json WindProbeResult() const;
 	/** @brief Runs a queued windProbe; called from StepClaims on the game thread. */
 	void RunWindProbe();
+	/** @brief Gives the solver hdtSMP64's fixed step, substep cap, iteration count and erp, read from its configuration files. */
+	void ApplyHdtSolverConfig();
 	[[nodiscard]] static json SkinProbeJson(const json& a_args);
 	/** @brief Compares the skinning matrices bound for a claimed mesh against the engine's own, bone by bone. Args: actorFormID, mesh. Asks for a fresh capture each call, so the first answer is empty. */
 	[[nodiscard]] json SkinPaletteCheckJson(const json& a_args) const;

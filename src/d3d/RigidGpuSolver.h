@@ -77,6 +77,14 @@ namespace SmpPhysics
 		RigidGpuSolver& operator=(const RigidGpuSolver&) = delete;
 
 		[[nodiscard]] bool Available() const noexcept { return available; }
+		/** @brief Sets the fixed step, substep cap, iteration count and error reduction every later step uses: hdtSMP64's solver settings. */
+		void SetStepSettings(float a_tick, int a_maxTicks, int a_iterations, float a_erp) noexcept
+		{
+			stepClock.tick = a_tick;
+			stepClock.maxTicks = a_maxTicks;
+			iterations = a_iterations;
+			erp = a_erp;
+		}
 		/** @brief How the islands of the last buffer build split by constraint count. */
 		[[nodiscard]] const RigidGpu::IslandSizes& IslandSizeSummary() const noexcept { return islandSizes; }
 		[[nodiscard]] const std::string& UnavailableReason() const noexcept { return unavailableReason; }
@@ -188,6 +196,8 @@ namespace SmpPhysics
 		std::unique_ptr<ConstantBuffer> runtimeConstants;
 		std::vector<FrameInput> frameScratch;
 		SmpStepClock stepClock;
+		int iterations{ RigidReference::SolverSettings{}.iterations };
+		float erp{ RigidReference::SolverSettings{}.erp };
 
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> frameBeginShader;
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> predictShader;

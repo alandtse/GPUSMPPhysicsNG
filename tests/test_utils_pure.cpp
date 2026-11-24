@@ -85,6 +85,22 @@ TEST_CASE("ReadSkinVertexBlock reads weights then palette slots", "[utils]")
 	CHECK(vertex.paletteSlot == std::array<std::uint8_t, 4>{ 9, 8, 7, 6 });
 }
 
+TEST_CASE("SmpStepClock steps at the configured tick", "[solver]")
+{
+	SmpPhysics::SmpStepClock clock;
+	clock.tick = 1.0f / 90.0f;
+	SmpPhysics::SmpStepClock::Frame frame;
+	for (int warm = 0; warm < 64; ++warm)
+		frame = clock.Advance(0.0195f);
+	REQUIRE(frame.count == 2);
+	CHECK(frame.steps[0] == Catch::Approx(1.0f / 90.0f));
+	CHECK(frame.steps[0] + frame.steps[1] == Catch::Approx(0.0195f));
+
+	clock.maxTicks = 1;
+	frame = clock.Advance(0.0195f);
+	CHECK(frame.total == Catch::Approx(1.0f / 90.0f));
+}
+
 TEST_CASE("SmpStepClock skips short frames and caps long ones", "[solver]")
 {
 	SmpPhysics::SmpStepClock clock;

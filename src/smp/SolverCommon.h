@@ -96,6 +96,9 @@ namespace SmpPhysics
 		/** @brief Forgets the accumulated time and restarts the interval average at one tick. */
 		void Reset() noexcept;
 
+		float tick{ 1.0f / 60.0f };  ///< Longest fixed step: one over hdtSMP64's min-fps.
+		int maxTicks{ 4 };           ///< hdtSMP64's maxSubSteps.
+
 	private:
 		float averageInterval{ 1.0f / 60.0f };
 		float accumulated{};

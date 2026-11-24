@@ -354,6 +354,7 @@ void SmpPhysicsFeature::OnPluginMessage(const SKSE::MessagingInterface::Message*
 	}
 	linked.store(true, std::memory_order_release);
 	logger::info("{} {}", kLogPrefix, status);
+	ApplyHdtSolverConfig();
 }
 
 void SmpPhysicsFeature::LoadSettings(json& a_json)
@@ -1610,6 +1611,19 @@ bool SmpPhysicsFeature::ResolveRestPose(const SmpPhysics::SmpRig& a_rig, const s
 		}
 	}
 	return true;
+}
+
+void SmpPhysicsFeature::ApplyHdtSolverConfig()
+{
+	const auto read = [](const char* a_path) {
+		std::ifstream stream(a_path, std::ios::binary);
+		return std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+	};
+	const SmpPhysics::HdtSolverConfig config = SmpPhysics::ParseHdtSolverConfig(read("Data/SKSE/Plugins/hdtSkinnedMeshConfigs/configs.json"),
+		read("Data/SKSE/Plugins/hdtSkinnedMeshConfigs/userConfigs.json"));
+	gpuSolver.SetStepSettings(1.0f / static_cast<float>(config.minFps), config.maxSubSteps, config.iterations, config.erp);
+	logger::info("{} Following hdtSMP64's solver settings: {} iterations, {} Hz fixed step, {} substeps at most, erp {}", kLogPrefix, config.iterations, config.minFps,
+		config.maxSubSteps, config.erp);
 }
 
 void SmpPhysicsFeature::ReadViewRules(Claim& a_claim)

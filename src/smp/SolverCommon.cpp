@@ -44,22 +44,20 @@ namespace SmpPhysics
 
 	SmpStepClock::Frame SmpStepClock::Advance(float a_interval) noexcept
 	{
-		constexpr float kTimeTick = 1.0f / 60.0f;
-		constexpr int kMaxTicks = 4;
 		constexpr float kMinStep = 1.0f / 300.0f;
 		Frame frame;
 		if (!std::isfinite(a_interval) || a_interval <= 0.0f)
 			return frame;
 		accumulated += a_interval;
 		averageInterval += (a_interval - averageInterval) * kIntervalSmoothing;
-		const float tick = std::min(averageInterval, kTimeTick);
-		if (!(accumulated * 2.0f > tick))
+		const float step = std::min(averageInterval, tick);
+		if (!(accumulated * 2.0f > step))
 			return frame;
-		float remaining = std::min(accumulated, tick * static_cast<float>(kMaxTicks));
+		float remaining = std::min(accumulated, step * static_cast<float>(maxTicks));
 		frame.total = remaining;
-		while (remaining > tick && frame.count < static_cast<int>(frame.steps.size())) {
-			frame.steps[static_cast<std::size_t>(frame.count++)] = tick;
-			remaining -= tick;
+		while (remaining > step && frame.count < static_cast<int>(frame.steps.size())) {
+			frame.steps[static_cast<std::size_t>(frame.count++)] = step;
+			remaining -= step;
 		}
 		if (remaining > kMinStep && frame.count < static_cast<int>(frame.steps.size()))
 			frame.steps[static_cast<std::size_t>(frame.count++)] = remaining;

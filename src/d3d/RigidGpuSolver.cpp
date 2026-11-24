@@ -413,7 +413,9 @@ namespace SmpPhysics
 			context->Dispatch(Groups(bodyCount), 1, 1);
 		}
 
-		const RigidReference::SolverSettings solver;
+		RigidReference::SolverSettings solver;
+		solver.iterations = iterations;
+		solver.erp = erp;
 		RigidGpu::StepConstants step;
 		step.bodyCount = bodyCount;
 		step.constraintCount = constraintCount;

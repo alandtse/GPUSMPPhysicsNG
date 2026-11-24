@@ -138,6 +138,8 @@ namespace SmpPhysics
 		[[nodiscard]] bool SubmitFrame(const std::vector<FrameClaim>& a_claims);
 		bool waitForReadback{};  ///< Poll blocks until the pending readbacks are done instead of taking only the finished ones.
 		void SetFlushAfterSubmit(bool a_flush) noexcept { flushAfterSubmit = a_flush; }
+		/** @copydoc RigidGpuSolver::SetStepSettings */
+		void SetStepSettings(float a_tick, int a_maxTicks, int a_iterations, float a_erp) noexcept { rigidSolver.SetStepSettings(a_tick, a_maxTicks, a_iterations, a_erp); }
 		/** @return True when a newer completed result was read; a_results then holds one entry per live claim. */
 		[[nodiscard]] bool Poll(std::vector<ClaimResult>& a_results);
 		/** @brief The counter SubmitFrame stamps into a result's frame; read it right after a successful SubmitFrame. */
