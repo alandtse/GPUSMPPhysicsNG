@@ -173,6 +173,8 @@ namespace
 		0x21EDBu, 0x1E49Du, 0x2B101u, 0x2A9D8u, 0x20BFEu };
 	/** Translation jump above which the kinematic root is moved by teleport, so the solver is reset instead of dragged after it. */
 	constexpr float kTeleportDistance = 150.0f;
+	/** Turn of the skeleton in one frame, in radians, that restarts the solver the same way: dragged through it the joints flip past their range and settle inside the body. */
+	constexpr float kTeleportTurn = 1.0f;
 	/** A bone's reach from its kinematic root is its rest strand length times this plus kBoneReachMargin; the solverBones query reports a pose past it. */
 	constexpr float kBoneReachSlack = 2.0f;
 	constexpr float kBoneReachMargin = 5.0f;
@@ -3736,14 +3738,20 @@ void SmpPhysicsFeature::GatherSolverInput(Claim& a_claim)
 bool SmpPhysicsFeature::RootTeleported(const Claim& a_claim) const
 {
 	const SmpPhysics::SmpRig& rig = a_claim.parsed->rig;
+	std::size_t kinematic = 0;
+	std::size_t turned = 0;
 	for (std::size_t index = 0; index < rig.bones.size(); ++index) {
 		if (!rig.bones[index].kinematic)
 			continue;
 		const SmpPhysics::Vec3 moved = a_claim.kinematicInput[index].translation - a_claim.previousKinematic[index].translation;
 		if (SmpPhysics::Dot(moved, moved) > kTeleportDistance * kTeleportDistance)
 			return true;
+		++kinematic;
+		if (SmpPhysics::TurnAngle(a_claim.previousKinematic[index].rotation, a_claim.kinematicInput[index].rotation) > kTeleportTurn)
+			++turned;
 	}
-	return false;
+	// One animated bone can swing this far in a frame; the skeleton turning takes most of them with it.
+	return turned * 2 > kinematic;
 }
 
 void SmpPhysicsFeature::SubmitGpuFrame(Claim& a_claim, float a_frameDelta, std::vector<SmpPhysics::GpuSolver::FrameClaim>& a_submissions)

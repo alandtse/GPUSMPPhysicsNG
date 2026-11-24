@@ -85,6 +85,16 @@ TEST_CASE("ReadSkinVertexBlock reads weights then palette slots", "[utils]")
 	CHECK(vertex.paletteSlot == std::array<std::uint8_t, 4>{ 9, 8, 7, 6 });
 }
 
+TEST_CASE("TurnAngle measures the rotation between two poses whatever their sign", "[solver]")
+{
+	const SmpPhysics::Vec3 up{ 0.0f, 0.0f, 1.0f };
+	const SmpPhysics::Quat from = SmpPhysics::FromAxisAngle(up, 0.25f);
+	CHECK(SmpPhysics::TurnAngle(from, from) == Catch::Approx(0.0f).margin(1e-3f));
+	CHECK(SmpPhysics::TurnAngle(from, from * -1.0f) == Catch::Approx(0.0f).margin(1e-3f));
+	CHECK(SmpPhysics::TurnAngle(from, SmpPhysics::FromAxisAngle(up, 1.25f)) == Catch::Approx(1.0f).margin(1e-4f));
+	CHECK(SmpPhysics::TurnAngle(from, SmpPhysics::FromAxisAngle(up, 0.25f + 3.14159265f)) == Catch::Approx(3.14159265f).margin(1e-3f));
+}
+
 TEST_CASE("SmpStepClock steps at the configured tick", "[solver]")
 {
 	SmpPhysics::SmpStepClock clock;

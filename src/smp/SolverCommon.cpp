@@ -36,6 +36,12 @@ namespace SmpPhysics
 		return a_params;
 	}
 
+	float TurnAngle(const Quat& a_from, const Quat& a_to) noexcept
+	{
+		const float cosine = std::abs(a_from.w * a_to.w + a_from.x * a_to.x + a_from.y * a_to.y + a_from.z * a_to.z);
+		return 2.0f * std::acos(std::min(cosine, 1.0f));
+	}
+
 	void SmpStepClock::Reset() noexcept
 	{
 		averageInterval = 1.0f / 60.0f;
