@@ -18,7 +18,6 @@
 #include "smp/PhysicsHealth.h"
 #include "smp/RefitGuard.h"
 #include "smp/RepairLog.h"
-#include "smp/RollingWindow.h"
 #include "smp/SelfWindShelter.h"
 #include "smp/SkinnedSurface.h"
 #include "smp/SmpRig.h"
@@ -109,7 +108,6 @@ struct SmpPhysicsFeature final : Feature
 		bool BatchSkinPalette = true;    ///< Builds every skinned mesh's matrices once per frame after the solver step, instead of one dispatch per draw.
 		bool FlushAfterSubmit = false;   ///< Sends the solver's commands to the GPU as soon as they are recorded; otherwise the driver holds them until the game flushes, which left the GPU idle for several milliseconds.
 		bool TriangleContacts = true;    ///< Collides a cloth's triangles with the body proxy's vertices as hdtSMP64 does, instead of the cloth's vertices with the proxy's faces; read when a claim is built.
-		bool SameFrameResults = false;   ///< Waits for the solver's GPU work so the nodes get this frame's result. Off, a GPU-skinned mesh is still drawn from this frame's solve; only the nodes, and a mesh skinned from them, lag one to two frames.
 	};
 
 	Settings settings;
@@ -712,9 +710,6 @@ private:
 	std::unordered_map<RE::FormID, std::vector<std::string>> clothMeshNames;  ///< Per actor, the mesh names its cloth claims simulated, sorted; guarded by stateMutex.
 	std::vector<RE::FormID> bodyShapeActors;                                  ///< actors whose hair must be offered again because a body shape appeared
 	double totalStepMicroseconds{};
-	static constexpr std::size_t kSyncTimingFrames = 120;
-	SmpPhysics::RollingWindow<kSyncTimingFrames> syncWaitMs;   ///< Wall time of the blocking readback after a submit, per frame; guarded by stateMutex.
-	SmpPhysics::RollingWindow<kSyncTimingFrames> syncTotalMs;  ///< Wall time from the submit to the fresh pose being written to the nodes; guarded by stateMutex.
 	std::uint32_t registrationsThisFrame{};                    ///< Claims registered with the GPU solver so far this frame, capped at kRegistrationsPerFrame.
 	std::unordered_set<const RE::NiAVObject*> simulatedNodes;  ///< Every node a claim simulates, rebuilt each frame; write-back leaves these to their own claim.
 

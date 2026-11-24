@@ -23,12 +23,11 @@ import ingame  # noqa: E402
 
 PLAYER = 0x14
 ARMS = {
-    'gpu': {'Enabled': True, 'SameFrameResults': True},
-    'gpu-late': {'Enabled': True, 'SameFrameResults': False},
+    'gpu': {'Enabled': True},
     'gpu-nodeskin': {'GpuSkinning': False},
     'hdt': {'Enabled': False},
 }
-DEFAULTS = {'Enabled': True, 'GpuSkinning': True, 'SameFrameResults': False}
+DEFAULTS = {'Enabled': True, 'GpuSkinning': True}
 ROW = {'frame': 0, 'measured': 1, 'outside': 2, 'max': 3, 'lag': 5, 'bone': 6, 'drawnMax': 14, 'skinCaptured': 16, 'clothCaptured': 17, 'wallMs': 22, 'probeMs': 24}
 
 

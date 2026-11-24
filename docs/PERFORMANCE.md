@@ -63,6 +63,9 @@ before, 10.0 to 10.3 ms (p99 12.2 to 12.5) after. Deep contacts (>4 units) at th
 
 ## Frame time with and without waiting for the solver
 
+The `SameFrameResults` setting measured here has since been removed: once the step followed hdtSMP64's settings and kept the
+frame's remainder, a dress drawn without the wait was as clean as one drawn with it, and the wait cost about 7 ms a frame.
+
 `smp_ab.py` on SE, 2026-11-23, with the `SameFrameResults` setting on and off, against hdtSMP64 (mean of two windows).
 The budget is 16.7 ms.
 
