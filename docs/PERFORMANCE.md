@@ -61,6 +61,34 @@ dispatch. SE, Tara dress, 500-frame sprint, frame time with the recorder running
 before, 10.0 to 10.3 ms (p99 12.2 to 12.5) after. Deep contacts (>4 units) at the drawn pose fell from 39-40 to 11-20 per
 500 frames. `gpuPassStats` was not read for this change.
 
+## Frame time with and without waiting for the solver
+
+`smp_ab.py` on SE, 2026-11-23, with the `SameFrameResults` setting on and off, against hdtSMP64 (mean of two windows).
+The budget is 16.7 ms.
+
+| Crowd (claims) | hdtSMP64 | Plugin, default | Plugin, `SameFrameResults` |
+| -------------- | -------- | --------------- | -------------------------- |
+| 0 (16)         | 19.3 ms  | 17.0 ms         | 19.5 ms                    |
+| 10 (46)        | 24.1 ms  | 20.2 ms         | 26.0 ms                    |
+| 20 (76)        | 28.7 ms  | 24.5 ms         | 33.9 ms                    |
+
+`SameFrameResults` blocks the main thread for the solver's GPU time, and a frame over 16.7 ms takes two solver steps, so
+the wait was 2.2, 5.6 and 8.7 ms. It is off by default: a GPU-skinned mesh is drawn from this frame's solve either way,
+because its palette is built from the solver's world buffer right after the step is submitted. Measured as drawn
+(`tools/game/patch_probe.py --drawn`, 12 sprints per arm in a physics dress, frames with skin further through the cloth
+than hdtSMP64's worst): 1 of 2770 with the wait, 9 of 2872 without and at most two in a row, none for hdtSMP64. Without
+`--drawn` the probe measures node poses, which lag one to two frames when the setting is off.
+
+## Sequential depth of the constraint solve
+
+`RigidSolve` runs one thread group per island, so it lasts as long as the island with the most colour classes. The player's
+`softbodyFix.xml` ties one body to 35 others, which took 39 classes and 2.66 ms per step for the whole scene. Solving such
+a body's joints as one class, each against a share of its mass, takes 15 classes and 1.2 ms per step. Two changes that
+kept the sequential order did not help: letting one thread solve a run of connected constraints without a barrier
+(3.9 ms), and skipping classes without contacts in the push sweep (2.62 ms).
+
+At 20 characters `ContactSpheres` is the largest pass, about 3 ms per step.
+
 ## Not measured
 
 VR frame time (the null driver caps the frame near 31 ms), capes, AE, frame generation state.
