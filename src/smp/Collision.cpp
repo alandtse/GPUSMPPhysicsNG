@@ -262,13 +262,13 @@ namespace SmpPhysics
 		return bound;
 	}
 
-	void ContactMerge::Add(const Contact& a_contact, const Vec3& a_position) noexcept
+	void ContactMerge::Add(const Contact& a_contact, const Vec3& a_position, float a_count) noexcept
 	{
 		if (!(a_contact.depth > 0.0f))
 			return;
 		if (weight > 0.0f && Dot(normal, a_contact.normal) < 0.0f)
 			return;
-		const float squared = a_contact.depth * a_contact.depth;
+		const float squared = a_contact.depth * a_contact.depth * a_count;
 		weight += squared;
 		normal = normal + a_contact.normal * (squared * a_contact.depth);
 		position = position + a_position * squared;
@@ -288,7 +288,7 @@ namespace SmpPhysics
 		return length / weight;
 	}
 
-	void ContactLanes::Add(const Contact& a_contact, const Vec3& a_position, std::uint32_t a_key) noexcept
+	void ContactLanes::Add(const Contact& a_contact, const Vec3& a_position, std::uint32_t a_key, float a_count) noexcept
 	{
 		if (!(a_contact.depth > 0.0f))
 			return;
@@ -311,7 +311,7 @@ namespace SmpPhysics
 				}
 			}
 		}
-		lanes[lane].Add(a_contact, a_position);
+		lanes[lane].Add(a_contact, a_position, a_count);
 	}
 
 	Collider FitHeadEllipsoid(const std::vector<Vec3>& a_verticesInDriver, int a_driverIndex)

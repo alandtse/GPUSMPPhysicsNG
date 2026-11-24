@@ -72,6 +72,7 @@ namespace SmpPhysics
 		float weight{ 1.0f };                                         ///< the owning bone's skin weight on the vertex
 		float flexible{ 1.0f };                                       ///< the vertex's summed weight on dynamic bones, hdtSMP64's flexible: it scales the contact depth
 		std::array<SphereInfluence, Util::kSkinInfluences> others{};  ///< the vertex's other rig bones; the sphere sits at the weighted blend, as hdtSMP64 collides the skinned vertex
+		bool triangleContacts{};                                      ///< the sphere's shape meets per-vertex surfaces with its triangles (ClothTriangles.h), so the sphere leaves those surfaces out
 	};
 
 	/**
@@ -132,7 +133,8 @@ namespace SmpPhysics
 		float deepest{};     ///< deepest single contact
 		int collider{ -1 };  ///< collider of the deepest single contact
 
-		void Add(const Contact& a_contact, const Vec3& a_position) noexcept;
+		/** @param a_count How many times the contact is added, as hdtSMP64 adds a triangle's once per corner weight of the bone. */
+		void Add(const Contact& a_contact, const Vec3& a_position, float a_count = 1.0f) noexcept;
 		/** @return The merged depth, zero when nothing was added; a_normal and a_position receive the rest. */
 		[[nodiscard]] float Result(Vec3& a_normal, Vec3& a_position) const noexcept;
 	};
@@ -152,7 +154,7 @@ namespace SmpPhysics
 		std::uint32_t used{};
 
 		/** @param a_key What the contact touched: its driver slot plus one, 0 when unknown. */
-		void Add(const Contact& a_contact, const Vec3& a_position, std::uint32_t a_key) noexcept;
+		void Add(const Contact& a_contact, const Vec3& a_position, std::uint32_t a_key, float a_count = 1.0f) noexcept;
 	};
 
 	/** @brief One mesh vertex and the bones it is skinned to, as the mesh reader finds them. */

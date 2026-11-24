@@ -25,6 +25,7 @@ namespace SmpPhysics
 		float penetration{ kDefaultPenetration };  ///< depth the solver's safety clamp tolerates before it holds a bone back
 		bool deepPush{ true };                     ///< whether a one-sided face also holds a sphere resting deep behind it, see kDeepPushReach
 		bool clothOnly{};                          ///< admitted only for the claim's own pieces of cloth to collide with each other; the rest-pose retarget and the wind shelter leave it out
+		bool perVertex{};                          ///< built from a per-vertex shape, whose vertices hdtSMP64 collides as spheres; a cloth's triangles test them (ClothTriangles.h)
 		bool skin{};                               ///< the mesh is the character's skin, which the hair was authored against, rather than something worn over it
 	};
 

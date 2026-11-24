@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ClothTriangles.h"
 #include "Math.h"
 #include "SkinnedSurface.h"
 #include "SmpRig.h"
@@ -78,7 +79,7 @@ namespace SmpPhysics::GpuRig
 	struct SphereRecord
 	{
 		Float4 centreRadius{};                                                          ///< xyz centre, w radius
-		Uint4 exempt{};                                                                 ///< x one bit per claim-local collider this sphere was authored inside
+		Uint4 exempt{};                                                                 ///< x one bit per claim-local collider this sphere was authored inside, z 1 when it leaves per-vertex surfaces to its shape's triangles
 		Float4 other[4]{};                                                              ///< per other skin bone: xyz the vertex in that bone's rest frame, w its weight
 		Uint4 otherBone{ kNoSphereBone, kNoSphereBone, kNoSphereBone, kNoSphereBone };  ///< the other bones' slots
 		Float4 weights{ 1.0f, 1.0f, 0.0f, 0.0f };                                       ///< x the owning bone's weight, y the depth scale
@@ -227,7 +228,7 @@ namespace SmpPhysics::GpuRig
 	struct SurfaceMeta
 	{
 		Uint4 dimensions{};  ///< xyz zero, w the triangle count
-		Uint4 base{};        ///< x first triangle, y first node, z node count, in the frame's shared arrays
+		Uint4 base{};        ///< x first triangle, y first node, z node count, in the frame's shared arrays; w 1 for a surface built from a per-vertex shape
 		Float4 contact{};    ///< x the surface margin, y its contact penetration allowance, z how far behind a one-sided face it holds a sphere
 	};
 	static_assert(sizeof(SurfaceMeta) == 48);
@@ -282,6 +283,31 @@ namespace SmpPhysics::GpuRig
 	 */
 	void MergeSurfaceFrame(SurfaceFrame& a_frame, const SurfaceFrame& a_part, std::uint32_t& a_firstMeta);
 
+	/** @brief One cloth triangle, as ContactCS.hlsl's HairClothTriangle holds it. */
+	struct ClothTriangleRecord
+	{
+		Uint4 corners{};   ///< xyz the corners in the cloth vertex list, w a simulated bone that owns the triangle, which names its tree
+		Float4 contact{};  ///< x the margin, y the signed penetration, z the surfaces it may touch as the bits of a uint
+	};
+	static_assert(sizeof(ClothTriangleRecord) == 32);
+
+	/** @brief One bone's slice of the claim's cloth bone list. */
+	struct BoneCloth
+	{
+		Uint4 range{};  ///< x first entry in the cloth bone list, y how many
+	};
+	static_assert(sizeof(BoneCloth) == 16);
+
+	/** @brief One triangle a bone takes contacts from. */
+	struct ClothBoneEntry
+	{
+		std::uint32_t triangle{};
+		float flexible{};         ///< scales the depth
+		std::uint32_t corners{};  ///< how many times the contact is added
+		std::uint32_t padding{};
+	};
+	static_assert(sizeof(ClothBoneEntry) == 16);
+
 	/** @brief One claim's collision proxies, in the claim's own bone and collider index space. */
 	struct CollisionData
 	{
@@ -289,6 +315,11 @@ namespace SmpPhysics::GpuRig
 		std::vector<SphereRecord> sphereList;  ///< every bone's spheres, bone after bone; BoneSpheres::range.x indexes it
 		std::vector<ColliderPacked> colliders;
 		std::uint32_t driverCount{};  ///< how many drivers the colliders index
+
+		std::vector<SphereRecord> clothVertices;          ///< the cloth triangles' vertices in a sphere's blend layout: centreRadius.w is unused and exempt.y the owning bone
+		std::vector<ClothTriangleRecord> clothTriangles;  ///< each naming its corners in clothVertices
+		std::vector<BoneCloth> boneCloth;                 ///< one per rig bone; empty for a claim without cloth triangles
+		std::vector<ClothBoneEntry> clothBoneList;        ///< every bone's triangles, bone after bone; BoneCloth::range.x indexes it
 	};
 
 	/** @brief One tree's contact inputs for a single frame. */
@@ -357,6 +388,12 @@ namespace SmpPhysics::GpuRig
 	[[nodiscard]] CollisionData PackCollision(const std::vector<std::vector<BoneSphere>>& a_spheres,
 		const std::vector<Collider>& a_colliders, std::uint32_t a_driverCount, const std::vector<std::uint32_t>& a_boneSurfaceMask = {});
 
+	/**
+	 * @brief Packs a claim's cloth triangles next to its spheres, replacing any packed before.
+	 * @details A bone's list is not capped the way its spheres are; it holds every triangle the bone owns.
+	 */
+	void PackClothTriangles(CollisionData& a_data, const ClothTriangleSet& a_cloth);
+
 	/** @brief One collider packed for the compute shader; a collider with no driver packs as one the shader skips. */
 	[[nodiscard]] ColliderPacked PackCollider(const Collider& a_collider);
 
@@ -388,6 +425,19 @@ namespace SmpPhysics::GpuRig
 		std::vector<SphereRecord> sphereList;   ///< the claim's records, each naming its bone slot, to append at the sphere base
 		std::vector<ColliderPacked> colliders;  ///< at the collider slots
 		std::vector<std::uint32_t> boneTrees;   ///< at the bone slots
+
+		std::vector<SphereRecord> clothVertices;          ///< each naming its bone slots, to append at the cloth vertex base
+		std::vector<ClothTriangleRecord> clothTriangles;  ///< each naming its vertices in the shared list, to append at the cloth triangle base
+		std::vector<BoneCloth> boneCloth;                 ///< at the bone slots, each range moved past the cloth bone list base; one per bone even without cloth
+		std::vector<ClothBoneEntry> clothBoneList;        ///< each naming its triangle in the shared list, to append at the cloth bone list base
+	};
+
+	/** @brief Where a claim's cloth records start in the shared lists. */
+	struct ClothBase
+	{
+		std::uint32_t vertex{};
+		std::uint32_t triangle{};
+		std::uint32_t boneList{};
 	};
 
 	/**
@@ -396,7 +446,8 @@ namespace SmpPhysics::GpuRig
 	 *          lands as a rebuild would lay it out.
 	 * @param a_sphereBase Where the claim's sphere records start in the shared sphere list.
 	 */
-	[[nodiscard]] ClaimStatics PackClaimStatics(const RigData& a_rig, std::uint32_t a_boneOffset, std::uint32_t a_boneCount, std::uint32_t a_sphereBase);
+	[[nodiscard]] ClaimStatics PackClaimStatics(const RigData& a_rig, std::uint32_t a_boneOffset, std::uint32_t a_boneCount, std::uint32_t a_sphereBase,
+		const ClothBase& a_clothBase = {});
 
 	/**
 	 * @brief Moves a claim's records out of their own index space and into the shared slot space the shaders

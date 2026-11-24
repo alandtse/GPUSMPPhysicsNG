@@ -31,4 +31,22 @@ namespace SmpPhysics
 		}
 		return changed;
 	}
+
+	std::size_t ApplyClothCollisionOverrides(const std::vector<CollisionOverride>& a_overrides, const std::vector<std::string>& a_surfaceNames,
+		ClothTriangleSet& a_cloth)
+	{
+		std::size_t changed = 0;
+		for (const CollisionOverride& override : a_overrides) {
+			const auto surface = std::ranges::find(a_surfaceNames, override.target);
+			if (surface == a_surfaceNames.end() || static_cast<std::size_t>(surface - a_surfaceNames.begin()) >= kMaskedSurfaceLimit)
+				continue;
+			for (const ClothPiece& piece : a_cloth.pieces) {
+				if (piece.name != override.piece)
+					continue;
+				MaskClothPiece(a_cloth, piece, ~(1u << (surface - a_surfaceNames.begin())));
+				++changed;
+			}
+		}
+		return changed;
+	}
 }

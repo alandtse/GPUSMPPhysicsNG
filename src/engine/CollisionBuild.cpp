@@ -1991,6 +1991,7 @@ void SmpPhysicsFeature::BuildRigSurfaces(CollisionBuildState& s) const
 		if (shape.name != hairShape->name && !SkinsToDynamicBone(FindMeshObject(a_context, meshRoot, shape.name), s.rig, a_context))
 			surfaceShapes.push_back(shape);
 	}
+	const std::size_t vertexShapesEnd = surfaceShapes.size();
 	if (const RE::Actor* actor = a_context.getActor()) {
 		const std::scoped_lock lock(stateMutex);
 		if (const auto known = bodyShapes.find(actor->GetFormID()); known != bodyShapes.end()) {
@@ -2021,6 +2022,8 @@ void SmpPhysicsFeature::BuildRigSurfaces(CollisionBuildState& s) const
 		surface.contactPenetration = shape.penetration;
 		surface.deepPush = s.sphereShapes.size() > 1;
 		surface.clothOnly = !hairAllows;
+		const auto shapeIndex = static_cast<std::size_t>(&shape - surfaceShapes.data());
+		surface.perVertex = shapeIndex >= shapes.triangleShapes.size() && shapeIndex < vertexShapesEnd;
 		surface.vertices.reserve(skinned.positions.size());
 		for (std::size_t vertex = 0; vertex < skinned.positions.size(); ++vertex)
 			surface.vertices.push_back(VertexOf(skinned, vertex));
