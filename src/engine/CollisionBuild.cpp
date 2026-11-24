@@ -1155,6 +1155,7 @@ json SmpPhysicsFeature::StartPatchProbe(const json& a_args)
 	const std::scoped_lock lock(stateMutex);
 	if (a_args.value("stop", false)) {
 		patchProbe.reset();
+		gpuSkinning.ClearWatches();
 		return { { "stopped", true } };
 	}
 	const RE::FormID formID = a_args.value("actorFormID", 0u);
@@ -1320,13 +1321,28 @@ void SmpPhysicsFeature::SamplePatchProbe()
 		const auto rowsOf = [](const SmpPhysics::GpuSkinning::Capture& a_capture) -> const std::vector<SmpPhysics::SkinRows>& {
 			return a_capture.batchCurrent.empty() ? a_capture.current : a_capture.batchCurrent;
 		};
-		if (skinCapture.valid) {
+		// A mesh the engine skins has only the engine's matrices; taken in the same drawn frame as the other mesh's, the pair is exactly what was on screen.
+		const SmpPhysics::GpuSkinning::Capture skinEngine = skinCapture.valid ? skinCapture : gpuSkinning.WatchEngine(instanceOf(state->skinObject.get()));
+		const SmpPhysics::GpuSkinning::Capture clothEngine = clothCapture.valid ? clothCapture : gpuSkinning.WatchEngine(instanceOf(state->clothObject.get()));
+		const auto drawnRows = [&rowsOf](const SmpPhysics::GpuSkinning::Capture& a_capture, bool a_served) -> const std::vector<SmpPhysics::SkinRows>& {
+			return a_served ? rowsOf(a_capture) : a_capture.engineCurrent;
+		};
+		if (skinEngine.valid && clothEngine.valid && skinEngine.engineFrame == clothEngine.engineFrame && !drawnRows(skinEngine, skinCapture.valid).empty() && !drawnRows(clothEngine, clothCapture.valid).empty()) {
+			skinCaptured = true;
+			clothCaptured = true;
+			skinFrame = skinEngine.engineFrame;
+			clothFrame = clothEngine.engineFrame;
+			for (std::size_t index = 0; index < state->skinVertices.size(); ++index)
+				drawnSkin[index] = PosedByRows(state->skin, state->skinVertices[index], drawnRows(skinEngine, skinCapture.valid));
+			for (std::size_t index = 0; index < state->clothVertices.size(); ++index)
+				drawnCloth[index] = PosedByRows(state->cloth, state->clothVertices[index], drawnRows(clothEngine, clothCapture.valid));
+		} else if (skinCapture.valid) {
 			skinCaptured = true;
 			skinFrame = skinCapture.engineFrame;
 			for (std::size_t index = 0; index < state->skinVertices.size(); ++index)
 				drawnSkin[index] = state->skinPoints[index] + (PosedByRows(state->skin, state->skinVertices[index], rowsOf(skinCapture)) - PosedByRows(state->skin, state->skinVertices[index], skinCapture.engineCurrent));
 		}
-		if (clothCapture.valid && clothCapture.engineFrame != state->lastClothCapture) {
+		if (!(skinCaptured && clothCaptured && skinFrame == clothFrame && skinFrame != 0) && clothCapture.valid && clothCapture.engineFrame != state->lastClothCapture) {
 			state->lastClothCapture = clothCapture.engineFrame;
 			clothCaptured = true;
 			clothFrame = clothCapture.engineFrame;

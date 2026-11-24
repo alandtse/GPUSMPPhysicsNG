@@ -712,7 +712,15 @@ namespace SmpPhysics
 	void GpuSkinning::Apply(RE::NiSkinInstance* a_skin)
 	{
 		const std::scoped_lock lock(mutex);
-		if (!enabled || entries.empty() || !a_skin)
+		if (!a_skin)
+			return;
+		if (const auto watch = watches.find(a_skin); watch != watches.end() && a_skin->boneMatrices && a_skin->skinData) {
+			watch->second.boneCount = std::min<std::uint32_t>(a_skin->skinData->GetBoneCount(), kMaximumBones);
+			CopyRows(a_skin->boneMatrices, watch->second.boneCount, watch->second.engineCurrent);
+			watch->second.engineFrame = a_skin->frameID;
+			watch->second.valid = true;
+		}
+		if (!enabled || entries.empty())
 			return;
 		const auto found = entries.find(a_skin);
 		if (found == entries.end())
@@ -774,6 +782,18 @@ namespace SmpPhysics
 			cached[kEnginePreviousSlot] = Util::AsW32(previous);
 		}
 		++appliedCount;
+	}
+
+	GpuSkinning::Capture GpuSkinning::WatchEngine(const RE::NiSkinInstance* a_skin)
+	{
+		const std::scoped_lock lock(mutex);
+		return a_skin ? watches[a_skin] : Capture{};
+	}
+
+	void GpuSkinning::ClearWatches()
+	{
+		const std::scoped_lock lock(mutex);
+		watches.clear();
 	}
 
 	GpuSkinning::Capture GpuSkinning::RequestCapture(const RE::NiSkinInstance* a_skin)

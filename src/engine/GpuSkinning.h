@@ -98,6 +98,10 @@ namespace SmpPhysics
 		void InvalidateShader();
 		/** @brief Asks the next Apply of a_skin to read its matrices back, and returns what the previous request read. */
 		[[nodiscard]] Capture RequestCapture(const RE::NiSkinInstance* a_skin);
+		/** @brief Starts recording the engine's own matrices of a skin instance this class does not serve, each time it is drawn, and returns the latest: valid, engineFrame and engineCurrent only. */
+		[[nodiscard]] Capture WatchEngine(const RE::NiSkinInstance* a_skin);
+		/** @brief Stops every WatchEngine recording. */
+		void ClearWatches();
 		/** @brief Turns the batched palette on or off; while off, every skin instance builds its own palette at draw time. */
 		void SetBatched(bool a_batched);
 		/**
@@ -160,6 +164,7 @@ namespace SmpPhysics
 
 		mutable std::mutex mutex;
 		std::unordered_map<const RE::NiSkinInstance*, Entry> entries;
+		std::unordered_map<const RE::NiSkinInstance*, Capture> watches;  ///< Guarded by mutex.
 		std::unordered_map<std::uint64_t, ClaimState> claimStates;
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> shader;
 		std::unique_ptr<ConstantBuffer> constants;
