@@ -101,6 +101,17 @@ TEST_CASE("SmpStepClock steps at the configured tick", "[solver]")
 	CHECK(frame.total == Catch::Approx(1.0f / 90.0f));
 }
 
+TEST_CASE("SmpStepClock keeps a remainder too short to step alone", "[solver]")
+{
+	SmpPhysics::SmpStepClock clock;
+	SmpPhysics::SmpStepClock::Frame frame;
+	for (int warm = 0; warm < 64; ++warm)
+		frame = clock.Advance(0.0190f);
+	REQUIRE(frame.count == 1);
+	CHECK(frame.steps[0] == Catch::Approx(0.0190f));
+	CHECK(frame.total == Catch::Approx(0.0190f));
+}
+
 TEST_CASE("SmpStepClock skips short frames and caps long ones", "[solver]")
 {
 	SmpPhysics::SmpStepClock clock;

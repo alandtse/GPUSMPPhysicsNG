@@ -61,6 +61,9 @@ namespace SmpPhysics
 		}
 		if (remaining > kMinStep && frame.count < static_cast<int>(frame.steps.size()))
 			frame.steps[static_cast<std::size_t>(frame.count++)] = remaining;
+		// hdtSMP64 drops a shorter remainder, which leaves the bodies up to a sixth of a frame behind the pose they are drawn at.
+		else if (frame.count > 0)
+			frame.steps[static_cast<std::size_t>(frame.count - 1)] += remaining;
 		accumulated = 0.0f;
 		return frame;
 	}
