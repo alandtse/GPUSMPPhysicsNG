@@ -1324,7 +1324,7 @@ void SmpPhysicsFeature::SamplePatchProbe()
 			skinCaptured = true;
 			skinFrame = skinCapture.engineFrame;
 			for (std::size_t index = 0; index < state->skinVertices.size(); ++index)
-				drawnSkin[index] = PosedByRows(state->skin, state->skinVertices[index], rowsOf(skinCapture));
+				drawnSkin[index] = state->skinPoints[index] + (PosedByRows(state->skin, state->skinVertices[index], rowsOf(skinCapture)) - PosedByRows(state->skin, state->skinVertices[index], skinCapture.engineCurrent));
 		}
 		if (clothCapture.valid && clothCapture.engineFrame != state->lastClothCapture) {
 			state->lastClothCapture = clothCapture.engineFrame;
