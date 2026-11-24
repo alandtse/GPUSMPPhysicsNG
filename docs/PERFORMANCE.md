@@ -89,6 +89,25 @@ kept the sequential order did not help: letting one thread solve a run of connec
 
 At 20 characters `ContactSpheres` is the largest pass, about 3 ms per step.
 
+## At hdtSMP64's own step settings
+
+Until 2026-11-24 the solver stepped at 60 Hz with 16 iterations whatever hdtSMP64 was configured to do, so the comparisons
+above against an hdtSMP64 at 90 Hz and 32 iterations were not like for like. The solver now reads `min-fps`, `maxSubSteps`,
+`numIterations` and `erp` from hdtSMP64's `configs.json` and `userConfigs.json`. With 90 Hz and 32 iterations on both sides, SE,
+Dragonsreach, the player in the Tara dress (five physics files) and five other characters in range, nothing else measuring:
+
+| Scene                          | hdtSMP64 frame  | This plugin frame |
+| ------------------------------ | --------------- | ----------------- |
+| Standing, two runs each        | 18.6, 19.1 ms   | 16.5, 16.7 ms     |
+| Running, three runs each       | 13.5 to 14.1 ms | 11.4 to 11.9 ms   |
+| Running, same-frame results on | n/a             | 19.7 ms           |
+
+The two rows come from different sessions, so compare within a row. The plugin's solver passes take about 7 ms of GPU time a
+frame at these settings (contact passes 2.7, surface posing 2.5, solve 2.0).
+
+The plugin's own `patchProbe` capture costs about 5 ms a frame on this plugin's side only (it reads the drawn palette back),
+so a frame time taken while it runs reads this plugin slower than hdtSMP64 when it is not.
+
 ## Not measured
 
 VR frame time (the null driver caps the frame near 31 ms), capes, AE, frame generation state.
