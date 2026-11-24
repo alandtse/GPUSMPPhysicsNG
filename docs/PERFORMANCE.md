@@ -102,7 +102,10 @@ Dragonsreach, the player in the Tara dress (five physics files) and five other c
 | Running, three runs each       | 13.5 to 14.1 ms | 11.4 to 11.9 ms   |
 | Running, same-frame results on | n/a             | 19.7 ms           |
 
-The two rows come from different sessions, so compare within a row. The plugin's solver passes take about 7 ms of GPU time a
+With hdtSMP64's throttles lifted in both of its config files (`userConfigs.json` overrides `configs.json`) and a test crowd, standing,
+15 s windows: no crowd 20.3 ms against 18.2 ms; ten extra characters 30.1 ms against 21.7 ms (46 physics files on the GPU).
+
+The rows come from different sessions, so compare within a row. The plugin's solver passes take about 7 ms of GPU time a
 frame at these settings (contact passes 2.7, surface posing 2.5, solve 2.0).
 
 The plugin's own `patchProbe` capture costs about 5 ms a frame on this plugin's side only (it reads the drawn palette back),
