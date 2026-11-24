@@ -182,6 +182,16 @@ namespace SmpPhysics::RigidGpu
 	/** @brief The colour classes one island's constraints may take; a step that needs more falls back to the exact kernel. */
 	inline constexpr std::uint32_t kMaxColors{ 64 };
 
+	/** @brief A coloured-list entry's constraint index, and the shift to its hub side (1 body A, 2 body B, 0 none). */
+	inline constexpr std::uint32_t kColoredIndexMask{ 0x3FFFFFFFu };
+	inline constexpr std::uint32_t kColoredHubShift{ 30 };
+
+	/** @brief Joints on one dynamic body from which its joints are solved as a hub class instead of taking a colour each. */
+	inline constexpr std::uint32_t kHubJoints{ 12 };
+
+	/** @brief Most joints one hub class holds: the coloured kernel's thread count, one joint per thread. */
+	inline constexpr std::uint32_t kHubClassSize{ 64 };
+
 	/** @brief Per-axis configuration bits, mirroring the shader's kAxis* constants. */
 	inline constexpr std::uint32_t kAxisSpring{ 1u };
 	inline constexpr std::uint32_t kAxisSpringStiffnessLimited{ 2u };

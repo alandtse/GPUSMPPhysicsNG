@@ -72,6 +72,10 @@ namespace HairRigidSolver
 	/** @brief The colour classes one island's constraints may take, mirroring RigidGpuPacking.h's kMaxColors. */
 	static const uint kMaxColors = 64u;
 
+	/** @brief A coloured-list entry's constraint index, and the shift to its hub side (1 body A, 2 body B, 0 none); mirrors RigidGpuPacking.h. */
+	static const uint kColoredIndexMask = 0x3FFFFFFFu;
+	static const uint kColoredHubShift = 30u;
+
 	/** @brief A rotation quaternion in Bullet's (x, y, z, w) order. */
 	struct Quat
 	{

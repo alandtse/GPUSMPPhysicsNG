@@ -4,6 +4,7 @@
 #include <bit>
 #include <cmath>
 #include <cstddef>
+#include <map>
 
 namespace SmpPhysics::RigidGpu
 {
@@ -112,19 +113,54 @@ namespace SmpPhysics::RigidGpu
 			// Islands are disjoint in dynamic bodies, so one mask per body serves every island.
 			std::vector<std::uint64_t> bodyColors(a_world.bodies.size(), 0u);
 			std::vector<std::uint32_t> colors;
+			std::vector<std::uint32_t> joints(a_world.bodies.size(), 0u);
+			for (const RigidReference::Generic6DofSpring2& constraint : a_world.constraints) {
+				if (constraint.contactSlot != 0u)
+					continue;
+				for (const int body : { constraint.bodyA, constraint.bodyB }) {
+					if (!a_world.bodies[static_cast<std::size_t>(body)].kinematic)
+						++joints[static_cast<std::size_t>(body)];
+				}
+			}
+			constexpr std::uint32_t kHubClass = 0xFFFFFFFFu;
+			struct HubEntry
+			{
+				std::uint32_t constraint;
+				std::uint32_t side;
+				int other;
+			};
+			std::map<int, std::vector<HubEntry>> hubs;
 
 			for (std::size_t island = 0; island < a_data.islands.size(); ++island) {
 				const std::uint32_t first = a_data.islands[island].range.x;
 				const std::uint32_t count = a_data.islands[island].range.y;
 				colors.assign(count, 0u);
+				hubs.clear();
 
 				std::uint32_t colorCount = 0;
 				for (std::uint32_t entry = 0; entry < count; ++entry) {
-					const RigidReference::Generic6DofSpring2& constraint = a_world.constraints[a_data.islandConstraints[first + entry]];
+					const std::uint32_t index = a_data.islandConstraints[first + entry];
+					const RigidReference::Generic6DofSpring2& constraint = a_world.constraints[index];
 					const auto bodyA = static_cast<std::size_t>(constraint.bodyA);
 					const auto bodyB = static_cast<std::size_t>(constraint.bodyB);
 					const bool dynamicA = !a_world.bodies[bodyA].kinematic;
 					const bool dynamicB = !a_world.bodies[bodyB].kinematic;
+					if (constraint.contactSlot == 0u && bodyA != bodyB) {
+						const bool hubA = dynamicA && joints[bodyA] >= kHubJoints;
+						const bool hubB = dynamicB && joints[bodyB] >= kHubJoints;
+						if (hubA || hubB) {
+							const bool pickA = hubA && (!hubB || joints[bodyA] >= joints[bodyB]);
+							const int hub = pickA ? constraint.bodyA : constraint.bodyB;
+							const int other = pickA ? constraint.bodyB : constraint.bodyA;
+							std::vector<HubEntry>& members = hubs[hub];
+							// Two joints of a class may share only the hub, so a second joint to the same body takes a colour instead.
+							if (std::ranges::none_of(members, [other](const HubEntry& a_member) { return a_member.other == other; })) {
+								members.push_back({ index, pickA ? 1u : 2u, other });
+								colors[entry] = kHubClass;
+								continue;
+							}
+						}
+					}
 					const std::uint64_t forbidden = (dynamicA ? bodyColors[bodyA] : 0u) | (dynamicB ? bodyColors[bodyB] : 0u);
 					std::uint32_t color = 0;
 					while (color < kMaxColors && (forbidden & (std::uint64_t{ 1 } << color)) != 0u)
@@ -146,6 +182,17 @@ namespace SmpPhysics::RigidGpu
 						if (colors[entry] != color)
 							continue;
 						a_data.coloredConstraints.push_back(a_data.islandConstraints[first + entry]);
+						++offset;
+					}
+				}
+				for (const auto& [hub, members] : hubs) {
+					for (std::size_t member = 0; member < members.size(); ++member) {
+						if (member % kHubClassSize == 0) {
+							if (colorCount == kMaxColors)
+								return false;
+							a_data.colorOffsets[island * kMaxColors + colorCount++] = offset;
+						}
+						a_data.coloredConstraints.push_back(members[member].constraint | (members[member].side << kColoredHubShift));
 						++offset;
 					}
 				}
