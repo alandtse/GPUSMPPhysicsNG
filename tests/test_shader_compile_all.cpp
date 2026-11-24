@@ -33,6 +33,15 @@ TEST_CASE("The skin palette and surface prep compute shaders compile", "[d3d][sh
 		CHECK(Compiles(L"SmpPhysics/SurfacePrepCS.hlsl", {}, "cs_5_0", entry, false));
 }
 
+TEST_CASE("The cloth triangle contact shaders compile", "[d3d][shader_compile]")
+{
+	logger::GetSink() = [](logger::Level, const std::string& a_message) { std::cerr << a_message << std::endl; };
+	Util::SetShaderRoot(std::filesystem::path(SMPPHYSICS_SHADER_DIR).wstring());
+	Util::SetShaderCacheDir(TestShaderCacheDir());
+	for (const char* entry : { "ClothVertices", "ClothTriangles" })
+		CHECK(Compiles(L"SmpPhysics/ContactCS.hlsl", {}, "cs_5_0", entry, false));
+}
+
 TEST_CASE("The debug line shader compiles both stages in the flat and VR variants", "[d3d][shader_compile]")
 {
 	logger::GetSink() = [](logger::Level, const std::string& a_message) { std::cerr << a_message << std::endl; };

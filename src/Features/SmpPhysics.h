@@ -107,6 +107,7 @@ struct SmpPhysicsFeature final : Feature
 		bool GrabStrands = true;         ///< In VR, closing a hand on hair holds that strand to the hand.
 		bool BatchSkinPalette = true;    ///< Builds every skinned mesh's matrices once per frame after the solver step, instead of one dispatch per draw.
 		bool FlushAfterSubmit = false;   ///< Sends the solver's commands to the GPU as soon as they are recorded; otherwise the driver holds them until the game flushes, which left the GPU idle for several milliseconds.
+		bool TriangleContacts = false;   ///< Collides a cloth's triangles with the body proxy's vertices as hdtSMP64 does, instead of the cloth's vertices with the proxy's faces; read when a claim is built.
 		bool SameFrameResults = false;   ///< Waits for the solver's GPU work so the nodes get this frame's result. Off, a GPU-skinned mesh is still drawn from this frame's solve; only the nodes, and a mesh skinned from them, lag one to two frames.
 	};
 
@@ -352,6 +353,7 @@ private:
 
 		std::vector<std::vector<SmpPhysics::BoneSphere>> spheres;  ///< one list per rig bone
 		std::vector<std::uint32_t> boneSurfaceMask;                ///< per rig bone, the first 32 surfaces its spheres may touch; empty when every bone may touch every surface
+		SmpPhysics::ClothTriangleSet clothTriangles;               ///< the triangles of the rig's cloth shapes, which collide with its per-vertex surfaces; empty unless TriangleContacts is on
 		std::size_t layerExempted{};                               ///< bone and surface pairs left out because the bone's spheres were authored behind that surface
 		std::vector<SmpPhysics::Collider> colliders;
 		std::vector<ColliderFit> colliderFits;               ///< one per collider, in the same order as colliders

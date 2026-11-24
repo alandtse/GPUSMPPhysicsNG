@@ -168,6 +168,10 @@ namespace SmpPhysics
 			contactSphereShader->Reset();
 		if (contactReduceShader)
 			contactReduceShader->Reset();
+		if (clothVertexShader)
+			clothVertexShader->Reset();
+		if (clothTriangleShader)
+			clothTriangleShader->Reset();
 		if (surfaceBonesShader)
 			surfaceBonesShader->Reset();
 		if (surfacePoseShader)
@@ -186,7 +190,7 @@ namespace SmpPhysics
 	std::vector<Util::ShaderJob> GpuSolver::ShaderJobs()
 	{
 		auto jobs = RigidGpuSolver::ShaderJobs();
-		for (const char* entry : { "ContactCull", "ContactSpheres", "ContactReduce" })
+		for (const char* entry : { "ContactCull", "ContactSpheres", "ContactReduce", "ClothVertices", "ClothTriangles" })
 			jobs.push_back({ kShaderPath, kShaderTarget, entry });
 		for (const char* entry : { "SurfaceBones", "SurfacePose", "SurfaceTriangles", "SurfaceLeaves", "SurfaceRefit" })
 			jobs.push_back({ kSurfacePrepPath, kShaderTarget, entry });
@@ -208,6 +212,10 @@ namespace SmpPhysics
 			contactSphereShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
 		if (!contactReduceShader)
 			contactReduceShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
+		if (!clothVertexShader)
+			clothVertexShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
+		if (!clothTriangleShader)
+			clothTriangleShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
 		if (!surfaceBonesShader)
 			surfaceBonesShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
 		if (!surfacePoseShader)
@@ -222,7 +230,9 @@ namespace SmpPhysics
 		try {
 			if (!contactCullShader->Get(kShaderPath, defines, kShaderTarget, "ContactCull", "SmpPhysics::ContactCS ContactCull") ||
 				!contactSphereShader->Get(kShaderPath, defines, kShaderTarget, "ContactSpheres", "SmpPhysics::ContactCS ContactSpheres") ||
-				!contactReduceShader->Get(kShaderPath, defines, kShaderTarget, "ContactReduce", "SmpPhysics::ContactCS ContactReduce")) {
+				!contactReduceShader->Get(kShaderPath, defines, kShaderTarget, "ContactReduce", "SmpPhysics::ContactCS ContactReduce") ||
+				!clothVertexShader->Get(kShaderPath, defines, kShaderTarget, "ClothVertices", "SmpPhysics::ContactCS ClothVertices") ||
+				!clothTriangleShader->Get(kShaderPath, defines, kShaderTarget, "ClothTriangles", "SmpPhysics::ContactCS ClothTriangles")) {
 				Fail("the GPU solver compute shader did not compile; claimed hair stays at the engine's pose");
 				return false;
 			}
@@ -286,6 +296,8 @@ namespace SmpPhysics
 		worlds = nullptr;
 		outputs = nullptr;
 		boneTrees = nullptr;
+		boneCloth = nullptr;
+		boneClothSrv = nullptr;
 		contacts = nullptr;
 		boneTreesSrv = nullptr;
 		contactsSrv = nullptr;
@@ -333,6 +345,9 @@ namespace SmpPhysics
 		boneTrees = std::make_unique<Buffer>(StructuredBufferDesc<std::uint32_t>(a_slots, false, false), nullptr, "SmpPhysics::PoolBoneTrees");
 		boneTrees->CreateSRV(StructuredSrvDesc(a_slots));
 		boneTreesSrv = boneTrees->srv;
+		boneCloth = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::BoneCloth>(a_slots, false, false), nullptr, "SmpPhysics::PoolBoneCloth");
+		boneCloth->CreateSRV(StructuredSrvDesc(a_slots));
+		boneClothSrv = boneCloth->srv;
 		// The contact pass writes this through the UAV and the rigid solver reads it through the SRV, never both at once.
 		const std::vector<GpuRig::BoneContact> noContacts(a_slots * kContactLanes);
 		D3D11_SUBRESOURCE_DATA noContactsData{ noContacts.data(), 0, 0 };
@@ -590,22 +605,38 @@ namespace SmpPhysics
 		if (!trees)
 			return;
 		auto* context = globals::d3d::context;
+		const auto clothBase = [this] {
+			return GpuRig::ClothBase{ static_cast<std::uint32_t>(clothVertexShadow.size()), static_cast<std::uint32_t>(clothTriangleShadow.size()),
+				static_cast<std::uint32_t>(clothBoneListShadow.size()) };
+		};
+		const auto appendCloth = [this](const GpuRig::ClaimStatics& a_packed) {
+			clothVertexShadow.insert(clothVertexShadow.end(), a_packed.clothVertices.begin(), a_packed.clothVertices.end());
+			clothTriangleShadow.insert(clothTriangleShadow.end(), a_packed.clothTriangles.begin(), a_packed.clothTriangles.end());
+			clothBoneListShadow.insert(clothBoneListShadow.end(), a_packed.clothBoneList.begin(), a_packed.clothBoneList.end());
+		};
 		if (staticsDirty) {
 			ZoneScopedN("SmpPhysics::UploadStatics");
 			std::vector<GpuRig::TreeStatic> treeData(slotCapacity);
 			std::vector<GpuRig::BoneSpheres> sphereData(slotCapacity);
 			std::vector<GpuRig::ColliderPacked> colliderData(slotCapacity);
 			std::vector<std::uint32_t> boneTreeData(slotCapacity, kNoTree);
+			std::vector<GpuRig::BoneCloth> boneClothData(slotCapacity);
 			sphereListShadow.clear();
+			clothVertexShadow.clear();
+			clothTriangleShadow.clear();
+			clothBoneListShadow.clear();
 			for (Claim& claim : claims) {
 				claim.sphereBase = static_cast<std::uint32_t>(sphereListShadow.size());
-				const GpuRig::ClaimStatics packed = GpuRig::PackClaimStatics(claim.rig, claim.boneOffset, claim.boneCount, claim.sphereBase);
+				const GpuRig::ClaimStatics packed = GpuRig::PackClaimStatics(claim.rig, claim.boneOffset, claim.boneCount, claim.sphereBase, clothBase());
 				std::ranges::copy(packed.trees, treeData.begin() + claim.boneOffset);
 				std::ranges::copy(packed.spheres, sphereData.begin() + claim.boneOffset);
 				std::ranges::copy(packed.boneTrees, boneTreeData.begin() + claim.boneOffset);
+				std::ranges::copy(packed.boneCloth, boneClothData.begin() + claim.boneOffset);
 				std::ranges::copy(packed.colliders, colliderData.begin() + claim.colliderOffset);
 				sphereListShadow.insert(sphereListShadow.end(), packed.sphereList.begin(), packed.sphereList.end());
+				appendCloth(packed);
 			}
+			context->UpdateSubresource(boneCloth->resource.get(), 0, nullptr, boneClothData.data(), 0, 0);
 			context->UpdateSubresource(trees->resource.get(), 0, nullptr, treeData.data(), 0, 0);
 			context->UpdateSubresource(spheres->resource.get(), 0, nullptr, sphereData.data(), 0, 0);
 			context->UpdateSubresource(colliders->resource.get(), 0, nullptr, colliderData.data(), 0, 0);
@@ -617,12 +648,14 @@ namespace SmpPhysics
 			for (const std::size_t index : pendingStaticClaims) {
 				Claim& claim = claims[index];
 				claim.sphereBase = static_cast<std::uint32_t>(sphereListShadow.size());
-				const GpuRig::ClaimStatics packed = GpuRig::PackClaimStatics(claim.rig, claim.boneOffset, claim.boneCount, claim.sphereBase);
+				const GpuRig::ClaimStatics packed = GpuRig::PackClaimStatics(claim.rig, claim.boneOffset, claim.boneCount, claim.sphereBase, clothBase());
 				Util::UpdateBufferSlots(trees->resource.get(), claim.boneOffset, packed.trees);
 				Util::UpdateBufferSlots(spheres->resource.get(), claim.boneOffset, packed.spheres);
 				Util::UpdateBufferSlots(boneTrees->resource.get(), claim.boneOffset, packed.boneTrees);
+				Util::UpdateBufferSlots(boneCloth->resource.get(), claim.boneOffset, packed.boneCloth);
 				Util::UpdateBufferSlots(colliders->resource.get(), claim.colliderOffset, packed.colliders);
 				sphereListShadow.insert(sphereListShadow.end(), packed.sphereList.begin(), packed.sphereList.end());
+				appendCloth(packed);
 			}
 			pendingStaticClaims.clear();
 		} else {
@@ -644,6 +677,42 @@ namespace SmpPhysics
 				Fail("the GPU solver sphere hit buffer could not be created; claimed hair stays at the engine's pose");
 			}
 		}
+		UploadClothStatics();
+	}
+
+	void GpuSolver::UploadClothStatics()
+	{
+		clothVertexCount = 0u;
+		clothTriangleCount = 0u;
+		if (clothTriangleShadow.empty())
+			return;
+		if (!UploadDynamic(clothVertexList, clothVertexListSrv, clothVertexCapacity, clothVertexShadow, "SmpPhysics::PoolClothVertices") ||
+			!UploadDynamic(clothTriangleList, clothTriangleListSrv, clothTriangleCapacity, clothTriangleShadow, "SmpPhysics::PoolClothTriangles") ||
+			!UploadDynamic(clothBoneList, clothBoneListSrv, clothBoneListCapacity, clothBoneListShadow, "SmpPhysics::PoolClothBoneList")) {
+			Fail("the GPU solver cloth triangle lists could not be uploaded; claimed hair stays at the engine's pose");
+			return;
+		}
+		try {
+			if (!clothPosed || clothPosedCapacity < clothVertexCapacity) {
+				auto posed = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::Float4>(clothVertexCapacity, true, false), nullptr, "SmpPhysics::PoolClothPosed");
+				posed->CreateUAV(StructuredUavDesc(clothVertexCapacity));
+				clothPosed = std::move(posed);
+				clothPosedUav = clothPosed->uav;
+				clothPosedCapacity = clothVertexCapacity;
+			}
+			if (!clothHits || clothHitCapacity < clothTriangleCapacity) {
+				auto hits = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::SphereHit>(clothTriangleCapacity * kClothTriangleHits, true, false), nullptr, "SmpPhysics::PoolClothHits");
+				hits->CreateUAV(StructuredUavDesc(clothTriangleCapacity * kClothTriangleHits));
+				clothHits = std::move(hits);
+				clothHitsUav = clothHits->uav;
+				clothHitCapacity = clothTriangleCapacity;
+			}
+		} catch (const std::exception&) {
+			Fail("the GPU solver cloth contact buffers could not be created; claimed hair stays at the engine's pose");
+			return;
+		}
+		clothVertexCount = static_cast<std::uint32_t>(clothVertexShadow.size());
+		clothTriangleCount = static_cast<std::uint32_t>(clothTriangleShadow.size());
 	}
 
 	GpuSolver::SurfacePrepInfo GpuSolver::SurfacePrep() const noexcept
@@ -1092,13 +1161,14 @@ namespace SmpPhysics
 	void GpuSolver::DispatchContacts(const GpuSolverConstants& a_values)
 	{
 		auto* context = globals::d3d::context;
-		ID3D11ShaderResourceView* views[kStepViewCount] = { nullptr, treesSrv.get(), inputsSrv.get(), nullptr,
-			nullptr, spheresSrv.get(), collidersSrv.get(), driversSrv.get(),
+		const bool cloth = a_values.clothTriangleCount > 0u;
+		ID3D11ShaderResourceView* views[kStepViewCount] = { cloth ? clothVertexListSrv.get() : nullptr, treesSrv.get(), inputsSrv.get(), cloth ? clothTriangleListSrv.get() : nullptr,
+			cloth ? boneClothSrv.get() : nullptr, spheresSrv.get(), collidersSrv.get(), driversSrv.get(),
 			surfacePrepActive ? surfacePrepMetasSrv.get() : surfaceMetasSrv.get(),
 			surfacePrepActive ? gpuSurfaceTrianglesSrv.get() : surfaceTrianglesSrv.get(),
 			surfacePrepActive ? gpuSurfaceNodesSrv.get() : surfaceNodesSrv.get(),
-			nullptr, sphereListSrv.get(), boneTreesSrv.get(), driverDeltasSrv.get() };
-		ID3D11UnorderedAccessView* contactTargets[kStepTargetCount] = { nullptr, worldsUav.get(), nullptr, contactsUav.get(),
+			cloth ? clothBoneListSrv.get() : nullptr, sphereListSrv.get(), boneTreesSrv.get(), driverDeltasSrv.get() };
+		ID3D11UnorderedAccessView* contactTargets[kStepTargetCount] = { cloth ? clothPosedUav.get() : nullptr, worldsUav.get(), cloth ? clothHitsUav.get() : nullptr, contactsUav.get(),
 			nullptr, sphereHitsUav.get(), boneCullUav.get() };
 		ID3D11Buffer* constantView = constants->CB();
 		CS_GPU_PASS("SmpPhysics::ContactPasses");
@@ -1109,6 +1179,16 @@ namespace SmpPhysics
 			CS_GPU_PASS("SmpPhysics::ContactCull");
 			context->CSSetShader(contactCullShader->get(), nullptr, 0);
 			context->Dispatch(Groups(a_values.boneCount), 1, 1);
+		}
+		if (cloth) {
+			{
+				CS_GPU_PASS("SmpPhysics::ClothVertices");
+				context->CSSetShader(clothVertexShader->get(), nullptr, 0);
+				context->Dispatch(Groups(a_values.clothVertexCount), 1, 1);
+			}
+			CS_GPU_PASS("SmpPhysics::ClothTriangles");
+			context->CSSetShader(clothTriangleShader->get(), nullptr, 0);
+			context->Dispatch(Groups(a_values.clothTriangleCount), 1, 1);
 		}
 		{
 			CS_GPU_PASS("SmpPhysics::ContactSpheres");
@@ -1161,6 +1241,8 @@ namespace SmpPhysics
 		GpuSolverConstants values;
 		values.boneCount = boneHighWater;
 		values.sphereCount = sphereCount;
+		values.clothVertexCount = clothVertexCount;
+		values.clothTriangleCount = clothTriangleCount;
 		constants->Update(values);
 
 		Readback* slot = nullptr;

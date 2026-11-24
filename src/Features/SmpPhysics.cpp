@@ -74,7 +74,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	ShowSkeletonDebug,
 	BatchSkinPalette,
 	FlushAfterSubmit,
-	SameFrameResults)
+	SameFrameResults,
+	TriangleContacts)
 
 using namespace SmpPhysicsLimits;
 
@@ -1636,6 +1637,7 @@ void SmpPhysicsFeature::InstallClaimCollision(Claim& a_claim, ClaimCollision& a_
 	a_claim.driverWorld.assign(a_collision.drivers.size(), SmpPhysics::Transform{});
 	a_claim.gpuCollision = SmpPhysics::GpuRig::PackCollision(a_collision.spheres, solverColliders,
 		static_cast<std::uint32_t>(a_collision.drivers.size()), a_collision.boneSurfaceMask);
+	SmpPhysics::GpuRig::PackClothTriangles(a_claim.gpuCollision, a_collision.clothTriangles);
 	a_claim.spheres = std::move(a_collision.spheres);
 	a_claim.retargetBehind = a_collision.retargetBehind;
 	a_claim.retargetSagMaxMove = a_collision.retargetSagMaxMove;

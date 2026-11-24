@@ -1701,7 +1701,15 @@ bool SmpPhysicsFeature::BuildHairSpheres(CollisionBuildState& s, std::string& a_
 		std::vector<std::vector<Owner>> triangleOwners(vertices.size());
 		std::vector<std::uint16_t> triangles;
 		std::string triangleReason;
+		bool triangleContacts = false;
 		if (std::ranges::any_of(shapes.triangleShapes, [&shape](const RigShape& a_candidate) { return &a_candidate == &shape; }) && SmpPhysics::ReadCardTriangles(mesh, triangles, triangleReason)) {
+			if (settings.TriangleContacts && perShape) {
+				std::vector<Transform> skinToBone(skinBones);
+				for (std::uint32_t index = 0; index < skinBones; ++index)
+					skinToBone[index] = skinTransform(static_cast<int>(index));
+				const SmpPhysics::ClothMesh clothMesh{ shape.name, &vertices, &triangles, &rigBoneOfSkinBone, &skinToBone, &dynamicBone, &marginMultiplier, &weightThreshold, shape.margin, shape.penetration };
+				triangleContacts = SmpPhysics::AppendClothTriangles(a_collision.clothTriangles, clothMesh) > 0;
+			}
 			for (std::size_t triangle = 0; triangle + 2 < triangles.size(); triangle += 3) {
 				const std::uint16_t* corners = triangles.data() + triangle;
 				if (corners[0] >= vertices.size() || corners[1] >= vertices.size() || corners[2] >= vertices.size())
@@ -1779,6 +1787,8 @@ bool SmpPhysicsFeature::BuildHairSpheres(CollisionBuildState& s, std::string& a_
 				if (reduced[bone].empty())
 					continue;
 				any = true;
+				for (BoneSphere& sphere : reduced[bone])
+					sphere.triangleContacts = triangleContacts;
 				mergedSpheres[bone].insert(mergedSpheres[bone].end(), reduced[bone].begin(), reduced[bone].end());
 				if (bone < boneShape.size() && boneShape[bone] == nullptr)
 					boneShape[bone] = &shape;
@@ -2250,10 +2260,15 @@ bool SmpPhysicsFeature::BuildClaimCollision(const hdt::IMeshClaimContext& a_cont
 	BuildRigSurfaces(state);
 	BuildArmorSurfaces(state);
 	BuildClothSurfaces(state);
+	std::vector<const RigShape*> surfaceShapes(a_collision.surfaces.size(), nullptr);
+	for (std::size_t index = 0; index < state.rigSurfaceShapes.size() && index < surfaceShapes.size(); ++index)
+		surfaceShapes[index] = &state.rigSurfaceShapes[index];
+	for (const SmpPhysics::ClothPiece& piece : a_collision.clothTriangles.pieces) {
+		const auto shape = std::ranges::find_if(a_rig.collision.triangleShapes, [&piece](const RigShape& a_shape) { return a_shape.name == piece.name; });
+		if (shape != a_rig.collision.triangleShapes.end())
+			SmpPhysics::MaskClothPiece(a_collision.clothTriangles, piece, SmpPhysics::AllowedSurfaceMask(&*shape, surfaceShapes));
+	}
 	if (!state.boneShape.empty()) {
-		std::vector<const RigShape*> surfaceShapes(a_collision.surfaces.size(), nullptr);
-		for (std::size_t index = 0; index < state.rigSurfaceShapes.size() && index < surfaceShapes.size(); ++index)
-			surfaceShapes[index] = &state.rigSurfaceShapes[index];
 		a_collision.boneSurfaceMask.assign(a_rig.bones.size(), SmpPhysics::kAllMaskBits);
 		for (std::size_t bone = 0; bone < state.boneShape.size(); ++bone)
 			a_collision.boneSurfaceMask[bone] = SmpPhysics::AllowedSurfaceMask(state.boneShape[bone], surfaceShapes);
@@ -2287,6 +2302,7 @@ bool SmpPhysicsFeature::BuildClaimCollision(const hdt::IMeshClaimContext& a_cont
 		for (const SmpPhysics::SkinnedSurface& surface : a_collision.surfaces)
 			surfaceNames.push_back(surface.name);
 		SmpPhysics::ApplyCollisionOverrides(overrides, boneShapeName, surfaceNames, a_collision.spheres, a_collision.boneSurfaceMask);
+		SmpPhysics::ApplyClothCollisionOverrides(overrides, surfaceNames, a_collision.clothTriangles);
 	}
 	return true;
 }

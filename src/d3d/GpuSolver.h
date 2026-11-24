@@ -220,6 +220,8 @@ namespace SmpPhysics
 		/** @brief Resets a_count merged contacts from a_offset to none, so a bone the contact pass never writes reads as untouched. */
 		void ClearContacts(std::uint32_t a_offset, std::uint32_t a_count);
 		void UploadStatics();
+		/** @brief Uploads the cloth triangle lists the statics pass gathered and sizes the two buffers the cloth passes write; with none it only zeroes the counts. */
+		void UploadClothStatics();
 		void Fail(const char* a_reason);
 		bool EnsureSurfacePrepShaders();
 		void RebuildSurfacePrep();
@@ -265,6 +267,28 @@ namespace SmpPhysics
 		std::uint32_t sphereListCapacity{};
 		std::vector<GpuRig::SphereRecord> sphereListShadow;  ///< The sphere list as uploaded, so an added claim appends to it instead of rebuilding it.
 		winrt::com_ptr<ID3D11ShaderResourceView> sphereListSrv;
+		std::unique_ptr<Buffer> boneCloth;        ///< Per bone slot, its slice of the cloth bone list.
+		std::unique_ptr<Buffer> clothVertexList;  ///< The three cloth lists are rewritten whole whenever the claims change, like the sphere list.
+		std::unique_ptr<Buffer> clothTriangleList;
+		std::unique_ptr<Buffer> clothBoneList;
+		std::unique_ptr<Buffer> clothPosed;  ///< Per cloth vertex, its world position this substep.
+		std::unique_ptr<Buffer> clothHits;   ///< kClothTriangleHits per cloth triangle, its contacts at the start of the substep.
+		std::vector<GpuRig::SphereRecord> clothVertexShadow;
+		std::vector<GpuRig::ClothTriangleRecord> clothTriangleShadow;
+		std::vector<GpuRig::ClothBoneEntry> clothBoneListShadow;
+		winrt::com_ptr<ID3D11ShaderResourceView> boneClothSrv;
+		winrt::com_ptr<ID3D11ShaderResourceView> clothVertexListSrv;
+		winrt::com_ptr<ID3D11ShaderResourceView> clothTriangleListSrv;
+		winrt::com_ptr<ID3D11ShaderResourceView> clothBoneListSrv;
+		winrt::com_ptr<ID3D11UnorderedAccessView> clothPosedUav;
+		winrt::com_ptr<ID3D11UnorderedAccessView> clothHitsUav;
+		std::uint32_t clothVertexCapacity{};
+		std::uint32_t clothTriangleCapacity{};
+		std::uint32_t clothBoneListCapacity{};
+		std::uint32_t clothPosedCapacity{};
+		std::uint32_t clothHitCapacity{};
+		std::uint32_t clothVertexCount{};      ///< Entries in the cloth vertex list as last uploaded.
+		std::uint32_t clothTriangleCount{};    ///< Entries in the cloth triangle list as last uploaded; zero keeps the cloth passes from being dispatched.
 		std::unique_ptr<Buffer> surfaceMetas;  ///< The three surface buffers are rewritten whole every frame and grow on demand.
 		std::unique_ptr<Buffer> surfaceTriangles;
 		std::unique_ptr<Buffer> surfaceNodes;
@@ -339,6 +363,8 @@ namespace SmpPhysics
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> contactCullShader;
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> contactSphereShader;
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> contactReduceShader;
+		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> clothVertexShader;
+		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> clothTriangleShader;
 		std::unique_ptr<ConstantBuffer> surfacePrepConstants;  ///< Mirrored by SurfacePrepCS.hlsl.
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> surfaceBonesShader;
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> surfacePoseShader;
@@ -365,7 +391,8 @@ namespace SmpPhysics
 	{
 		std::uint32_t boneCount{};  ///< One past the highest bone slot any claim uses.
 		std::uint32_t sphereCount{};
-		std::uint32_t padding[2]{};
+		std::uint32_t clothVertexCount{};
+		std::uint32_t clothTriangleCount{};  ///< Zero when no claim has cloth triangles, which leaves the cloth buffers unread.
 	};
 	static_assert(sizeof(GpuSolverConstants) == 16);
 
