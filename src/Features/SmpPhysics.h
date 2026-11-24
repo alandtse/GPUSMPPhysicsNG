@@ -107,7 +107,7 @@ struct SmpPhysicsFeature final : Feature
 		bool GrabStrands = true;         ///< In VR, closing a hand on hair holds that strand to the hand.
 		bool BatchSkinPalette = true;    ///< Builds every skinned mesh's matrices once per frame after the solver step, instead of one dispatch per draw.
 		bool FlushAfterSubmit = false;   ///< Sends the solver's commands to the GPU as soon as they are recorded; otherwise the driver holds them until the game flushes, which left the GPU idle for several milliseconds.
-		bool SameFrameResults = true;    ///< Applies this frame's solver result before the frame is drawn, by waiting for the solver's GPU work; off, results arrive one to two frames late and fast-moving body parts show through cloth.
+		bool SameFrameResults = false;   ///< Waits for the solver's GPU work so the nodes get this frame's result. Off, a GPU-skinned mesh is still drawn from this frame's solve; only the nodes, and a mesh skinned from them, lag one to two frames.
 	};
 
 	Settings settings;
