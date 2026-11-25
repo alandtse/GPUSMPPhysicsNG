@@ -14,6 +14,11 @@ outfit suites pass except the checks below.
   proxy (`Colision`), as hdtSMP64 does. At rest on SE the 318 bones sit a mean 0.92 units (max 6.4) from hdtSMP64's, the hem
   strands match hdtSMP64's pose in 12 of 12 re-equips (hem strand A 24.0 and L 18.5 in the pelvis frame, hdtSMP64 24.0 and
   18.7).
+  Standing, its skirt bones sit within 0.03 units of hdtSMP64's on average along the radius from the pelvis (worst bone 0.6),
+  since the collision skinning carries the bones' world scale: without it the body proxy of an actor of scale 1.03 was up
+  to a unit too small and the skirt rested 0.6 to 1.1 units closer to the body. Running onto the Dragonsreach stairs no
+  frame shows skin in 6 runs, as under hdtSMP64. At the start of a sprint about twice as much skin shows as under hdtSMP64
+  in the first 0.4 s (3600 against 1800 px.ms, four sets each) and half as much after that (100 against 210).
 - **Skirts under fast movement** pose the collision surface at the pose the bodies began the step from, blended to the
   frame's pose at each substep, as hdtSMP64 steps its bodies and collision on one clock. Running at 360 units/s, the
   spheres behind a face on DD Elanor Timeless Elegance fell from 166 to about 40 on average and no skin shows through the
