@@ -3,8 +3,11 @@
 Checked with the suites in [tools/hair-tune](../tools/hair-tune) on SkyrimVR with the null driver. The grab, contact and
 outfit suites pass except the checks below.
 
-- **Cape under the rigid solver** moves 0.78 to 1.03 times as much as hdtSMP64 where the parity baseline allows 0.24 to
-  0.74. `smp_parity_baseline.json` is stale: run `smp_parity_e2e.py --update-baseline` on a trusted scene.
+- **Cape under the rigid solver** moves 0.16 to 0.19 times as much as hdtSMP64 on VR where the parity baseline allows 0.24
+  to 0.74 (it has also measured 0.78 to 1.03); the other eight checks of `smp_parity_e2e.py` pass there, the wig 0.71 units
+  from hdtSMP64's and the cape 1.97. Carrying bone scale into the collision skinning left these as they were (0.73, 1.91 and
+  0.19 before it). `smp_parity_baseline.json` is stale: run `smp_parity_e2e.py --update-baseline` on a trusted scene. On SE
+  the suite does not give a result from an outdoor Whiterun cell: hdtSMP64's wig does not move in its arm.
 - **`holdStrand` leaves the pose unchanged** in the `pose_e2e.py` pull check (the solved-from-rest distance stays near
   0.01). A real hand grab pulls hair 8.9 units (`grab_e2e.py`).
 - **Skirt rigs whose per-vertex shapes are collision for others** (DD Elanor Timeless Elegance) collide with the rig's own
