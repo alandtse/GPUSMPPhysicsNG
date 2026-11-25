@@ -1261,15 +1261,21 @@ namespace SmpPhysics
 			for (const auto& [offset, count] : pack.freshDrivers)
 				std::copy_n(pack.driverWorlds.begin() + offset, count, from.begin() + offset);
 			std::vector<GpuRig::DriverRange> liveDrivers;
+			std::vector<GpuRig::DriverRange> clothDrivers;
+			std::vector<GpuRig::DriverRange> otherDrivers;
 			liveDrivers.reserve(pack.packedClaims.size());
-			for (const std::size_t index : pack.packedClaims)
+			for (const std::size_t index : pack.packedClaims) {
 				liveDrivers.emplace_back(claims[index].driverOffset, claims[index].driverCount);
+				(claims[index].rig.collision.clothTriangles.empty() ? otherDrivers : clothDrivers).emplace_back(claims[index].driverOffset, claims[index].driverCount);
+			}
 			std::vector<GpuRig::DriverWorld> blended = pack.driverWorlds;
 			std::vector<GpuRig::DriverDelta> deltas(pack.driverWorlds.size());
 			bool deltasUploaded = false;
-			const auto contactPass = [this, &values, &pack, &from, &blended, &deltas, &liveDrivers, &deltasUploaded](std::uint32_t, float a_fraction, float a_total) {
+			const auto contactPass = [this, &values, &pack, &from, &blended, &deltas, &liveDrivers, &clothDrivers, &otherDrivers, &deltasUploaded](std::uint32_t, float a_start, float a_fraction, float a_total) {
 				if (!pack.driverWorlds.empty()) {
-					GpuRig::BlendDriverRanges(from, pack.driverWorlds, liveDrivers, a_fraction, blended);
+					GpuRig::BlendDriverRanges(from, pack.driverWorlds, otherDrivers, a_fraction, blended);
+					// Cloth triangles are posed where the step begins; a proxy posed where it ends is a step ahead of them and passes through.
+					GpuRig::BlendDriverRanges(from, pack.driverWorlds, clothDrivers, a_start, blended);
 					(void)UploadDiscard(globals::d3d::context, drivers->resource.get(), blended.data(), blended.size() * sizeof(GpuRig::DriverWorld));
 				}
 				if (!deltas.empty() && !deltasUploaded) {

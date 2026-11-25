@@ -338,7 +338,7 @@ namespace SmpPhysics
 	}
 
 	bool RigidGpuSolver::Dispatch(const std::vector<FrameClaim>& a_frame, ID3D11UnorderedAccessView* a_worlds,
-		ID3D11UnorderedAccessView* a_outputs, ID3D11ShaderResourceView* a_contacts, const std::function<void(std::uint32_t, float, float)>& a_contactPass)
+		ID3D11UnorderedAccessView* a_outputs, ID3D11ShaderResourceView* a_contacts, const std::function<void(std::uint32_t, float, float, float)>& a_contactPass)
 	{
 		if (!available || claims.empty() || a_frame.empty() || !a_worlds || !a_outputs)
 			return false;
@@ -438,7 +438,7 @@ namespace SmpPhysics
 				context->CSSetUnorderedAccessViews(0, kRuntimeTargetCount, runtimeTargets, nullptr);
 				context->CSSetShader(worldExportShader->get(), nullptr, 0);
 				context->Dispatch(Groups(bodyCount), 1, 1);
-				a_contactPass(static_cast<std::uint32_t>(subStep) + 1u, plan.EndFraction(subStep), plan.total);
+				a_contactPass(static_cast<std::uint32_t>(subStep) + 1u, plan.StartFraction(subStep), plan.EndFraction(subStep), plan.total);
 				ID3D11UnorderedAccessView* releasedTargets[kContactTargetCount] = {};
 				context->CSSetUnorderedAccessViews(0, kContactTargetCount, releasedTargets, nullptr);
 			}
