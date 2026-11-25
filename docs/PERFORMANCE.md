@@ -114,6 +114,34 @@ frame at these settings (contact passes 2.7, surface posing 2.5, solve 2.0).
 The plugin's own `patchProbe` capture costs about 5 ms a frame on this plugin's side only (it reads the drawn palette back),
 so a frame time taken while it runs reads this plugin slower than hdtSMP64 when it is not.
 
+## As the game is set up: a regression found and removed
+
+The sections above lift every throttle and run a test crowd. Measured instead as a player has it (hdtSMP64's own
+`userConfigs.json`, the plugin's default limits) on one save, Dragonsreach, with the player's dress and hair and three
+guards' fur in view (11 claims, 17095 spheres, 10809 cloth vertices, 20254 cloth triangles), the plugin had become five
+times slower than hdtSMP64 without any line of this file showing it. `tools/game/perf_check.py` now records every solver
+commit in [perf_log.jsonl](perf-data/perf_log.jsonl); the bisect it started with, standing still, frame time in ms:
+
+| Commit                                             | Plugin | hdtSMP64 | GPU per step |
+| -------------------------------------------------- | ------ | -------- | ------------ |
+| `f56246c`, where the branch starts                 | 9.6    | 9.7      | 1.2          |
+| `648468f`, before cloth triangle contacts          | 14.0   | 9.8      | 2.0          |
+| `ce84adc`, cloth triangle contacts by default      | 24.6   | 9.2      | 5.1          |
+| `94eb254`, after the step rate followed hdtSMP64's | 47.4   | 9.5      | 6.2          |
+| `80e4d28`, a bone's triangles folded in chunks     | 17.6   | 9.7      | 4.3          |
+| `9316a49`, static lists kept in GPU memory         | 7.8    | 9.0      | 1.9          |
+
+Running, `9316a49` is at 6.5 ms against 7.3.
+
+- The cost was in the cloth contact passes, and most of it was not their arithmetic: the sphere list and the three cloth
+  lists sat in CPU-writable buffers that every thread of a pass read each step. With the passes skipped altogether the
+  frame was 9.0 to 9.2 ms, so the solve and the surface refit were never the problem here.
+- The frame time has several steady states. A frame longer than the 90 Hz tick takes a second solver step, each step
+  costs GPU time, and the frame stays long: the same build ran at 13.6, 30 and 47 ms in different sessions. A cost per step
+  under about 4 ms keeps this scene at one step.
+- The per-pass GPU timers put a pass's cost on the pass that reads its output (posing 10809 vertices was shown as 0.9 ms,
+  the merge that waited for it as 2 ms). Their total is right; to cost a pass, skip it and read the frame time.
+
 ## Not measured
 
 VR frame time (the null driver caps the frame near 31 ms), capes, AE, frame generation state.
