@@ -197,6 +197,7 @@ namespace SmpPhysics::GpuRig
 				if (owner == kNoSphereBone)
 					owner = static_cast<std::uint32_t>(bone);
 			}
+			a_data.clothBoneList.resize((a_data.clothBoneList.size() + kClothFoldChunk - 1u) / kClothFoldChunk * kClothFoldChunk);
 		}
 	}
 

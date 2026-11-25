@@ -92,6 +92,15 @@ namespace SmpPhysics
 		bool CheckDeviceRemoved();
 		/** @brief The collision-surface path's current state and the sizes it was last packed to. */
 		[[nodiscard]] SurfacePrepInfo SurfacePrep() const noexcept;
+		/** @brief What the contact passes work through each step, summed over every claim, for a performance record. */
+		struct ContactWork
+		{
+			std::uint32_t spheres{};
+			std::uint32_t clothVertices{};
+			std::uint32_t clothTriangles{};
+			std::uint32_t clothBoneEntries{};  ///< Triangle references the per-bone merge reads.
+		};
+		[[nodiscard]] ContactWork Work() const noexcept { return { sphereCount, clothVertexCount, clothTriangleCount, static_cast<std::uint32_t>(clothBoneListShadow.size()) }; }
 
 		/** @brief What CheckSurfacePrep found: the last frame's GPU surface pass against the CPU reference. */
 		struct SurfacePrepCheckResult
@@ -273,8 +282,10 @@ namespace SmpPhysics
 		std::unique_ptr<Buffer> clothVertexList;  ///< The three cloth lists are rewritten whole whenever the claims change, like the sphere list.
 		std::unique_ptr<Buffer> clothTriangleList;
 		std::unique_ptr<Buffer> clothBoneList;
-		std::unique_ptr<Buffer> clothPosed;  ///< Per cloth vertex, its world position this substep.
-		std::unique_ptr<Buffer> clothHits;   ///< kClothTriangleHits per cloth triangle, its contacts at the start of the substep.
+		std::unique_ptr<Buffer> clothPosed;      ///< Per cloth vertex, its world position this substep.
+		std::unique_ptr<Buffer> clothHits;       ///< kClothTriangleHits per cloth triangle, its contacts at the start of the substep.
+		std::unique_ptr<Buffer> clothHitCounts;  ///< Per cloth triangle, how many of its hit slots are filled.
+		std::unique_ptr<Buffer> clothFolds;      ///< kContactLanes per chunk of the cloth bone list, folded each substep.
 		std::vector<GpuRig::SphereRecord> clothVertexShadow;
 		std::vector<GpuRig::ClothTriangleRecord> clothTriangleShadow;
 		std::vector<GpuRig::ClothBoneEntry> clothBoneListShadow;
@@ -284,6 +295,9 @@ namespace SmpPhysics
 		winrt::com_ptr<ID3D11ShaderResourceView> clothBoneListSrv;
 		winrt::com_ptr<ID3D11UnorderedAccessView> clothPosedUav;
 		winrt::com_ptr<ID3D11UnorderedAccessView> clothHitsUav;
+		winrt::com_ptr<ID3D11UnorderedAccessView> clothHitCountsUav;
+		winrt::com_ptr<ID3D11UnorderedAccessView> clothFoldsUav;
+		std::uint32_t clothFoldCapacity{};
 		std::uint32_t clothVertexCapacity{};
 		std::uint32_t clothTriangleCapacity{};
 		std::uint32_t clothBoneListCapacity{};
@@ -367,6 +381,7 @@ namespace SmpPhysics
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> contactReduceShader;
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> clothVertexShader;
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> clothTriangleShader;
+		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> clothFoldShader;
 		std::unique_ptr<ConstantBuffer> surfacePrepConstants;  ///< Mirrored by SurfacePrepCS.hlsl.
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> surfaceBonesShader;
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> surfacePoseShader;

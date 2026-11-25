@@ -43,7 +43,7 @@ namespace SmpPhysics
 
 		constexpr std::uint32_t kMinimumSurfaceCapacity = 64;
 		constexpr std::uint32_t kStepViewCount = 15;
-		constexpr std::uint32_t kStepTargetCount = 7;
+		constexpr std::uint32_t kStepTargetCount = 8;
 		constexpr std::uint32_t kSurfacePrepViewCount = 7;    ///< t0..t6: the prep records and the drivers.
 		constexpr std::uint32_t kSurfacePrepTargetCount = 5;  ///< u0..u4: scratch, then the contact pass's inputs.
 		constexpr std::size_t kMaxSurfaceThreads = 4;
@@ -172,6 +172,8 @@ namespace SmpPhysics
 			clothVertexShader->Reset();
 		if (clothTriangleShader)
 			clothTriangleShader->Reset();
+		if (clothFoldShader)
+			clothFoldShader->Reset();
 		if (surfaceBonesShader)
 			surfaceBonesShader->Reset();
 		if (surfacePoseShader)
@@ -216,6 +218,8 @@ namespace SmpPhysics
 			clothVertexShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
 		if (!clothTriangleShader)
 			clothTriangleShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
+		if (!clothFoldShader)
+			clothFoldShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
 		if (!surfaceBonesShader)
 			surfaceBonesShader = std::make_unique<Util::LazyShader<ID3D11ComputeShader>>();
 		if (!surfacePoseShader)
@@ -232,7 +236,8 @@ namespace SmpPhysics
 				!contactSphereShader->Get(kShaderPath, defines, kShaderTarget, "ContactSpheres", "SmpPhysics::ContactCS ContactSpheres") ||
 				!contactReduceShader->Get(kShaderPath, defines, kShaderTarget, "ContactReduce", "SmpPhysics::ContactCS ContactReduce") ||
 				!clothVertexShader->Get(kShaderPath, defines, kShaderTarget, "ClothVertices", "SmpPhysics::ContactCS ClothVertices") ||
-				!clothTriangleShader->Get(kShaderPath, defines, kShaderTarget, "ClothTriangles", "SmpPhysics::ContactCS ClothTriangles")) {
+				!clothTriangleShader->Get(kShaderPath, defines, kShaderTarget, "ClothTriangles", "SmpPhysics::ContactCS ClothTriangles") ||
+				!clothFoldShader->Get(kShaderPath, defines, kShaderTarget, "ClothFold", "SmpPhysics::ContactCS ClothFold")) {
 				Fail("the GPU solver compute shader did not compile; claimed hair stays at the engine's pose");
 				return false;
 			}
@@ -703,9 +708,21 @@ namespace SmpPhysics
 			if (!clothHits || clothHitCapacity < clothTriangleCapacity) {
 				auto hits = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::SphereHit>(clothTriangleCapacity * kClothTriangleHits, true, false), nullptr, "SmpPhysics::PoolClothHits");
 				hits->CreateUAV(StructuredUavDesc(clothTriangleCapacity * kClothTriangleHits));
+				auto counts = std::make_unique<Buffer>(StructuredBufferDesc<std::uint32_t>(clothTriangleCapacity, true, false), nullptr, "SmpPhysics::PoolClothHitCounts");
+				counts->CreateUAV(StructuredUavDesc(clothTriangleCapacity));
 				clothHits = std::move(hits);
+				clothHitCounts = std::move(counts);
 				clothHitsUav = clothHits->uav;
+				clothHitCountsUav = clothHitCounts->uav;
 				clothHitCapacity = clothTriangleCapacity;
+			}
+			const std::uint32_t foldSlots = (clothBoneListCapacity / GpuRig::kClothFoldChunk + 1u) * kContactLanes;
+			if (!clothFolds || clothFoldCapacity < foldSlots) {
+				auto folds = std::make_unique<Buffer>(StructuredBufferDesc<GpuRig::ClothFold>(foldSlots, true, false), nullptr, "SmpPhysics::PoolClothFolds");
+				folds->CreateUAV(StructuredUavDesc(foldSlots));
+				clothFolds = std::move(folds);
+				clothFoldsUav = clothFolds->uav;
+				clothFoldCapacity = foldSlots;
 			}
 		} catch (const std::exception&) {
 			Fail("the GPU solver cloth contact buffers could not be created; claimed hair stays at the engine's pose");
@@ -1169,7 +1186,7 @@ namespace SmpPhysics
 			surfacePrepActive ? gpuSurfaceNodesSrv.get() : surfaceNodesSrv.get(),
 			cloth ? clothBoneListSrv.get() : nullptr, sphereListSrv.get(), boneTreesSrv.get(), driverDeltasSrv.get() };
 		ID3D11UnorderedAccessView* contactTargets[kStepTargetCount] = { cloth ? clothPosedUav.get() : nullptr, worldsUav.get(), cloth ? clothHitsUav.get() : nullptr, contactsUav.get(),
-			nullptr, sphereHitsUav.get(), boneCullUav.get() };
+			cloth ? clothHitCountsUav.get() : nullptr, sphereHitsUav.get(), boneCullUav.get(), cloth ? clothFoldsUav.get() : nullptr };
 		ID3D11Buffer* constantView = constants->CB();
 		CS_GPU_PASS("SmpPhysics::ContactPasses");
 		context->CSSetConstantBuffers(0, 1, &constantView);
@@ -1186,9 +1203,14 @@ namespace SmpPhysics
 				context->CSSetShader(clothVertexShader->get(), nullptr, 0);
 				context->Dispatch(Groups(a_values.clothVertexCount), 1, 1);
 			}
-			CS_GPU_PASS("SmpPhysics::ClothTriangles");
-			context->CSSetShader(clothTriangleShader->get(), nullptr, 0);
-			context->Dispatch(Groups(a_values.clothTriangleCount), 1, 1);
+			{
+				CS_GPU_PASS("SmpPhysics::ClothTriangles");
+				context->CSSetShader(clothTriangleShader->get(), nullptr, 0);
+				context->Dispatch(Groups(a_values.clothTriangleCount), 1, 1);
+			}
+			CS_GPU_PASS("SmpPhysics::ClothFold");
+			context->CSSetShader(clothFoldShader->get(), nullptr, 0);
+			context->Dispatch(Groups(static_cast<std::uint32_t>(clothBoneListShadow.size()) / GpuRig::kClothFoldChunk), 1, 1);
 		}
 		{
 			CS_GPU_PASS("SmpPhysics::ContactSpheres");

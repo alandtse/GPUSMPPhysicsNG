@@ -110,7 +110,7 @@ struct HairClothBoneEntry
 {
 	uint clothTriangle;
 	float flexible;  // scales the depth
-	uint corners;    // how many times the contact is added
+	uint corners;    // how many times the contact is added; 0 marks padding
 	uint pad;
 };
 
@@ -402,6 +402,7 @@ float4 DriverPointVelocity(uint a_driverPlusOne, float3 a_point)
 static const uint kClothTriangleHits = 2u;  // mirrors kClothTriangleHits in ClothTriangles.h
 
 RWStructuredBuffer<HairSphereHit> HairClothHits : register(u2);   // kClothTriangleHits per cloth triangle: centre is the contact point on the triangle
+RWStructuredBuffer<uint> HairClothHitCounts : register(u4);      // per cloth triangle, how many of its hit slots hold a hit, so the merge skips the rest unread
 RWStructuredBuffer<HairSphereHit> HairSphereHits : register(u5);  // per sphere list entry
 RWStructuredBuffer<uint4> HairBoneCull : register(u6);            // per bone slot: x the surfaces its bound reaches, y a kCull state, z the colliders it touches
 
@@ -721,6 +722,7 @@ void OfferClothHit(inout HairSphereHit a_best, inout HairSphereHit a_other, Hair
 	other.velocityValid = other.depth > 0.0f ? DriverPointVelocity(other.key, other.velocityValid.xyz) : float4(0.0f, 0.0f, 0.0f, 0.0f);
 	HairClothHits[index * kClothTriangleHits] = best;
 	HairClothHits[index * kClothTriangleHits + 1u] = other;
+	HairClothHitCounts[index] = (best.depth > 0.0f ? 1u : 0u) + (other.depth > 0.0f ? 1u : 0u);
 }
 
 /**
@@ -769,7 +771,106 @@ void FoldLaneHit(inout HairContactPartial a_lanes[kContactLanes], inout uint a_k
 	a_lanes[lane] = partial;
 }
 
-	/** @brief Merges each bone's sphere and cloth triangle hits into one contact per contacted driver, kContactLanes at most, the port of the CPU ContactLanes. */
+static const uint kClothFoldChunk = 64u;  // mirrors kClothFoldChunk in GpuRigPacking.h
+
+/** @brief One lane of one chunk of a bone's cloth triangles, folded by ClothFold for ContactReduce to merge. */
+struct HairClothFold
+{
+	float weight;
+	float3 normalSum;
+	float3 positionSum;
+	float3 velocitySum;
+	uint velocityMissing;
+	float deepest;
+	int collider;
+	uint key;
+};
+
+RWStructuredBuffer<HairClothFold> HairClothFolds : register(u7);  // kContactLanes per chunk of the cloth bone list
+
+/**
+ * @brief Folds one chunk of a bone's cloth triangles into lanes, a thread per chunk.
+ * @details A bone can own thousands of triangles and one thread reading them all is the slowest in the frame, so the
+ *          list is folded in chunks side by side and ContactReduce merges a bone's chunks.
+ */
+[numthreads(64, 1, 1)] void ClothFold(uint3 a_dispatchThreadId : SV_DispatchThreadID) {
+	uint chunk = a_dispatchThreadId.x;
+	HairContactPartial lanes[kContactLanes];
+	uint keys[kContactLanes];
+	uint used = 0u;
+	for (uint clearLane = 0u; clearLane < kContactLanes; ++clearLane) {
+		lanes[clearLane] = EmptyContactPartial();
+		keys[clearLane] = 0u;
+	}
+	for (uint index = 0u; index < kClothFoldChunk; ++index) {
+		HairClothBoneEntry entry = HairClothBoneList[chunk * kClothFoldChunk + index];
+		if (entry.corners == 0u)
+			continue;
+		uint held = HairClothHitCounts[entry.clothTriangle];
+		for (uint slot = 0u; slot < held; ++slot) {
+			HairSphereHit hit = HairClothHits[entry.clothTriangle * kClothTriangleHits + slot];
+			if (!(hit.depth > 0.0f))
+				continue;
+			hit.depth *= entry.flexible;
+			FoldLaneHit(lanes, keys, used, hit, hit.key, (float)entry.corners);
+		}
+	}
+	for (uint lane = 0u; lane < kContactLanes; ++lane) {
+		HairClothFold fold;
+		fold.weight = lanes[lane].weight;
+		fold.normalSum = lanes[lane].normalSum;
+		fold.positionSum = lanes[lane].positionSum;
+		fold.velocitySum = lanes[lane].velocitySum;
+		fold.velocityMissing = lanes[lane].velocityMissing ? 1u : 0u;
+		fold.deepest = lanes[lane].deepest;
+		fold.collider = lanes[lane].collider;
+		fold.key = keys[lane];
+		HairClothFolds[chunk * kContactLanes + lane] = fold;
+	}
+}
+
+/** @brief Adds one folded chunk lane to the lane of its driver, by FoldLaneHit's rules with the chunk's summed normal standing for a hit's. */
+void MergeLaneFold(inout HairContactPartial a_lanes[kContactLanes], inout uint a_keys[kContactLanes], inout uint a_used, HairClothFold a_fold)
+{
+	uint lane = a_used;
+	for (uint seen = 0u; seen < kContactLanes; ++seen) {
+		if (seen < a_used && lane == a_used && a_keys[seen] == a_fold.key)
+			lane = seen;
+	}
+	if (lane == a_used) {
+		if (a_used < kContactLanes) {
+			a_keys[a_used] = a_fold.key;
+			a_used = a_used + 1u;
+		} else {
+			lane = 0u;
+			float bestAligned = -2.0f;
+			float foldLength = sqrt(dot(a_fold.normalSum, a_fold.normalSum));
+			for (uint candidate = 0u; candidate < kContactLanes; ++candidate) {
+				float sumLength = sqrt(dot(a_lanes[candidate].normalSum, a_lanes[candidate].normalSum));
+				float aligned = sumLength > 0.0f && foldLength > 0.0f ? dot(a_lanes[candidate].normalSum, a_fold.normalSum) / (sumLength * foldLength) : -1.0f;
+				if (aligned > bestAligned) {
+					bestAligned = aligned;
+					lane = candidate;
+				}
+			}
+		}
+	}
+	HairContactPartial partial = a_lanes[lane];
+	if (partial.weight > 0.0f && dot(partial.normalSum, a_fold.normalSum) < 0.0f)
+		return;
+	partial.weight += a_fold.weight;
+	partial.normalSum += a_fold.normalSum;
+	partial.positionSum += a_fold.positionSum;
+	partial.velocitySum += a_fold.velocitySum;
+	partial.velocityMissing = partial.velocityMissing || a_fold.velocityMissing != 0u;
+	if (a_fold.deepest > partial.deepest) {
+		partial.deepest = a_fold.deepest;
+		partial.collider = a_fold.collider;
+	}
+	a_lanes[lane] = partial;
+}
+
+	/** @brief Merges each bone's sphere hits and folded cloth chunks into one contact per contacted driver, kContactLanes at most, the port of the CPU ContactLanes. */
 	[numthreads(64, 1, 1)] void ContactReduce(uint3 a_dispatchThreadId : SV_DispatchThreadID)
 {
 	uint bone = a_dispatchThreadId.x;
@@ -801,14 +902,13 @@ void FoldLaneHit(inout HairContactPartial a_lanes[kContactLanes], inout uint a_k
 	}
 	if (HairClothTriangleCount != 0u) {
 		uint4 cloth = HairBoneCloth[bone];
-		for (uint owned = 0u; owned < cloth.y; ++owned) {
-			HairClothBoneEntry entry = HairClothBoneList[cloth.x + owned];
-			for (uint slot = 0u; slot < kClothTriangleHits; ++slot) {
-				HairSphereHit hit = HairClothHits[entry.clothTriangle * kClothTriangleHits + slot];
-				if (!(hit.depth > 0.0f))
-					continue;
-				hit.depth *= entry.flexible;
-				FoldLaneHit(lanes, keys, used, hit, hit.key, (float)entry.corners);
+		uint firstChunk = cloth.x / kClothFoldChunk;
+		uint chunkCount = (cloth.y + kClothFoldChunk - 1u) / kClothFoldChunk;
+		for (uint chunk = 0u; chunk < chunkCount; ++chunk) {
+			for (uint foldLane = 0u; foldLane < kContactLanes; ++foldLane) {
+				HairClothFold fold = HairClothFolds[(firstChunk + chunk) * kContactLanes + foldLane];
+				if (fold.weight > 0.0f)
+					MergeLaneFold(lanes, keys, used, fold);
 			}
 		}
 	}

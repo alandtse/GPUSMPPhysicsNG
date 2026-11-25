@@ -297,7 +297,8 @@ TEST_CASE("Cloth triangles pack next to a claim's spheres and move to its slots"
 	REQUIRE(packed.clothVertices.size() == 5);
 	REQUIRE(packed.clothTriangles.size() == 2);
 	REQUIRE(packed.boneCloth.size() == kRigBones);
-	REQUIRE(packed.clothBoneList.size() == 3);
+	// Each bone's entries fill whole chunks, so that a chunk is one bone's and can be folded on its own.
+	REQUIRE(packed.clothBoneList.size() == 2 * GpuRig::kClothFoldChunk);
 	CHECK(packed.clothVertices[1].centreRadius.x == Approx(11.0f));
 	CHECK(packed.clothVertices[1].exempt.y == static_cast<std::uint32_t>(kLeft));
 	CHECK(packed.clothVertices[1].weights.x == Approx(0.5f));
@@ -313,14 +314,15 @@ TEST_CASE("Cloth triangles pack next to a claim's spheres and move to its slots"
 	CHECK(packed.boneCloth[kBody].range.y == 0u);
 	CHECK(packed.boneCloth[kLeft].range.x == 0u);
 	CHECK(packed.boneCloth[kLeft].range.y == 1u);
-	CHECK(packed.boneCloth[kRight].range.x == 1u);
+	CHECK(packed.clothBoneList[1].corners == 0u);
+	CHECK(packed.boneCloth[kRight].range.x == GpuRig::kClothFoldChunk);
 	CHECK(packed.boneCloth[kRight].range.y == 2u);
-	CHECK(packed.clothBoneList[2].triangle == 1u);
-	CHECK(packed.clothBoneList[2].corners == 2u);
-	CHECK(packed.clothBoneList[2].flexible == Approx(1.1f / 3.0f));
+	CHECK(packed.clothBoneList[GpuRig::kClothFoldChunk + 1].triangle == 1u);
+	CHECK(packed.clothBoneList[GpuRig::kClothFoldChunk + 1].corners == 2u);
+	CHECK(packed.clothBoneList[GpuRig::kClothFoldChunk + 1].flexible == Approx(1.1f / 3.0f));
 
 	constexpr std::uint32_t kBoneOffset = 64;
-	const GpuRig::ClothBase base{ 100u, 200u, 300u };
+	const GpuRig::ClothBase base{ 100u, 200u, 320u };
 	const GpuRig::ClaimStatics statics = GpuRig::PackClaimStatics(rig, kBoneOffset, kRigBones, 0u, base);
 	REQUIRE(statics.clothVertices.size() == 5);
 	CHECK(statics.clothVertices[1].exempt.y == kBoneOffset + kLeft);
@@ -329,9 +331,9 @@ TEST_CASE("Cloth triangles pack next to a claim's spheres and move to its slots"
 	CHECK(statics.clothTriangles[1].corners.x == base.vertex + 2u);
 	CHECK(statics.clothTriangles[1].corners.w == kBoneOffset + kRight);
 	REQUIRE(statics.boneCloth.size() == kRigBones);
-	CHECK(statics.boneCloth[kRight].range.x == base.boneList + 1u);
+	CHECK(statics.boneCloth[kRight].range.x == base.boneList + GpuRig::kClothFoldChunk);
 	CHECK(statics.boneCloth[kRight].range.y == 2u);
-	CHECK(statics.clothBoneList[2].triangle == base.triangle + 1u);
+	CHECK(statics.clothBoneList[GpuRig::kClothFoldChunk + 1].triangle == base.triangle + 1u);
 
 	// A claim without cloth triangles still packs an empty range for each of its bones.
 	const GpuRig::ClaimStatics plain = GpuRig::PackClaimStatics(GpuRig::RigData{}, kBoneOffset, kRigBones, 0u, base);

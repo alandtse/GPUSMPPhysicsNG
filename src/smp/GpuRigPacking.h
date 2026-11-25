@@ -291,10 +291,16 @@ namespace SmpPhysics::GpuRig
 	};
 	static_assert(sizeof(ClothTriangleRecord) == 32);
 
+	/**
+	 * @brief Entries of the cloth bone list one thread folds; a bone's slice is padded to a multiple of it, so a chunk holds one bone's entries.
+	 * @note Mirrored by kClothFoldChunk in ContactCS.hlsl.
+	 */
+	inline constexpr std::uint32_t kClothFoldChunk = 64;
+
 	/** @brief One bone's slice of the claim's cloth bone list. */
 	struct BoneCloth
 	{
-		Uint4 range{};  ///< x first entry in the cloth bone list, y how many
+		Uint4 range{};  ///< x first entry in the cloth bone list, a multiple of kClothFoldChunk; y how many, the padding after them left out
 	};
 	static_assert(sizeof(BoneCloth) == 16);
 
@@ -303,10 +309,24 @@ namespace SmpPhysics::GpuRig
 	{
 		std::uint32_t triangle{};
 		float flexible{};         ///< scales the depth
-		std::uint32_t corners{};  ///< how many times the contact is added
+		std::uint32_t corners{};  ///< how many times the contact is added; zero marks the padding that fills a bone's last chunk
 		std::uint32_t padding{};
 	};
 	static_assert(sizeof(ClothBoneEntry) == 16);
+
+	/** @brief One lane of one folded chunk of the cloth bone list, as ContactCS.hlsl's HairClothFold lays it out. */
+	struct ClothFold
+	{
+		float weight{};
+		float normalSum[3]{};
+		float positionSum[3]{};
+		float velocitySum[3]{};
+		std::uint32_t velocityMissing{};
+		float deepest{};
+		std::int32_t collider{ -1 };
+		std::uint32_t key{};
+	};
+	static_assert(sizeof(ClothFold) == 56);
 
 	/** @brief One claim's collision proxies, in the claim's own bone and collider index space. */
 	struct CollisionData

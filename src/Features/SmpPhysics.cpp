@@ -903,6 +903,8 @@ json SmpPhysicsFeature::BuildStatusJson() const
 		result["gpuAvailable"] = gpuSolver.Available();
 		result["gpuClaimCount"] = gpuSolver.ClaimCount();
 		result["gpuRigidClaimCount"] = gpuSolver.Rigid().ClaimCount();
+		const SmpPhysics::GpuSolver::ContactWork work = gpuSolver.Work();
+		result["gpuContactWork"] = { { "spheres", work.spheres }, { "clothVertices", work.clothVertices }, { "clothTriangles", work.clothTriangles }, { "clothBoneEntries", work.clothBoneEntries } };
 		result["gpuRigidAvailable"] = gpuSolver.Rigid().Available();
 		result["heldStrands"] = HeldStrandsJson();
 		result["grip"] = GripReportJson();

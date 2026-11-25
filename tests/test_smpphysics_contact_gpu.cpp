@@ -46,6 +46,7 @@ namespace
 		ComPtr<ID3D11ComputeShader> reduce;
 		ComPtr<ID3D11ComputeShader> clothVertices;
 		ComPtr<ID3D11ComputeShader> clothTriangles;
+		ComPtr<ID3D11ComputeShader> clothFold;
 	};
 
 	const ContactKernels& LoadKernels()
@@ -60,6 +61,7 @@ namespace
 			value.reduce = CompileKernel(device, "ContactReduce", path);
 			value.clothVertices = CompileKernel(device, "ClothVertices", path);
 			value.clothTriangles = CompileKernel(device, "ClothTriangles", path);
+			value.clothFold = CompileKernel(device, "ClothFold", path);
 			return value;
 		}();
 		return built;
@@ -314,19 +316,23 @@ namespace
 		const std::vector<std::uint32_t> cull(kBoneCount * 4);
 		const std::vector<std::uint32_t> unused(4);
 
-		std::array<ComPtr<ID3D11Buffer>, 7> targetBuffers;
+		std::array<ComPtr<ID3D11Buffer>, 8> targetBuffers;
 		targetBuffers[1] = CreateTyped(device, worlds, D3D11_BIND_UNORDERED_ACCESS);
 		targetBuffers[3] = CreateTyped(device, contacts, D3D11_BIND_UNORDERED_ACCESS);
 		targetBuffers[5] = CreateStructured(device, sizeof(GpuRig::SphereHit), sphereList.size(), D3D11_BIND_UNORDERED_ACCESS);
 		targetBuffers[6] = CreateStructured(device, 16, kBoneCount, D3D11_BIND_UNORDERED_ACCESS);
 		const std::size_t clothHitCount = collision.clothTriangles.size() * kClothTriangleHits;
+		const std::size_t clothFoldChunks = collision.clothBoneList.size() / GpuRig::kClothFoldChunk;
+		const std::size_t clothFoldCount = std::max<std::size_t>(clothFoldChunks, 1) * kContactLanes;
 		if (cloth) {
 			targetBuffers[0] = CreateStructured(device, sizeof(GpuRig::Float4), collision.clothVertices.size(), D3D11_BIND_UNORDERED_ACCESS);
 			targetBuffers[2] = CreateStructured(device, sizeof(GpuRig::SphereHit), clothHitCount, D3D11_BIND_UNORDERED_ACCESS);
+			targetBuffers[4] = CreateStructured(device, sizeof(std::uint32_t), collision.clothTriangles.size(), D3D11_BIND_UNORDERED_ACCESS);
+			targetBuffers[7] = CreateStructured(device, sizeof(GpuRig::ClothFold), clothFoldCount, D3D11_BIND_UNORDERED_ACCESS);
 		}
-		const std::array<std::size_t, 7> targetCounts{ collision.clothVertices.size(), kBoneCount, clothHitCount, kBoneCount * kContactLanes, 0, sphereList.size(), kBoneCount };
-		std::array<ID3D11UnorderedAccessView*, 7> targets{};
-		std::array<ComPtr<ID3D11UnorderedAccessView>, 7> targetViews;
+		const std::array<std::size_t, 8> targetCounts{ collision.clothVertices.size(), kBoneCount, clothHitCount, kBoneCount * kContactLanes, collision.clothTriangles.size(), sphereList.size(), kBoneCount, clothFoldCount };
+		std::array<ID3D11UnorderedAccessView*, 8> targets{};
+		std::array<ComPtr<ID3D11UnorderedAccessView>, 8> targetViews;
 		for (std::size_t slot = 0; slot < targets.size(); ++slot) {
 			if (!targetBuffers[slot])
 				continue;
@@ -392,13 +398,15 @@ namespace
 			context->Dispatch(GroupCount(collision.clothVertices.size()), 1, 1);
 			context->CSSetShader(kernels.clothTriangles.Get(), nullptr, 0);
 			context->Dispatch(GroupCount(collision.clothTriangles.size()), 1, 1);
+			context->CSSetShader(kernels.clothFold.Get(), nullptr, 0);
+			context->Dispatch(GroupCount(clothFoldChunks), 1, 1);
 		}
 		context->CSSetShader(kernels.spheres.Get(), nullptr, 0);
 		context->Dispatch(GroupCount(sphereList.size()), 1, 1);
 		context->CSSetShader(kernels.reduce.Get(), nullptr, 0);
 		context->Dispatch(GroupCount(kBoneCount), 1, 1);
 
-		std::array<ID3D11UnorderedAccessView*, 7> noTargets{};
+		std::array<ID3D11UnorderedAccessView*, 8> noTargets{};
 		std::array<ID3D11ShaderResourceView*, 15> noSources{};
 		context->CSSetUnorderedAccessViews(0, static_cast<UINT>(noTargets.size()), noTargets.data(), nullptr);
 		context->CSSetShaderResources(0, static_cast<UINT>(noSources.size()), noSources.data());
@@ -908,6 +916,28 @@ TEST_CASE("A cloth's triangles take contacts from a body proxy's vertices inside
 		for (std::size_t lane = 0; lane < kContactLanes; ++lane)
 			CHECK(IsEmptyLane(lanes[bone * kContactLanes + lane]));
 	}
+}
+
+TEST_CASE("A bone with more cloth triangles than a chunk holds merges its chunks into the same lanes", "[smpphysics][contact_gpu][clothtriangles]")
+{
+	Scene scene = MakeClothScene();
+	const std::size_t triangles = scene.cloth.triangles.size();
+	std::vector<std::vector<ClothBoneTriangle>> owned = scene.cloth.boneTriangles;
+	for (std::uint32_t copy = 1; copy < 40; ++copy) {
+		for (std::size_t triangle = 0; triangle < triangles; ++triangle)
+			scene.cloth.triangles.push_back(scene.cloth.triangles[triangle]);
+		for (std::size_t bone = 0; bone < owned.size(); ++bone) {
+			for (ClothBoneTriangle entry : owned[bone]) {
+				entry.triangle += copy * static_cast<std::uint32_t>(triangles);
+				scene.cloth.boneTriangles[bone].push_back(entry);
+			}
+		}
+	}
+	REQUIRE(scene.cloth.boneTriangles[0].size() > GpuRig::kClothFoldChunk);
+	const std::vector<GpuRig::BoneContact> lanes = RunLanes(scene, {});
+	RequireClothLanes(scene, lanes, 0);
+	RequireClothLanes(scene, lanes, 1);
+	CHECK(lanes[0].deepest == Approx(1.07f).margin(kTolerance));
 }
 
 TEST_CASE("Cloth triangles are tested where their bones pose them, and their depth is scaled by flexible", "[smpphysics][contact_gpu][clothtriangles]")
