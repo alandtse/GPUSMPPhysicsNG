@@ -17,8 +17,11 @@ outfit suites pass except the checks below.
   Standing, its skirt bones sit within 0.03 units of hdtSMP64's on average along the radius from the pelvis (worst bone 0.6),
   since the collision skinning carries the bones' world scale: without it the body proxy of an actor of scale 1.03 was up
   to a unit too small and the skirt rested 0.6 to 1.1 units closer to the body. Running onto the Dragonsreach stairs no
-  frame shows skin in 6 runs, as under hdtSMP64. At the start of a sprint about twice as much skin shows as under hdtSMP64
-  in the first 0.4 s (3600 against 1800 px.ms, four sets each) and half as much after that (100 against 210).
+  frame shows skin in 6 runs, as under hdtSMP64; with both capped to 66 fps, so that a frame takes two solver steps, none
+  in 6 runs against small openings in 3 of hdtSMP64's 6. At the start of a sprint both show the same two openings over the
+  buttocks: with both capped to 100 fps, 2760 px.ms of skin in the first 0.4 s against hdtSMP64's 2700 (four sets each,
+  sets from 1250 to 4530), and none after that against 60. Uncapped the plugin runs faster than hdtSMP64 (7.9 against
+  9.0 ms a frame) and shows more there (3800 against 1900), so compare the two at one frame rate.
 - **Skirts under fast movement** pose the collision surface at the pose the bodies began the step from, blended to the
   frame's pose at each substep, as hdtSMP64 steps its bodies and collision on one clock. Running at 360 units/s, the
   spheres behind a face on DD Elanor Timeless Elegance fell from 166 to about 40 on average and no skin shows through the
