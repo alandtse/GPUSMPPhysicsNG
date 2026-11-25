@@ -85,7 +85,8 @@ cbuffer HairRigidRuntimeParams : register(b0)
 {
 	uint HairRigidRuntimeBodyCount;
 	float HairRigidFrameTime;
-	uint2 HairRigidRuntimePadding;
+	float HairRigidLookAhead;  // seconds RigidWorldExport predicts ahead
+	uint HairRigidRuntimePadding;
 };
 
 HairRigidSolver::Quat LoadRotation(in float4 a_xyzw)
@@ -240,7 +241,12 @@ void CalculateVelocity(in HairRigidSolver::Transform a_from, in HairRigidSolver:
 	HairBoneOutputs[meta.slots.x] = output;
 }
 
-/** @brief Writes each dynamic body's world pose where the GPU solver's contact passes read bone poses. */
+/**
+ * @brief Writes each body's pose at the end of the coming substep, as its velocity predicts it, where the contact passes read bone poses.
+ * @details hdtSMP64 collides at these poses: Bullet predicts every body before it detects contacts, and the collision
+ *          meshes are skinned from the predictions. Posed where the substep begins, cloth meets a body one step behind
+ *          the one it is drawn over.
+ */
 [numthreads(64, 1, 1)] void RigidWorldExport(uint3 a_dispatchThreadId : SV_DispatchThreadID) {
 	const uint index = a_dispatchThreadId.x;
 	if (index >= HairRigidRuntimeBodyCount)
@@ -251,6 +257,11 @@ void CalculateVelocity(in HairRigidSolver::Transform a_from, in HairRigidSolver:
 	if (record.flags.x == 0u && meta.slots.y == kNoBody)
 		return;
 	HairRigidSolver::Transform world = LoadBodyPose(record);
+	if (record.flags.x != 0u)
+		world = HairRigidSolver::IntegrateTransform(world, record.interpolationLinearVelocity.xyz, record.interpolationAngularVelocity.xyz, HairRigidLookAhead);
+	else
+		world = HairRigidSolver::IntegrateTransform(world, record.linearVelocity.xyz * pow(1.0f - record.damping.x, HairRigidLookAhead),
+			record.angularVelocity.xyz * pow(1.0f - record.damping.y, HairRigidLookAhead), HairRigidLookAhead);
 	if (record.flags.x == 0u)
 		world = HairRigidSolver::Compose(world, LoadPose(meta.nodeRotation, meta.nodeTranslation));
 	HairBoneWorld worldOut;
