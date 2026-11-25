@@ -86,6 +86,19 @@ simulates fewer actors: hdtSMP64 `configs.json` (`autoAdjustMaxSkeletons` false,
 frame near 31 ms and hides frame time, so use SE for frame time and VR for per-pass GPU cost (`gpuPassTiming` command,
 `gpuPassStats` query). State the result against the frame budget (VR 11.1 ms, flat 16.7 ms).
 
+### A line in the perf log with every solver commit
+
+`tools/game/perf_check.py` measures this build against hdtSMP64 in the settings the game has (no throttle lifted) and
+appends a line to `docs/perf-data/perf_log.jsonl`: the commit, frame time for both standing and running, the work the
+contact passes do, and the GPU cost of each pass per solver step. Run it under a perf-test lock before committing a change
+to the solver, its shaders or its settings, and put the before and after in the commit body. The log is how a regression
+is traced to its commit: without a line per commit it has to be bisected by hand.
+
+- The frame time has more than one steady state: a longer frame takes more solver steps, each of which costs GPU time. Read
+  it with the steps per frame and compare the cost per step, not two frame times from different launches.
+- The per-pass GPU timers shift a pass's cost onto the pass that reads its output. Trust their total and the frame time;
+  to find what a pass costs, skip it and measure the frame.
+
 ## Open work
 
 - Re-baseline `smp_parity_baseline.json` (`smp_parity_e2e.py --update-baseline`).
