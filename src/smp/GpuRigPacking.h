@@ -510,7 +510,7 @@ namespace SmpPhysics::GpuRig
 	{
 		Float4 rotation{};     ///< skinToBone rotation in w, x, y, z lane order, matching DriverWorld
 		Float4 translation{};  ///< xyz skinToBone translation
-		Uint4 driver{};        ///< x the global driver slot, or kInvalidDriverSlot when the bone is undriven
+		Uint4 driver{};        ///< x the global driver slot, or kInvalidDriverSlot when the bone is undriven; y the bits of the bone's weight threshold
 	};
 	static_assert(sizeof(SurfacePrepBone) == 48);
 

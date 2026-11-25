@@ -20,6 +20,7 @@ namespace SmpPhysics
 		std::vector<std::uint32_t> indices;        ///< the kept triangles, three vertex indices each
 		std::vector<Transform> skinToBone;         ///< one per skin bone, as NiSkinData stores it
 		std::vector<int> boneDriver;               ///< one per skin bone: its index in the claim's driver list, or -1
+		std::vector<float> boneThreshold;          ///< one per skin bone: the shape's weight-threshold for it; a missing entry is zero
 		float margin{};                            ///< the shape's collision margin, which thickens the surface
 		float contactPenetration{};                ///< the shape's penetration allowance in hdtSMP64's contact rule, see TriangleGrid::Query
 		float penetration{ kDefaultPenetration };  ///< depth the solver's safety clamp tolerates before it holds a bone back

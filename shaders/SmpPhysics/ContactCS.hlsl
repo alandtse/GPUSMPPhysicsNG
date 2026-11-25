@@ -119,6 +119,25 @@ StructuredBuffer<HairClothTriangle> HairClothTriangleList : register(t3);
 StructuredBuffer<uint4> HairBoneCloth : register(t4);  // per bone slot: x = first entry in the cloth bone list, y = how many
 StructuredBuffer<HairClothBoneEntry> HairClothBoneList : register(t11);
 
+/** @brief A body surface's vertex, bone and face as SurfacePrepCS.hlsl holds them; unbound when the surfaces are posed on the CPU. */
+struct HairBodyVertex
+{
+	float4 position;
+	uint4 bones;  // one global skin-bone slot per weight, or 0xFFFFFFFF
+	float4 weights;
+};
+
+struct HairBodyBone
+{
+	float4 rotation;
+	float4 translation;
+	uint4 driver;  // x = the global driver slot, or 0xFFFFFFFF; y = the bits of the bone's weight threshold
+};
+
+StructuredBuffer<HairBodyVertex> HairBodyVertices : register(t15);
+StructuredBuffer<HairBodyBone> HairBodyBones : register(t16);
+StructuredBuffer<uint4> HairBodyFaces : register(t17);  // per posed face slot: xyz = its corners' global vertex slots
+
 RWStructuredBuffer<float4> HairClothPosed : register(u0);  // per cloth vertex, its world position this substep
 RWStructuredBuffer<HairBoneWorld> HairBoneWorlds : register(u1);
 
@@ -399,7 +418,7 @@ float4 DriverPointVelocity(uint a_driverPlusOne, float3 a_point)
 	return float4((map.translation + HairCollision::QuatRotate(map.rotation, a_point) - a_point) * delta.translation.w, 1.0f);
 }
 
-static const uint kClothTriangleHits = 2u;  // mirrors kClothTriangleHits in ClothTriangles.h
+static const uint kClothTriangleHits = 4u;  // mirrors kClothTriangleHits in ClothTriangles.h
 
 RWStructuredBuffer<HairSphereHit> HairClothHits : register(u2);   // kClothTriangleHits per cloth triangle: centre is the contact point on the triangle
 RWStructuredBuffer<uint> HairClothHitCounts : register(u4);      // per cloth triangle, how many of its hit slots hold a hit, so the merge skips the rest unread
@@ -634,16 +653,31 @@ HairSphereHit NoSphereHit()
 	return hit;
 }
 
-/** @brief Keeps a triangle's deepest hit in a_best and its deepest hit on any other driver in a_other. */
-void OfferClothHit(inout HairSphereHit a_best, inout HairSphereHit a_other, HairSphereHit a_hit)
+/** @brief Keeps a triangle's deepest hit on each driver in a_slots, the deepest drivers first; a hit no deeper than its driver's is dropped. */
+void OfferClothHit(inout HairSphereHit a_slots[kClothTriangleHits], HairSphereHit a_hit)
 {
-	if (a_hit.depth > a_best.depth) {
-		if (a_hit.key != a_best.key && a_best.depth > 0.0f)
-			a_other = a_best;
-		a_best = a_hit;
-	} else if (a_hit.key != a_best.key && a_hit.depth > a_other.depth) {
-		a_other = a_hit;
+	uint held = kClothTriangleHits;
+	for (uint seen = 0u; seen < kClothTriangleHits; ++seen) {
+		if (held == kClothTriangleHits && a_slots[seen].depth > 0.0f && a_slots[seen].key == a_hit.key)
+			held = seen;
 	}
+	if (held != kClothTriangleHits) {
+		if (!(a_hit.depth > a_slots[held].depth))
+			return;
+		for (uint close = held; close + 1u < kClothTriangleHits; ++close)
+			a_slots[close] = a_slots[close + 1u];
+		a_slots[kClothTriangleHits - 1u] = NoSphereHit();
+	}
+	uint place = kClothTriangleHits;
+	for (uint slot = 0u; slot < kClothTriangleHits; ++slot) {
+		if (place == kClothTriangleHits && a_hit.depth > a_slots[slot].depth)
+			place = slot;
+	}
+	if (place == kClothTriangleHits)
+		return;
+	for (uint open = kClothTriangleHits - 1u; open > place; --open)
+		a_slots[open] = a_slots[open - 1u];
+	a_slots[place] = a_hit;
 }
 
 /**
@@ -656,8 +690,9 @@ void OfferClothHit(inout HairSphereHit a_best, inout HairSphereHit a_other, Hair
 	if (index >= HairClothTriangleCount)
 		return;
 	HairClothTriangle cloth = HairClothTriangleList[index];
-	HairSphereHit best = NoSphereHit();
-	HairSphereHit other = NoSphereHit();
+	HairSphereHit slots[kClothTriangleHits];
+	for (uint clear = 0u; clear < kClothTriangleHits; ++clear)
+		slots[clear] = NoSphereHit();
 	uint tree = cloth.corners.w < HairBoneCount ? HairBoneTrees[cloth.corners.w] : kNoTree;
 	if (tree != kNoTree) {
 		HairTreeInput input = HairTreeInputs[tree];
@@ -708,8 +743,26 @@ void OfferClothHit(inout HairSphereHit a_best, inout HairSphereHit a_other, Hair
 								continue;
 							hit.collider = (int)(colliderCount + surface);
 							hit.velocityValid = float4(bodyPoint, 0.0f);
-							hit.key = asuint(face.b.w);
-							OfferClothHit(best, other, hit);
+							// hdtSMP64 gives the cloth a contact with every bone of the body vertex above the shape's threshold, each moving as that bone does.
+							uint vertex = HairBodyFaces[meta.base.x + first + slot][corner];
+							HairBodyVertex body = HairBodyVertices[vertex];
+							bool credited = false;
+							for (uint influence = 0u; influence < 4u; ++influence) {
+								uint bodyBone = body.bones[influence];
+								float weight = body.weights[influence];
+								if (bodyBone == 0xFFFFFFFFu || !(weight > kTriangleContactEpsilon))
+									continue;
+								HairBodyBone skinBone = HairBodyBones[bodyBone];
+								if (skinBone.driver.x == 0xFFFFFFFFu || !(weight > asfloat(skinBone.driver.y)))
+									continue;
+								hit.key = skinBone.driver.x + 1u;
+								OfferClothHit(slots, hit);
+								credited = true;
+							}
+							if (!credited) {
+								hit.key = asuint(face.b.w);
+								OfferClothHit(slots, hit);
+							}
 						}
 					}
 					node = current.skip;
@@ -718,11 +771,15 @@ void OfferClothHit(inout HairSphereHit a_best, inout HairSphereHit a_other, Hair
 		}
 	}
 	// Until here velocityValid holds the body point the velocity is taken at.
-	best.velocityValid = best.depth > 0.0f ? DriverPointVelocity(best.key, best.velocityValid.xyz) : float4(0.0f, 0.0f, 0.0f, 0.0f);
-	other.velocityValid = other.depth > 0.0f ? DriverPointVelocity(other.key, other.velocityValid.xyz) : float4(0.0f, 0.0f, 0.0f, 0.0f);
-	HairClothHits[index * kClothTriangleHits] = best;
-	HairClothHits[index * kClothTriangleHits + 1u] = other;
-	HairClothHitCounts[index] = (best.depth > 0.0f ? 1u : 0u) + (other.depth > 0.0f ? 1u : 0u);
+	uint held = 0u;
+	for (uint write = 0u; write < kClothTriangleHits; ++write) {
+		if (slots[write].depth > 0.0f) {
+			slots[write].velocityValid = DriverPointVelocity(slots[write].key, slots[write].velocityValid.xyz);
+			HairClothHits[index * kClothTriangleHits + held] = slots[write];
+			held = held + 1u;
+		}
+	}
+	HairClothHitCounts[index] = held;
 }
 
 /**

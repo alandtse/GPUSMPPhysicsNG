@@ -42,7 +42,7 @@ namespace SmpPhysics
 		}
 
 		constexpr std::uint32_t kMinimumSurfaceCapacity = 64;
-		constexpr std::uint32_t kStepViewCount = 15;
+		constexpr std::uint32_t kStepViewCount = 18;
 		constexpr std::uint32_t kStepTargetCount = 8;
 		constexpr std::uint32_t kSurfacePrepViewCount = 7;    ///< t0..t6: the prep records and the drivers.
 		constexpr std::uint32_t kSurfacePrepTargetCount = 5;  ///< u0..u4: scratch, then the contact pass's inputs.
@@ -1190,7 +1190,9 @@ namespace SmpPhysics
 			surfacePrepActive ? surfacePrepMetasSrv.get() : surfaceMetasSrv.get(),
 			surfacePrepActive ? gpuSurfaceTrianglesSrv.get() : surfaceTrianglesSrv.get(),
 			surfacePrepActive ? gpuSurfaceNodesSrv.get() : surfaceNodesSrv.get(),
-			cloth ? clothBoneListSrv.get() : nullptr, sphereListSrv.get(), boneTreesSrv.get(), driverDeltasSrv.get() };
+			cloth ? clothBoneListSrv.get() : nullptr, sphereListSrv.get(), boneTreesSrv.get(), driverDeltasSrv.get(),
+			surfacePrepActive ? surfacePrepVerticesSrv.get() : nullptr, surfacePrepActive ? surfacePrepBonesSrv.get() : nullptr,
+			surfacePrepActive ? surfacePrepTrianglesSrv.get() : nullptr };
 		ID3D11UnorderedAccessView* contactTargets[kStepTargetCount] = { cloth ? clothPosedUav.get() : nullptr, worldsUav.get(), cloth ? clothHitsUav.get() : nullptr, contactsUav.get(),
 			cloth ? clothHitCountsUav.get() : nullptr, sphereHitsUav.get(), boneCullUav.get(), cloth ? clothFoldsUav.get() : nullptr };
 		ID3D11Buffer* constantView = constants->CB();

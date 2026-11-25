@@ -23,10 +23,10 @@ namespace SmpPhysics
 	 */
 	inline constexpr float kTriangleContactEpsilon = 1.1920929e-7f;
 	/**
-	 * @brief Hits one cloth triangle keeps per substep: its deepest, and its deepest on another driver.
+	 * @brief Hits one cloth triangle keeps per substep: its deepest on each driver, the deepest drivers first.
 	 * @note Mirrored by kClothTriangleHits in ContactCS.hlsl.
 	 */
-	inline constexpr std::uint32_t kClothTriangleHits = 2;
+	inline constexpr std::uint32_t kClothTriangleHits = 4;
 
 	/** @brief One cloth mesh vertex as a blend over the rig bones it is skinned to. */
 	struct ClothVertex

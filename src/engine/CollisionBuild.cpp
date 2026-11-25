@@ -2069,6 +2069,7 @@ void SmpPhysicsFeature::BuildRigSurfaces(CollisionBuildState& s) const
 		}
 		const std::vector<std::uint32_t> triangles(skinned.triangles.begin(), skinned.triangles.end());
 		surface.indices = SmpPhysics::KeepWeightedTriangles(surface.vertices, triangles, threshold);
+		surface.boneThreshold = threshold;
 		if (surface.indices.empty())
 			continue;
 		a_collision.surfaces.push_back(std::move(surface));

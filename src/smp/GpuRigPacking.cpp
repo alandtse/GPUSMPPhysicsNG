@@ -571,7 +571,7 @@ namespace SmpPhysics::GpuRig
 			SurfacePrepBone packed;
 			packed.rotation = { skin.rotation.w, skin.rotation.x, skin.rotation.y, skin.rotation.z };
 			packed.translation = { skin.translation.x, skin.translation.y, skin.translation.z, 0.0f };
-			packed.driver = { driverSlot, 0u, 0u, 0u };
+			packed.driver = { driverSlot, std::bit_cast<std::uint32_t>(bone < a_surface.boneThreshold.size() ? a_surface.boneThreshold[bone] : 0.0f), 0u, 0u };
 			a_data.bones.push_back(packed);
 		}
 

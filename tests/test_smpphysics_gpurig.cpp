@@ -852,7 +852,8 @@ TEST_CASE("The reference surface pass matches posing, refitting and packing on t
 TEST_CASE("Two surfaces share one prep buffer through their global offsets", "[smpphysics][gpurig]")
 {
 	const SkinnedSurface first = MakeGridSurface(4);
-	const SkinnedSurface second = MakeTwoBoneGridSurface();
+	SkinnedSurface second = MakeTwoBoneGridSurface();
+	second.boneThreshold = { 0.25f };
 	const std::vector<Transform> before = FirstDriverPose();
 	const std::vector<Transform> after = SecondDriverPose();
 	constexpr std::uint32_t kSecondDriverOffset = 3;
@@ -884,6 +885,8 @@ TEST_CASE("Two surfaces share one prep buffer through their global offsets", "[s
 	for (std::size_t bone = 0; bone < second.skinToBone.size(); ++bone) {
 		REQUIRE(data.bones[boneBase + bone].driver.x ==
 				kSecondDriverOffset + static_cast<std::uint32_t>(second.boneDriver[bone]));
+		// A bone the surface lists no threshold for packs zero.
+		REQUIRE(std::bit_cast<float>(data.bones[boneBase + bone].driver.y) == (bone == 0 ? 0.25f : 0.0f));
 	}
 	const auto expectedBone = [&](int a_bone) -> std::uint32_t {
 		return a_bone >= 0 ? static_cast<std::uint32_t>(boneBase + static_cast<std::size_t>(a_bone)) :
