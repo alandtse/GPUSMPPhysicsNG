@@ -75,18 +75,20 @@ namespace SmpPhysics
 		}
 
 		/**
-		 * @brief Rewrites a_data into a dynamic structured buffer, growing it first when it does not fit.
+		 * @brief Rewrites a_data into a structured buffer, growing it first when it does not fit.
+		 * @param a_resident Keeps the buffer in GPU memory rather than CPU-writable. A list every thread of a pass reads each step belongs
+		 *        there: read from a CPU-writable buffer, the contact passes took four fifths of the frame.
 		 * @return false when the buffer could not be mapped.
 		 */
 		template <typename T>
 		bool UploadDynamic(std::unique_ptr<Buffer>& a_buffer, winrt::com_ptr<ID3D11ShaderResourceView>& a_srv,
-			std::uint32_t& a_capacity, const std::vector<T>& a_data, const char* a_name)
+			std::uint32_t& a_capacity, const std::vector<T>& a_data, const char* a_name, bool a_resident = false)
 		{
 			const std::uint32_t needed = std::max<std::uint32_t>(1u, static_cast<std::uint32_t>(a_data.size()));
 			if (!a_buffer || needed > a_capacity) {
 				try {
 					const std::uint32_t capacity = std::max({ needed, a_capacity * 2u, kMinimumSurfaceCapacity });
-					auto buffer = std::make_unique<Buffer>(StructuredBufferDesc<T>(capacity, false, true), nullptr, a_name);
+					auto buffer = std::make_unique<Buffer>(StructuredBufferDesc<T>(capacity, false, !a_resident), nullptr, a_name);
 					buffer->CreateSRV(StructuredSrvDesc(capacity));
 					a_capacity = capacity;
 					a_srv = buffer->srv;
@@ -98,6 +100,10 @@ namespace SmpPhysics
 			}
 			if (a_data.empty())
 				return true;
+			if (a_resident) {
+				Util::UpdateBufferSlots(a_buffer->resource.get(), 0u, a_data);
+				return true;
+			}
 			return UploadDiscard(globals::d3d::context, a_buffer->resource.get(), a_data.data(), a_data.size() * sizeof(T));
 		}
 
@@ -666,7 +672,7 @@ namespace SmpPhysics
 		} else {
 			return;
 		}
-		if (!UploadDynamic(sphereList, sphereListSrv, sphereListCapacity, sphereListShadow, "SmpPhysics::PoolSphereList")) {
+		if (!UploadDynamic(sphereList, sphereListSrv, sphereListCapacity, sphereListShadow, "SmpPhysics::PoolSphereList", true)) {
 			Fail("the GPU solver sphere list could not be uploaded; claimed hair stays at the engine's pose");
 			return;
 		}
@@ -691,9 +697,9 @@ namespace SmpPhysics
 		clothTriangleCount = 0u;
 		if (clothTriangleShadow.empty())
 			return;
-		if (!UploadDynamic(clothVertexList, clothVertexListSrv, clothVertexCapacity, clothVertexShadow, "SmpPhysics::PoolClothVertices") ||
-			!UploadDynamic(clothTriangleList, clothTriangleListSrv, clothTriangleCapacity, clothTriangleShadow, "SmpPhysics::PoolClothTriangles") ||
-			!UploadDynamic(clothBoneList, clothBoneListSrv, clothBoneListCapacity, clothBoneListShadow, "SmpPhysics::PoolClothBoneList")) {
+		if (!UploadDynamic(clothVertexList, clothVertexListSrv, clothVertexCapacity, clothVertexShadow, "SmpPhysics::PoolClothVertices", true) ||
+			!UploadDynamic(clothTriangleList, clothTriangleListSrv, clothTriangleCapacity, clothTriangleShadow, "SmpPhysics::PoolClothTriangles", true) ||
+			!UploadDynamic(clothBoneList, clothBoneListSrv, clothBoneListCapacity, clothBoneListShadow, "SmpPhysics::PoolClothBoneList", true)) {
 			Fail("the GPU solver cloth triangle lists could not be uploaded; claimed hair stays at the engine's pose");
 			return;
 		}

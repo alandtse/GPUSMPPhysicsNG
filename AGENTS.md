@@ -98,6 +98,8 @@ is traced to its commit: without a line per commit it has to be bisected by hand
   it with the steps per frame and compare the cost per step, not two frame times from different launches.
 - The per-pass GPU timers shift a pass's cost onto the pass that reads its output. Trust their total and the frame time;
   to find what a pass costs, skip it and measure the frame.
+- A list that every thread of a pass reads each step must live in GPU memory (`UploadDynamic(..., true)`), not in a
+  CPU-writable buffer: that alone took this solver from 47 ms a frame to 9.5.
 
 ## Open work
 
