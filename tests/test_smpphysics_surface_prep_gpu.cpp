@@ -51,7 +51,8 @@ namespace
 	}
 
 	/** @brief Poses the vertices of three triangles, each over its own three vertices, and returns their records. */
-	std::vector<GpuRig::SurfaceTriangle> Run(const std::vector<GpuRig::SurfacePrepVertex>& a_vertices, const std::vector<GpuRig::SurfacePrepTriangle>& a_triangles)
+	std::vector<GpuRig::SurfaceTriangle> Run(const std::vector<GpuRig::SurfacePrepVertex>& a_vertices, const std::vector<GpuRig::SurfacePrepTriangle>& a_triangles,
+		const std::vector<GpuRig::SurfacePrepBone>& a_bones = MakeBones())
 	{
 		static const GpuDevice gpu = CreateDevice(D3D_DRIVER_TYPE_WARP);
 		static const std::filesystem::path path = std::filesystem::path(SMPPHYSICS_FEATURE_SHADER_DIR) / "SmpPhysics" / "SurfacePrepCS.hlsl";
@@ -61,7 +62,7 @@ namespace
 		static const ComPtr<ID3D11ComputeShader> poseKernel = CompileKernel(device, "SurfacePose", path);
 		static const ComPtr<ID3D11ComputeShader> triangleKernel = CompileKernel(device, "SurfaceTriangles", path);
 
-		const std::vector<GpuRig::SurfacePrepBone> bones = MakeBones();
+		const std::vector<GpuRig::SurfacePrepBone>& bones = a_bones;
 		std::vector<GpuRig::DriverWorld> drivers(kDriverSlots);
 		for (GpuRig::DriverWorld& driver : drivers)
 			driver.rotation = { 1.0f, 0.0f, 0.0f, 0.0f };
@@ -160,4 +161,20 @@ TEST_CASE("A posed triangle records the driver that carries most of its weight, 
 	CHECK(records[1].a.y == Approx(20.0f).margin(1e-5f));
 	CHECK(records[3].a.x == Approx(0.0f).margin(1e-5f));
 	CHECK(std::bit_cast<std::uint32_t>(records[2].a.w) == 2u);
+}
+
+TEST_CASE("A posed vertex is scaled about its bone by the bone's skin scale", "[smpphysics][surface_prep_gpu]")
+{
+	std::vector<GpuRig::SurfacePrepBone> bones = MakeBones();
+	bones[0].translation = { -4.0f, 0.0f, 0.0f, 1.5f };
+	const std::vector<GpuRig::SurfacePrepVertex> vertices{ MakeVertex(4.0f, 0.0f, 0, 1.0f), MakeVertex(6.0f, 0.0f, 0, 1.0f), MakeVertex(4.0f, 2.0f, 0, 1.0f) };
+	std::vector<GpuRig::SurfacePrepTriangle> triangles(1);
+	triangles[0].corners = { 0u, 1u, 2u, 0u };
+
+	const std::vector<GpuRig::SurfaceTriangle> records = Run(vertices, triangles, bones);
+	REQUIRE(records.size() == 1);
+	// Driver 5 sits at x = 10; the bind translation is already in world units, so only the vertex is scaled.
+	CHECK(records[0].a.x == Approx(10.0f - 4.0f + 1.5f * 4.0f).margin(1e-4f));
+	CHECK(records[0].b.x == Approx(10.0f - 4.0f + 1.5f * 6.0f).margin(1e-4f));
+	CHECK(records[0].c.y == Approx(1.5f * 2.0f).margin(1e-4f));
 }

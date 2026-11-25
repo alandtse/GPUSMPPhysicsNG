@@ -64,7 +64,8 @@ namespace SmpPhysics
 				if (ownerSlot == Util::kSkinInfluences)
 					return false;
 				const auto localIn = [&](std::size_t a_slot) {
-					return (*mesh.skinToBone)[static_cast<std::size_t>(a_vertex.bone[a_slot])].TransformPoint(a_vertex.position);
+					const auto skinBone = static_cast<std::size_t>(a_vertex.bone[a_slot]);
+					return ScaledSkinPoint((*mesh.skinToBone)[skinBone], a_vertex.position, mesh.skinScale && skinBone < mesh.skinScale->size() ? (*mesh.skinScale)[skinBone] : 1.0f);
 				};
 				a_out = {};
 				a_out.bone = RigBoneOf(a_vertex.bone[ownerSlot]);

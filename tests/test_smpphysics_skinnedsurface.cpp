@@ -94,6 +94,19 @@ TEST_CASE("A posed vertex follows the drivers its bones are weighted to", "[smpp
 	CHECK(positions[1].y == Approx(10.0f));
 }
 
+TEST_CASE("A posed vertex is scaled about its bone by the bone's skin scale", "[smpphysics][skinnedsurface]")
+{
+	SkinnedSurface surface;
+	surface.vertices = { Vertex({ 6, 0, 0 }, 0, 1.0f) };
+	surface.skinToBone = { Translated({ -4, 0, 0 }) };
+	surface.skinScale = { 1.5f };
+	surface.boneDriver = { 0 };
+
+	const std::vector<Vec3> positions = PoseSurface(surface, { Translated({ 10, 0, 0 }) });
+	REQUIRE(positions.size() == 1);
+	CHECK(positions[0].x == Approx(10.0f - 4.0f + 1.5f * 6.0f));
+}
+
 TEST_CASE("A bone nothing drives is skipped and a vertex with no driven bone keeps its bind position", "[smpphysics][skinnedsurface]")
 {
 	SkinnedSurface surface;

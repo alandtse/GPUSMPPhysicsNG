@@ -91,7 +91,8 @@ namespace SmpPhysics
 				const float weight = vertex.weight[slot];
 				if (!(weight > 0.0f))
 					continue;
-				sum = sum + skin[static_cast<std::size_t>(bone)].TransformPoint(vertex.position) * weight;
+				const float scale = static_cast<std::size_t>(bone) < a_surface.skinScale.size() ? a_surface.skinScale[static_cast<std::size_t>(bone)] : 1.0f;
+				sum = sum + ScaledSkinPoint(skin[static_cast<std::size_t>(bone)], vertex.position, scale) * weight;
 				total += weight;
 			}
 			positions.push_back(total > 0.0f ? sum / total : vertex.position);

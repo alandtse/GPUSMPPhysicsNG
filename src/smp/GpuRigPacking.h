@@ -508,9 +508,9 @@ namespace SmpPhysics::GpuRig
 	/** @brief One skin bone's bind transform and the global driver slot it follows. */
 	struct SurfacePrepBone
 	{
-		Float4 rotation{};     ///< skinToBone rotation in w, x, y, z lane order, matching DriverWorld
-		Float4 translation{};  ///< xyz skinToBone translation
-		Uint4 driver{};        ///< x the global driver slot, or kInvalidDriverSlot when the bone is undriven; y the bits of the bone's weight threshold
+		Float4 rotation{};                             ///< skinToBone rotation in w, x, y, z lane order, matching DriverWorld
+		Float4 translation{ 0.0f, 0.0f, 0.0f, 1.0f };  ///< xyz skinToBone translation; w the scale of the rotated vertex, see SkinnedSurface::skinScale
+		Uint4 driver{};                                ///< x the global driver slot, or kInvalidDriverSlot when the bone is undriven; y the bits of the bone's weight threshold
 	};
 	static_assert(sizeof(SurfacePrepBone) == 48);
 

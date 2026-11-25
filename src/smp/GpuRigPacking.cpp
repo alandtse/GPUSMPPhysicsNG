@@ -570,7 +570,7 @@ namespace SmpPhysics::GpuRig
 			                                     kInvalidDriverSlot;
 			SurfacePrepBone packed;
 			packed.rotation = { skin.rotation.w, skin.rotation.x, skin.rotation.y, skin.rotation.z };
-			packed.translation = { skin.translation.x, skin.translation.y, skin.translation.z, 0.0f };
+			packed.translation = { skin.translation.x, skin.translation.y, skin.translation.z, bone < a_surface.skinScale.size() ? a_surface.skinScale[bone] : 1.0f };
 			packed.driver = { driverSlot, std::bit_cast<std::uint32_t>(bone < a_surface.boneThreshold.size() ? a_surface.boneThreshold[bone] : 0.0f), 0u, 0u };
 			a_data.bones.push_back(packed);
 		}
@@ -674,7 +674,7 @@ namespace SmpPhysics::GpuRig
 				const float weight = weights[slot];
 				if (!(weight > 0.0f))
 					continue;
-				sum = sum + skin[bone].TransformPoint(bind) * weight;
+				sum = sum + ScaledSkinPoint(skin[bone], bind, a_data.bones[bone].translation.w) * weight;
 				total += weight;
 			}
 			posed[index] = total > 0.0f ? sum / total : bind;

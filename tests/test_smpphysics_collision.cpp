@@ -455,6 +455,25 @@ TEST_CASE("Skinning blends a vertex between its bones' world transforms", "[SmpP
 	REQUIRE(SkinVertexToWorld(vertex, boneToWorld, skinToBone).x == Approx(10.0f).margin(1e-4f));
 }
 
+TEST_CASE("Skinning scales a vertex about its bone by the bone's skin scale", "[SmpPhysics]")
+{
+	std::vector<Transform> skinToBone(1);
+	skinToBone[0].translation = { -4.0f, 0.0f, 0.0f };
+	std::vector<Transform> boneToWorld(1);
+	boneToWorld[0].translation = { 10.0f, 0.0f, 0.0f };
+	boneToWorld[0].rotation = FromAxisAngle(Vec3{ 0.0f, 0.0f, 1.0f }, 1.5707963f);
+
+	SkinnedVertex vertex;
+	vertex.position = { 6.0f, 0.0f, 0.0f };
+	vertex.bone[0] = 0;
+	vertex.weight[0] = 1.0f;
+	// The bind translation is already in world units, so the bone-space point is -4 + 1.5 * 6 = 5 along the bone's x, which the bone turns to world y.
+	const Vec3 world = SkinVertexToWorld(vertex, boneToWorld, skinToBone, { 1.5f });
+	REQUIRE(world.x == Approx(10.0f).margin(1e-4f));
+	REQUIRE(world.y == Approx(5.0f).margin(1e-4f));
+	REQUIRE(SkinVertexToWorld(vertex, boneToWorld, skinToBone).y == Approx(2.0f).margin(1e-4f));
+}
+
 TEST_CASE("Collider queries give finite distances and outward normals", "[SmpPhysics]")
 {
 	const std::vector<Transform> drivers = { Transform{} };

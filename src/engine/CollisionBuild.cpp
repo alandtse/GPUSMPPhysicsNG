@@ -253,6 +253,16 @@ namespace
 		return a_root->GetObjectByName(RE::BSFixedString(mergedName && *mergedName ? mergedName : a_name.c_str()));
 	}
 
+	/** @brief A bind transform with the bone's world scale folded into its translation, and the scale left for the rotated vertex in a_scale. */
+	Transform ScaledSkinToBone(const RE::NiAVObject* a_bone, const RE::NiTransform& a_skinToBone, float& a_scale)
+	{
+		const float boneScale = a_bone ? a_bone->world.scale : 1.0f;
+		Transform skin = ToSolverTransform(a_skinToBone);
+		skin.translation = skin.translation * boneScale;
+		a_scale = boneScale * a_skinToBone.scale;
+		return skin;
+	}
+
 	/** @brief A shape's vertices with the skinning needed to pose them at the current frame. */
 	struct SkinnedShape
 	{
@@ -261,6 +271,7 @@ namespace
 		std::vector<std::array<float, Util::kSkinInfluences>> weights;
 		std::vector<RE::NiAVObject*> skinBones;  ///< not owned: a reference taken on a bone mid-destruction is released into a second delete
 		std::vector<Transform> skinToBone;
+		std::vector<float> skinScale;
 		std::vector<std::uint16_t> triangles;  ///< three skin bone local indices each
 		std::vector<Transform> boneWorld;      ///< this frame's world transform of each skin bone
 		bool strips{};
@@ -283,11 +294,12 @@ namespace
 		a_shape.skinBones.assign(skinBones, nullptr);
 		a_shape.boneWorld.resize(skinBones);
 		a_shape.skinToBone.resize(skinBones);
+		a_shape.skinScale.resize(skinBones);
 		for (std::uint32_t index = 0; index < skinBones; ++index) {
 			RE::NiAVObject* bone = skin->bones[index];
 			a_shape.skinBones[index] = bone;
 			a_shape.boneWorld[index] = bone != nullptr ? ToSolverTransform(bone->world) : Transform{};
-			a_shape.skinToBone[index] = ToSolverTransform(skin->skinData->GetBoneDataSkinToBone(index));
+			a_shape.skinToBone[index] = ScaledSkinToBone(bone, skin->skinData->GetBoneDataSkinToBone(index), a_shape.skinScale[index]);
 		}
 
 		a_shape.positions.reserve(vertices.size());
@@ -336,7 +348,7 @@ namespace
 	/** @brief A vertex skinned by the nodes' current world transforms, as the renderer would draw it. */
 	Vec3 Posed(const SkinnedShape& a_shape, std::size_t a_vertex)
 	{
-		return SmpPhysics::SkinVertexToWorld(VertexOf(a_shape, a_vertex), a_shape.boneWorld, a_shape.skinToBone);
+		return SmpPhysics::SkinVertexToWorld(VertexOf(a_shape, a_vertex), a_shape.boneWorld, a_shape.skinToBone, a_shape.skinScale);
 	}
 
 	/** @brief A vertex skinned by the palette matrices the GPU bound for drawing it. */
@@ -543,7 +555,7 @@ namespace
 						++onHairBones;
 					segmentBone = segmentOfSkinBone[slot];
 				}
-				a_result.samples.push_back({ SmpPhysics::SkinVertexToWorld(vertex, shape.boneWorld, shape.skinToBone), segmentBone });
+				a_result.samples.push_back({ SmpPhysics::SkinVertexToWorld(vertex, shape.boneWorld, shape.skinToBone, shape.skinScale), segmentBone });
 			}
 			if (!shape.positions.empty() && onHairBones * 2 > shape.positions.size()) {
 				a_result.samples.resize(first);
@@ -1435,6 +1447,7 @@ struct SmpPhysicsFeature::CollisionBuildState
 	void BindSurfaceDrivers(const SkinnedShape& a_skinned, SmpPhysics::SkinnedSurface& a_surface)
 	{
 		a_surface.skinToBone = a_skinned.skinToBone;
+		a_surface.skinScale = a_skinned.skinScale;
 		a_surface.boneDriver.assign(a_skinned.skinBones.size(), -1);
 		for (std::size_t bone = 0; bone < a_skinned.skinBones.size(); ++bone) {
 			RE::NiAVObject* node = a_skinned.skinBones[bone];
@@ -1697,7 +1710,13 @@ bool SmpPhysicsFeature::BuildHairSpheres(CollisionBuildState& s, std::string& a_
 			}
 		}
 		totalSkinBones += skinBones;
-		const auto skinTransform = [&](int a_skinBone) { return ToSolverTransform(skin->skinData->GetBoneDataSkinToBone(static_cast<std::uint32_t>(a_skinBone))); };
+		std::vector<Transform> skinToBone(skinBones);
+		std::vector<float> skinScale(skinBones);
+		for (std::uint32_t index = 0; index < skinBones; ++index)
+			skinToBone[index] = ScaledSkinToBone(skin->bones[index], skin->skinData->GetBoneDataSkinToBone(index), skinScale[index]);
+		const auto skinLocal = [&](int a_skinBone, const Vec3& a_position) {
+			return SmpPhysics::ScaledSkinPoint(skinToBone[static_cast<std::size_t>(a_skinBone)], a_position, skinScale[static_cast<std::size_t>(a_skinBone)]);
+		};
 		const auto rigBoneOf = [&](int a_skinBone) { return a_skinBone >= 0 && static_cast<std::size_t>(a_skinBone) < rigBoneOfSkinBone.size() ? rigBoneOfSkinBone[static_cast<std::size_t>(a_skinBone)] : -1; };
 		const auto flexibleOf = [&](const SkinnedVertex& a_vertex) {
 			float flexible = 0.0f;
@@ -1720,10 +1739,7 @@ bool SmpPhysicsFeature::BuildHairSpheres(CollisionBuildState& s, std::string& a_
 		bool triangleContacts = false;
 		if (std::ranges::any_of(shapes.triangleShapes, [&shape](const RigShape& a_candidate) { return &a_candidate == &shape; }) && SmpPhysics::ReadCardTriangles(mesh, triangles, triangleReason)) {
 			if (settings.TriangleContacts && perShape) {
-				std::vector<Transform> skinToBone(skinBones);
-				for (std::uint32_t index = 0; index < skinBones; ++index)
-					skinToBone[index] = skinTransform(static_cast<int>(index));
-				const SmpPhysics::ClothMesh clothMesh{ shape.name, &vertices, &triangles, &rigBoneOfSkinBone, &skinToBone, &dynamicBone, &marginMultiplier, &weightThreshold, shape.margin, shape.penetration };
+				const SmpPhysics::ClothMesh clothMesh{ shape.name, &vertices, &triangles, &rigBoneOfSkinBone, &skinToBone, &dynamicBone, &marginMultiplier, &weightThreshold, shape.margin, shape.penetration, &skinScale };
 				triangleContacts = SmpPhysics::AppendClothTriangles(a_collision.clothTriangles, clothMesh) > 0;
 			}
 			for (std::size_t triangle = 0; triangle + 2 < triangles.size(); triangle += 3) {
@@ -1751,7 +1767,7 @@ bool SmpPhysicsFeature::BuildHairSpheres(CollisionBuildState& s, std::string& a_
 		}
 		const auto gather = [&](const SkinnedVertex& a_vertex, int a_ownerSkinBone, float a_ownerWeight, float a_flexible) {
 			SkinnedVertex local;
-			local.position = skinTransform(a_ownerSkinBone).TransformPoint(a_vertex.position);
+			local.position = skinLocal(a_ownerSkinBone, a_vertex.position);
 			local.bone[0] = rigBoneOf(a_ownerSkinBone);
 			local.weight[0] = 1.0f;
 			gathered.push_back(local);
@@ -1769,7 +1785,7 @@ bool SmpPhysicsFeature::BuildHairSpheres(CollisionBuildState& s, std::string& a_
 				weightSum += a_vertex.weight[other];
 				if (otherRigBone < 0 || a_vertex.bone[other] == a_ownerSkinBone || used >= blend.others.size())
 					continue;
-				blend.others[used++] = { otherRigBone, skinTransform(a_vertex.bone[other]).TransformPoint(a_vertex.position), a_vertex.weight[other] };
+				blend.others[used++] = { otherRigBone, skinLocal(a_vertex.bone[other], a_vertex.position), a_vertex.weight[other] };
 			}
 			if (weightSum > 0.0f)
 				blend.marginMultiplier = multiplierSum / weightSum;

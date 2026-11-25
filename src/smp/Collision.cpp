@@ -165,7 +165,7 @@ namespace SmpPhysics
 	}
 
 	Vec3 SkinVertexToWorld(const SkinnedVertex& a_vertex, const std::vector<Transform>& a_boneToWorld,
-		const std::vector<Transform>& a_skinToBone) noexcept
+		const std::vector<Transform>& a_skinToBone, const std::vector<float>& a_skinScale) noexcept
 	{
 		Vec3 sum{};
 		float total = 0.0f;
@@ -178,7 +178,8 @@ namespace SmpPhysics
 			if (!(weight > 0.0f))
 				continue;
 			const Transform skin = a_boneToWorld[static_cast<std::size_t>(bone)] * a_skinToBone[static_cast<std::size_t>(bone)];
-			sum = sum + skin.TransformPoint(a_vertex.position) * weight;
+			const float scale = static_cast<std::size_t>(bone) < a_skinScale.size() ? a_skinScale[static_cast<std::size_t>(bone)] : 1.0f;
+			sum = sum + ScaledSkinPoint(skin, a_vertex.position, scale) * weight;
 			total += weight;
 		}
 		if (!(total > 0.0f))

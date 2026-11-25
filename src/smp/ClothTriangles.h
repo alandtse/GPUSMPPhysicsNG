@@ -85,6 +85,7 @@ namespace SmpPhysics
 		const std::vector<float>* weightThreshold{};    ///< one per rig bone; a missing entry is 0
 		float margin{};
 		float penetration{};
+		const std::vector<float>* skinScale{};  ///< one per skin bone, see SkinnedSurface::skinScale; null or a missing entry is 1
 	};
 
 	/**

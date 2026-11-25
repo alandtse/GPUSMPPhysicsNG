@@ -179,10 +179,11 @@ namespace SmpPhysics
 	 * @param a_vertex The vertex, with its position in mesh space and its skinning slots filled in.
 	 * @param a_boneToWorld One world transform per skin bone.
 	 * @param a_skinToBone One mesh-space to bone-space transform per skin bone, as NiSkinData stores it.
+	 * @param a_skinScale One scale per skin bone, see SkinnedSurface::skinScale; a missing entry is 1.
 	 * @return The blended world position, or the mesh-space position when no slot has a usable weight.
 	 */
 	[[nodiscard]] Vec3 SkinVertexToWorld(const SkinnedVertex& a_vertex, const std::vector<Transform>& a_boneToWorld,
-		const std::vector<Transform>& a_skinToBone) noexcept;
+		const std::vector<Transform>& a_skinToBone, const std::vector<float>& a_skinScale = {}) noexcept;
 
 	/**
 	 * @brief The bone a vertex's skinning is dominated by.

@@ -13,7 +13,7 @@ struct HairSurfacePrepVertex
 struct HairSurfacePrepBone
 {
 	float4 rotation;     // skinToBone rotation in w, x, y, z lane order
-	float4 translation;  // xyz = skinToBone translation
+	float4 translation;  // xyz = skinToBone translation, w = the scale of the rotated vertex
 	uint4 driver;        // x = the global driver slot, or 0xFFFFFFFF when undriven
 };
 
@@ -68,7 +68,7 @@ StructuredBuffer<HairSurfacePrepRefit> HairPrepRefit : register(t5);
 StructuredBuffer<HairPrepDriver> HairPrepDrivers : register(t6);
 
 RWStructuredBuffer<float4> HairPosedVertices : register(u0);
-RWStructuredBuffer<float4> HairSkinTranslations : register(u1);  // w = 1 when the bone is driven
+RWStructuredBuffer<float4> HairSkinTranslations : register(u1);  // w = the scale of the rotated vertex, 0 when the bone is undriven
 RWStructuredBuffer<float4> HairSkinRotations : register(u2);
 RWStructuredBuffer<HairSurfaceTriangle> HairSurfaceTriangleOut : register(u3);
 RWStructuredBuffer<HairBvhNode> HairSurfaceNodeOut : register(u4);
@@ -185,7 +185,7 @@ uint SecondDriver(uint3 a_corners, uint a_first)
 		HairCollision::LoadTransform(rawWorld.rotation, rawWorld.translation),
 		HairCollision::LoadTransform(packed.rotation, packed.translation));
 	HairSkinRotations[bone] = float4(skin.rotation.w, skin.rotation.x, skin.rotation.y, skin.rotation.z);
-	HairSkinTranslations[bone] = float4(skin.translation, 1.0f);
+	HairSkinTranslations[bone] = float4(skin.translation, packed.translation.w);
 }
 
 	/** @brief One vertex: its driven bones' transforms blended by weight, or its bind position when none is driven. */
@@ -208,7 +208,7 @@ uint SecondDriver(uint3 a_corners, uint a_first)
 		float weight = weights[slot];
 		if (!(weight > 0.0f))
 			continue;
-		float3 posed = HairSkinTranslations[bone].xyz + HairCollision::QuatRotate(HairCollision::LoadQuat(HairSkinRotations[bone]), bind);
+		float3 posed = HairSkinTranslations[bone].xyz + HairCollision::QuatRotate(HairCollision::LoadQuat(HairSkinRotations[bone]), bind) * HairSkinTranslations[bone].w;
 		sum += posed * weight;
 		total += weight;
 	}

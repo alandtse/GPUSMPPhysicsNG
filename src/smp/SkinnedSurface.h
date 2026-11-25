@@ -18,7 +18,8 @@ namespace SmpPhysics
 		std::string name;                          ///< the shape's mesh name in the rig file
 		std::vector<SkinnedVertex> vertices;       ///< bind-space positions; bone indices are local to the mesh's skin bones
 		std::vector<std::uint32_t> indices;        ///< the kept triangles, three vertex indices each
-		std::vector<Transform> skinToBone;         ///< one per skin bone, as NiSkinData stores it
+		std::vector<Transform> skinToBone;         ///< one per skin bone, as NiSkinData stores it, its translation times the bone's world scale
+		std::vector<float> skinScale;              ///< one per skin bone: the bone's world scale times the bind scale, applied to the rotated vertex; a missing entry is 1
 		std::vector<int> boneDriver;               ///< one per skin bone: its index in the claim's driver list, or -1
 		std::vector<float> boneThreshold;          ///< one per skin bone: the shape's weight-threshold for it; a missing entry is zero
 		float margin{};                            ///< the shape's collision margin, which thickens the surface
