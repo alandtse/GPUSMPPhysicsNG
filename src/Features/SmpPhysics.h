@@ -389,6 +389,8 @@ private:
 		std::vector<RE::NiPointer<RE::NiAVObject>> nodes;             ///< One per rig bone, owned past the claim call.
 		std::vector<RE::NiPointer<RE::NiSkinInstance>> skins;         ///< The skin instances of the claimed model that use at least one rig bone.
 		std::vector<RE::NiPointer<RE::NiAVObject>> cardGeometries;    ///< The geometry of each entry of skins, in the same order.
+		std::uint64_t skinsWriters{};                                 ///< nodeWriterSerial when the skins were bound.
+		std::uint64_t skinsSiblings{};                                ///< SiblingSignature when the skins were bound; a change rebinds them.
 		bool skinsBound{};                                            ///< Whether those skin instances were handed to the GPU skinning pass.
 		std::vector<std::pair<int, int>> driverAnchor;                ///< Per collision driver, its own dynamic bone and the kinematic bone its joint chain ends at; -1 when the driver is not a dynamic bone of this claim.
 		std::vector<SmpPhysics::Transform> kinematicInput;            ///< Rebuilt in place each frame; dynamic entries stay the identity.
@@ -633,6 +635,10 @@ private:
 	[[nodiscard]] bool RegisterClaimForGpu(Claim& a_claim);
 	/** @brief Maps a_claim's skin instances onto its solver slots and registers them with the skinning pass. */
 	void BindClaimSkins(Claim& a_claim);
+	/** @brief Identifies the set of the actor's other claims the GPU solver holds, so a change in it is noticed. */
+	[[nodiscard]] std::uint64_t SiblingSignature(const Claim& a_claim) const;
+	/** @brief Folds this frame's node writes into nodeWriter and forgets the nodes of claims that are gone. Called with stateMutex held. */
+	void NoteNodeWriters();
 	void StepClaims();
 	/** @brief Advances the flutter clock and samples the Wind feature's field at each claim's head, outdoors only. */
 	void UpdateWind(float a_frameDelta);
@@ -679,8 +685,11 @@ private:
 	mutable std::mutex windProbeMutex;
 	std::optional<WindProbeRequest> windProbeRequest;
 	json windProbeResult = json::object();
-	std::shared_ptr<PatchProbeState> patchProbe;  ///< Guarded by stateMutex.
-	mutable std::mutex stateMutex;                ///< Guards everything below, and nothing is called into hdtSMP64 while it is held.
+	std::shared_ptr<PatchProbeState> patchProbe;                               ///< Guarded by stateMutex.
+	std::unordered_map<const RE::NiAVObject*, std::uint64_t> nodeWriter;       ///< Per simulated node, the claim whose pose it holds: the last to write it in a frame. Guarded by stateMutex.
+	std::unordered_map<const RE::NiAVObject*, std::uint64_t> frameNodeWriter;  ///< This frame's writes, in order. Guarded by stateMutex.
+	std::uint64_t nodeWriterSerial{};                                          ///< Raised when nodeWriter changes. Guarded by stateMutex.
+	mutable std::mutex stateMutex;                                             ///< Guards everything below, and nothing is called into hdtSMP64 while it is held.
 	std::string linkStatus;
 	SmpPhysics::BodyScanWindows bodyScanWindows;  ///< The actors an equip or load event has just touched.
 	SmpPhysics::RefitGuard refitGuard;            ///< Spaces out the soft reloads each actor asks for.

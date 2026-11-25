@@ -81,7 +81,8 @@ namespace SmpPhysics
 		 * @param a_skinToBone One entry per skin bone, from PackSkinToBone.
 		 * @return false for a skin instance this class cannot serve, which keeps the engine's matrices.
 		 */
-		[[nodiscard]] bool Register(RE::NiSkinInstance* a_skin, std::uint64_t a_token, std::vector<std::uint32_t> a_slots, std::vector<SkinRows> a_skinToBone);
+		[[nodiscard]] bool Register(RE::NiSkinInstance* a_skin, std::uint64_t a_token, std::vector<std::uint32_t> a_slots, std::vector<SkinRows> a_skinToBone,
+			std::vector<std::uint64_t> a_otherTokens = {});
 		/** @brief Forgets every skin instance registered for a_token. */
 		void RemoveClaim(std::uint64_t a_token);
 		/**
@@ -127,6 +128,7 @@ namespace SmpPhysics
 		{
 			RE::NiPointer<RE::NiSkinInstance> skin;
 			std::uint64_t token{};
+			std::vector<std::uint64_t> otherTokens;  ///< Other claims whose simulated bones some of the slots name; all must be posed for the mesh to be drawn from the solver.
 			std::vector<std::uint32_t> slots;
 			std::vector<SkinRows> skinToBone;
 			std::shared_ptr<Resources> resources;
@@ -155,6 +157,8 @@ namespace SmpPhysics
 		struct Batch;
 		[[nodiscard]] bool EnsureBatch();
 		void ReleaseBatchSlot(Entry& a_entry);
+		/** @brief Whether every other claim a_entry draws bones from is posed in the same world buffer. Called with mutex held. */
+		[[nodiscard]] bool OthersPosed(const Entry& a_entry, const ID3D11ShaderResourceView* a_worlds) const;
 		[[nodiscard]] bool AssignBatchSlot(Entry& a_entry);
 		[[nodiscard]] bool EnsureShader();
 		[[nodiscard]] bool CreateResources(Entry& a_entry);

@@ -3468,6 +3468,7 @@ void SmpPhysicsFeature::StepClaims()
 			                       gpuSolver.PoseReady(entry.first);
 			gpuSkinning.SetClaimState(entry.first, poseReady, worldsView, gpuSolver.Frame());
 		}
+		NoteNodeWriters();
 		gpuSkinning.BuildBatch();
 		totalStepMicroseconds = totalMicroseconds;
 	}
@@ -3562,11 +3563,37 @@ void SmpPhysicsFeature::MeasureWindAreas(Claim& a_claim)
 	a_claim.windAreas = SmpPhysics::EstimateBoneWindAreas(rig, cards);
 }
 
+void SmpPhysicsFeature::NoteNodeWriters()
+{
+	bool changed = std::erase_if(nodeWriter, [this](const auto& a_entry) { return !claims.contains(a_entry.second); }) != 0;
+	for (const auto& [node, token] : frameNodeWriter) {
+		const auto [entry, added] = nodeWriter.try_emplace(node, token);
+		changed = changed || added || entry->second != token;
+		entry->second = token;
+	}
+	frameNodeWriter.clear();
+	if (changed)
+		++nodeWriterSerial;
+}
+
+std::uint64_t SmpPhysicsFeature::SiblingSignature(const Claim& a_claim) const
+{
+	std::uint64_t signature = 0;
+	for (const auto& entry : claims) {
+		const Claim& sibling = entry.second;
+		if (sibling.token != a_claim.token && sibling.actorFormID == a_claim.actorFormID && sibling.gpuRegistered)
+			signature += sibling.token * 0x9E3779B97F4A7C15ull + 1u;
+	}
+	return signature;
+}
+
 void SmpPhysicsFeature::BindClaimSkins(Claim& a_claim)
 {
 	ZoneScopedN("SmpPhysics::BindClaimSkins");
 	const auto bindStart = std::chrono::steady_clock::now();
 	a_claim.skinsBound = true;
+	a_claim.skinsSiblings = SiblingSignature(a_claim);
+	a_claim.skinsWriters = nodeWriterSerial;
 	const auto offset = gpuSolver.BoneOffset(a_claim.token);
 	if (!offset || !a_claim.parsed)
 		return;
@@ -3581,11 +3608,20 @@ void SmpPhysicsFeature::BindClaimSkins(Claim& a_claim)
 		std::vector<std::uint32_t> slots(count, SmpPhysics::GpuSkinning::kStaticBone);
 		std::vector<SmpPhysics::SkinRows> skinToBone(count);
 		bool anyDynamic = false;
+		std::vector<std::uint64_t> others;
 		for (std::uint32_t index = 0; index < count; ++index) {
-			for (std::size_t bone = 0; bone < a_claim.nodes.size(); ++bone) {
-				if (a_claim.nodes[bone].get() == skin->bones[index] && !rig.bones[bone].kinematic) {
-					slots[index] = *offset + static_cast<std::uint32_t>(bone);
+			// Several of an actor's claims can simulate one node and the last to write it wins, so the bone is drawn from that claim's pose.
+			const auto writer = nodeWriter.find(skin->bones[index]);
+			const auto owner = writer == nodeWriter.end() || writer->second == a_claim.token ? claims.end() : claims.find(writer->second);
+			const bool sibling = owner != claims.end() && owner->second.actorFormID == a_claim.actorFormID && owner->second.gpuRegistered && owner->second.parsed;
+			const Claim& source = sibling ? owner->second : a_claim;
+			const auto sourceOffset = sibling ? gpuSolver.BoneOffset(source.token) : offset;
+			for (std::size_t bone = 0; sourceOffset && (sibling || owner == claims.end()) && bone < source.nodes.size(); ++bone) {
+				if (source.nodes[bone].get() == skin->bones[index] && !source.parsed->rig.bones[bone].kinematic) {
+					slots[index] = *sourceOffset + static_cast<std::uint32_t>(bone);
 					anyDynamic = true;
+					if (sibling && std::ranges::find(others, source.token) == others.end())
+						others.push_back(source.token);
 					break;
 				}
 			}
@@ -3593,7 +3629,7 @@ void SmpPhysicsFeature::BindClaimSkins(Claim& a_claim)
 			skinToBone[index] = SmpPhysics::PackSkinToBone(transform.rotate.entry, transform.scale,
 				transform.translate.x, transform.translate.y, transform.translate.z);
 		}
-		if (anyDynamic && gpuSkinning.Register(skin, a_claim.token, std::move(slots), std::move(skinToBone)))
+		if (anyDynamic && gpuSkinning.Register(skin, a_claim.token, std::move(slots), std::move(skinToBone), std::move(others)))
 			++bound;
 	}
 	logger::info("{} '{}': {} of {} skinned meshes will be drawn from the GPU solver ({} ms)", kLogPrefix, a_claim.physicsFile, bound, a_claim.skins.size(),
@@ -3753,6 +3789,7 @@ void SmpPhysicsFeature::WriteBackPose(Claim& a_claim)
 		const SmpPhysics::Transform world = a_claim.kinematicInput[static_cast<std::size_t>(a_claim.treeKinematicParent[index])] * a_claim.gpuLastBones[index];
 		SmpPhysics::ToRotationMatrix(world.rotation, node->world.rotate.entry);
 		node->world.translate = RE::NiPoint3{ world.translation.x, world.translation.y, world.translation.z };
+		frameNodeWriter[node] = a_claim.token;
 	}
 
 	RE::NiUpdateData updateData{};
@@ -3807,6 +3844,8 @@ bool SmpPhysicsFeature::StepClaim(Claim& a_claim, const RE::NiPoint3& a_cameraPo
 		a_claim.gpuRegistrationFailed = !a_claim.gpuRegistered;
 		if (a_claim.gpuRegistered && !a_claim.skinsBound)
 			BindClaimSkins(a_claim);
+	} else if (a_claim.gpuRegistered && a_claim.skinsBound && (a_claim.skinsWriters != nodeWriterSerial || a_claim.skinsSiblings != SiblingSignature(a_claim))) {
+		BindClaimSkins(a_claim);
 	}
 
 	const bool teleported = RootTeleported(a_claim);
