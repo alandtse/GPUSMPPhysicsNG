@@ -194,6 +194,13 @@ frame before. SE, 30 extra characters in the Qingshu dress, hdtSMP64's throttles
 | ---------- | ------------- | ------------- | ----------- |
 | Frame time | 18.8, 19.0 ms | 17.4, 17.5 ms | 50 to 52 ms |
 
+After that the step was 3.29 ms. Each claim with an external driver (67 of the 95) also copied its external colliders into
+the shared collider buffer every frame, one `UpdateSubresource` each; `a486fa7` uploads them only when their bytes change.
+Packing the frame's claims fell from 0.58 to 0.16 ms and the step to 2.84 ms. What is left, per frame: recording the
+dispatches 0.73 ms, writing the pose to the nodes 0.40, reading the collision drivers 0.31, updating child nodes 0.23,
+recording skinning poses 0.22. Frame time was not compared for this one: the machine was busy and both plugins varied 2 to
+3 ms between launches.
+
 ## Not measured
 
 VR frame time (the null driver caps the frame near 31 ms), capes, AE, frame generation state.
