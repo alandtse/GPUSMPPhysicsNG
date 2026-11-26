@@ -69,6 +69,9 @@ generation and the engine frame lock were not changed, so frame time is not repo
 - Prepacking the coloured solve's body table: its build already costs nothing measurable.
 - `FlushAfterSubmit` removes a misattributed 8 to 9 ms wait from the per-pass timers on SE (the commands sit in the
   driver until the game flushes) but gave no frame-time gain, so it ships off. Turn it on only when reading GPU pass times.
+- Moving the per-step inputs, driver poses, driver deltas and the rigid frame inputs out of CPU-writable buffers, as was done
+  for the static contact lists: 14.8 to 15.0 ms against 14.7 to 14.9 with 30 wigged characters and 19.25 against 19.1 with
+  30 in the Yue Qingshu Dress. These hold one record per tree or body, not one per contact thread, so nothing waits on them.
 
 ## Contacts posed at the end of the substep
 
