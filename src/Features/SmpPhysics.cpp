@@ -1516,11 +1516,31 @@ bool SmpPhysicsFeature::ResolveRigNodes(const hdt::IMeshClaimContext& a_context,
 	const std::string& a_path, std::vector<RE::NiPointer<RE::NiAVObject>>& a_nodes)
 {
 	a_nodes.assign(a_rig.bones.size(), nullptr);
+	SmpPhysics::BoundBones<RE::NiAVObject> bound;
+	const std::function<void(RE::NiAVObject*)> collect = [&](RE::NiAVObject* a_object) {
+		if (!a_object)
+			return;
+		if (auto* geometry = a_object->AsGeometry()) {
+			RE::NiSkinInstance* skin = geometry->GetGeometryRuntimeData().skinInstance.get();
+			for (std::uint32_t bone = 0; skin && skin->skinData && skin->bones && bone < skin->skinData->GetBoneCount(); ++bone) {
+				if (skin->bones[bone])
+					bound.Add(skin->bones[bone]->name.c_str(), skin->bones[bone]);
+			}
+		}
+		if (auto* node = a_object->AsNode()) {
+			for (auto& child : node->GetChildren())
+				collect(child.get());
+		}
+	};
+	collect(a_context.getModel());
+	RE::NiAVObject* boundRoot = bound.CommonRoot(static_cast<RE::NiAVObject*>(a_skeleton), [](RE::NiAVObject* a_object) -> RE::NiAVObject* { return a_object->parent; });
 	for (std::size_t index = 0; index < a_rig.bones.size(); ++index) {
 		const std::string& boneName = a_rig.bones[index].name;
 		const char* mergedName = a_context.getMergedBoneName(boneName.c_str());
 		const char* lookupName = mergedName && *mergedName ? mergedName : boneName.c_str();
-		RE::NiAVObject* node = a_skeleton->GetObjectByName(RE::BSFixedString(lookupName));
+		const RE::BSFixedString fixedName(lookupName);
+		RE::NiAVObject* inRoot = boundRoot != a_skeleton ? boundRoot->GetObjectByName(fixedName) : nullptr;
+		RE::NiAVObject* node = bound.Resolve(lookupName, inRoot ? inRoot : a_skeleton->GetObjectByName(fixedName));
 		if (!node) {
 			RecordDecline(a_path, std::format("bone '{}' has no node below the skeleton", boneName));
 			return false;
