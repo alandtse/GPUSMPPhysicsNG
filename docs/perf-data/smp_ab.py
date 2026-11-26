@@ -110,5 +110,5 @@ for size in SIZES:
         results.append(measure(name, size))
 arm('hdt')
 port.command('clearTestCrowd')
-json.dump(results, open(pathlib.Path(__file__).with_name(f'smp_ab_{GAME.lower()}_results_2026-11-09_{"_".join(map(str, SIZES))}.json'), 'w'), indent=1)
+json.dump(results, open(pathlib.Path(__file__).with_name(f'smp_ab_{GAME.lower()}_results_{time.strftime("%Y-%m-%d")}_{"_".join(map(str, SIZES))}.json'), 'w'), indent=1)
 print('RESULT DONE', flush=True)
