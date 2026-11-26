@@ -207,19 +207,39 @@ bool BoxOverlapsNode(HairBvhNode a_node, float3 a_low, float3 a_high)
 	return all(a_high >= a_node.low) && all(a_low <= a_node.high);
 }
 
+/** @brief Whether a point's projection onto a face's plane lies inside the face. */
+bool ProjectsOntoFace(HairSurfaceTriangle a_face, float3 a_point, float3 a_normal, float a_distance)
+{
+	float3 projected = a_point - a_normal * a_distance;
+	float3 toA = a_face.a.xyz - projected;
+	float3 toB = a_face.b.xyz - projected;
+	float3 toC = a_face.c.xyz - projected;
+	float areaA = length(cross(toB, toC));
+	float areaB = length(cross(toC, toA));
+	float areaC = length(cross(toA, toB));
+	float twiceArea = a_face.normalArea.w;
+	return !(areaA + areaB > twiceArea || areaB + areaC > twiceArea || areaC + areaA > twiceArea);
+}
+
 /**
  * @brief Folds one face's contact with the sphere into the deepest one a surface query has found.
  * @param a_id The face's source index; of two faces at the same depth the lower index wins, so the pick is stable.
+ * @param a_nearestInFront The nearest one-sided face the sphere is in front of and out of reach of, as TriangleGrid::Query keeps it.
  */
 void OfferSurfaceFace(HairSurfaceTriangle a_face, uint a_id, float3 a_point, float a_reach, bool a_flipped,
-	float a_allowance, float a_behind, inout HairCollision::Contact a_best, inout float a_bestRank, inout uint a_bestId)
+	float a_allowance, float a_behind, inout HairCollision::Contact a_best, inout float a_bestRank, inout uint a_bestId, inout float a_nearestInFront)
 {
 	if (a_face.normalArea.w <= 0.0f)
 		return;
 	float3 normal = a_flipped ? -a_face.normalArea.xyz : a_face.normalArea.xyz;
 	float distance = dot(a_point - a_face.a.xyz, normal);
 	if (a_allowance > 0.0f) {
-		if (distance >= a_reach || distance < -a_behind)
+		if (distance >= a_reach) {
+			if (distance < a_behind && distance < a_nearestInFront && ProjectsOntoFace(a_face, a_point, normal, distance))
+				a_nearestInFront = distance;
+			return;
+		}
+		if (distance < -a_behind)
 			return;
 	} else {
 		if (distance < 0.0f) {
@@ -233,15 +253,7 @@ void OfferSurfaceFace(HairSurfaceTriangle a_face, uint a_id, float3 a_point, flo
 	float rank = -abs(distance);
 	if (rank < a_bestRank || (rank == a_bestRank && a_id >= a_bestId))
 		return;
-	float3 projected = a_point - normal * distance;
-	float3 toA = a_face.a.xyz - projected;
-	float3 toB = a_face.b.xyz - projected;
-	float3 toC = a_face.c.xyz - projected;
-	float areaA = length(cross(toB, toC));
-	float areaB = length(cross(toC, toA));
-	float areaC = length(cross(toA, toB));
-	float twiceArea = a_face.normalArea.w;
-	if (areaA + areaB > twiceArea || areaB + areaC > twiceArea || areaC + areaA > twiceArea)
+	if (!ProjectsOntoFace(a_face, a_point, normal, distance))
 		return;
 	a_best.depth = depth;
 	a_best.normal = normal;
@@ -273,6 +285,7 @@ HairCollision::Contact QuerySurface(HairSurfaceMeta a_meta, float3 a_point, floa
 		float3 high = a_point + float3(extent, extent, extent);
 		// A sphere in front of the surface accepts no face and would walk the whole deep box; one behind a face accepts early and the box shrink ends its walk.
 		uint budget = turn == 0u ? 0xFFFFFFFFu : kFarSearchNodeBudget;
+		float nearestInFront = 1.0e30f;
 		uint visited = 0u;
 		uint node = 0u;
 		while (node < a_meta.base.z && visited < budget) {
@@ -287,11 +300,12 @@ HairCollision::Contact QuerySurface(HairSurfaceMeta a_meta, float3 a_point, floa
 				uint count = current.leaf & 7u;
 				for (uint index = 0u; index < count; ++index) {
 					HairSurfaceTriangle face = HairSurfaceTriangles[a_meta.base.x + first + index];
-					OfferSurfaceFace(face, asuint(face.a.w), a_point, a_reach, flipped, allowance, behind, best, bestRank, bestId);
+					OfferSurfaceFace(face, asuint(face.a.w), a_point, a_reach, flipped, allowance, behind, best, bestRank, bestId, nearestInFront);
 				}
-				// A face can only replace the best one by lying no further from the point, so the search box shrinks to that distance.
-				if (-bestRank < extent) {
-					extent = -bestRank + kPruneSlack;
+				// A face can only replace the best one by lying no further from the point, and one behind the sphere only counts while no
+				// nearer face has the sphere in front of it, so the search box shrinks to the nearer of the two.
+				if (min(-bestRank, nearestInFront) < extent) {
+					extent = min(-bestRank, nearestInFront) + kPruneSlack;
 					low = a_point - float3(extent, extent, extent);
 					high = a_point + float3(extent, extent, extent);
 				}
@@ -299,6 +313,11 @@ HairCollision::Contact QuerySurface(HairSurfaceMeta a_meta, float3 a_point, floa
 			} else {
 				node = node + 1u;
 			}
+		}
+		// A sphere with a nearer face in front of it is outside the mesh: the face found is the far side of a limb thinner than the deep reach.
+		if (turn == 1u && bestId != kNoTriangle && nearestInFront < -bestRank) {
+			best = HairCollision::NoContact();
+			bestId = kNoTriangle;
 		}
 	}
 	return best;

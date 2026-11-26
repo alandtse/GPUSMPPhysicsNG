@@ -239,6 +239,7 @@ namespace SmpPhysics
 		const float behind = a_penetration > 0.0f ? allowance + a_deepReach : allowance;
 		const float extent = std::max(a_reach, behind);
 		const Vec3 span{ extent, extent, extent };
+		float nearestInFront = std::numeric_limits<float>::infinity();
 		int first[3];
 		int last[3];
 		if (!CellRange(a_point - span, a_point + span, first, last))
@@ -253,7 +254,12 @@ namespace SmpPhysics
 						Vec3 normal = flipped ? triangle.normal * -1.0f : triangle.normal;
 						float distance = Dot(a_point - triangle.a, normal);
 						if (allowance > 0.0f) {
-							if (distance >= a_reach || distance < -behind)
+							if (distance >= a_reach) {
+								if (distance < behind && distance < nearestInFront && ProjectsInside(triangle, a_point, normal, distance))
+									nearestInFront = distance;
+								continue;
+							}
+							if (distance < -behind)
 								continue;
 						} else {
 							if (distance < 0.0f) {
@@ -279,6 +285,10 @@ namespace SmpPhysics
 				}
 			}
 		}
+		// Past its allowance a face only holds a sphere that is inside the mesh. One with a nearer face in front of it is outside:
+		// it hangs clear of a limb thinner than the deep reach, and the face found is the limb's far side.
+		if (-bestRank > allowance && best.depth > a_reach && nearestInFront < -bestRank)
+			return {};
 		return best;
 	}
 }
