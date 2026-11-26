@@ -1514,8 +1514,16 @@ bool SmpPhysicsFeature::ResolveCollisionInputs(CollisionBuildState& s, std::stri
 	const bool clothFallback = shapes.vertexShapes.empty() || s.clothRig;
 	for (const RigShape* candidate : hairShapeCandidates) {
 		hairMesh = FindMeshObject(a_context, meshRoot, candidate->name);
-		if (clothFallback && !SkinsToDynamicBone(hairMesh, a_rig, a_context))
-			hairMesh = FindClothMesh(a_context.getModel(), a_rig, a_context);
+		if (clothFallback && !SkinsToDynamicBone(hairMesh, a_rig, a_context)) {
+			// A mesh no shape names has no collision under hdtSMP64, so a shape whose own mesh is simulated comes before any other mesh.
+			const auto own = std::ranges::find_if(shapes.triangleShapes, skinsDynamic);
+			if (own != shapes.triangleShapes.end()) {
+				candidate = &*own;
+				hairMesh = FindMeshObject(a_context, meshRoot, candidate->name);
+			} else {
+				hairMesh = FindClothMesh(a_context.getModel(), a_rig, a_context);
+			}
+		}
 		if (hairMesh) {
 			hairShape = candidate;
 			break;
@@ -2062,9 +2070,9 @@ void SmpPhysicsFeature::BuildRigSurfaces(CollisionBuildState& s) const
 		surface.name = shape.name;
 		surface.margin = shape.margin;
 		surface.contactPenetration = shape.penetration;
-		surface.deepPush = s.sphereShapes.size() > 1;
 		surface.clothOnly = !hairAllows;
 		const auto shapeIndex = static_cast<std::size_t>(&shape - surfaceShapes.data());
+		surface.deepPush = SmpPhysics::HoldsDeepSpheres(s.sphereShapes.size(), shapeIndex < shapes.triangleShapes.size());
 		surface.perVertex = shapeIndex >= shapes.triangleShapes.size() && shapeIndex < vertexShapesEnd;
 		surface.vertices.reserve(skinned.positions.size());
 		for (std::size_t vertex = 0; vertex < skinned.positions.size(); ++vertex)

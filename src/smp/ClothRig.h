@@ -23,4 +23,15 @@ namespace SmpPhysics
 	{
 		return a_vertexShapes == 0 || a_clothRig || a_triangleShapesOnSimulatedBones > 0;
 	}
+
+	/**
+	 * @brief Whether a rig surface also holds a sphere that rests deep behind it (kDeepPushReach): in a rig of several sphere shapes, for
+	 *        every surface but the rig's own per-triangle shapes.
+	 * @details hdtSMP64 collides a per-vertex shape as spheres, which push from any side, and a per-triangle shape as a thin one-sided
+	 *          window: a sphere a file rests behind such a triangle is left there, and pushing it out fights the rig's joints for good.
+	 */
+	[[nodiscard]] constexpr bool HoldsDeepSpheres(std::size_t a_sphereShapes, bool a_ownTriangleShape) noexcept
+	{
+		return a_sphereShapes > 1 && !a_ownTriangleShape;
+	}
 }

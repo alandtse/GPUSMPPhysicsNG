@@ -30,3 +30,11 @@ TEST_CASE("Spheres are built per shape for a rig without per-vertex shapes, a cl
 	CHECK(BuildsSpheresPerShape(6, false, 1));
 	CHECK_FALSE(BuildsSpheresPerShape(1, false, 0));
 }
+
+TEST_CASE("A rig's own triangle shapes never hold a sphere resting deep behind them", "[smpphysics][clothrig]")
+{
+	STATIC_REQUIRE(HoldsDeepSpheres(2, false));
+	STATIC_REQUIRE_FALSE(HoldsDeepSpheres(2, true));
+	STATIC_REQUIRE_FALSE(HoldsDeepSpheres(1, false));
+	STATIC_REQUIRE_FALSE(HoldsDeepSpheres(1, true));
+}
