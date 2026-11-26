@@ -11,6 +11,7 @@
 #include "engine/DebugLines.h"
 #include "engine/GpuSkinning.h"
 #include "smp/BodyScanPacing.h"
+#include "smp/BoundBones.h"
 #include "smp/ClaimTally.h"
 #include "smp/Collision.h"
 #include "smp/CollisionOverride.h"
@@ -483,7 +484,7 @@ private:
 
 	/** @brief Whether the feature is on and has room for the mesh; a refusal other than being off is recorded as a decline. */
 	[[nodiscard]] bool PassesClaimGate(const hdt::IMeshClaimContext& a_context, const std::string& a_path);
-	/** @brief Finds the skeleton node of every rig bone and checks the scene graph matches the rig's joints; a failure is recorded as a decline. */
+	/** @brief Finds the node of every rig bone, the one the claim's meshes are skinned to before the skeleton's, and checks the scene graph matches the rig's joints; a failure is recorded as a decline. */
 	[[nodiscard]] bool ResolveRigNodes(const hdt::IMeshClaimContext& a_context, RE::NiNode* a_skeleton, const SmpPhysics::SmpRig& a_rig,
 		const std::string& a_path, std::vector<RE::NiPointer<RE::NiAVObject>>& a_nodes);
 	/** @brief Rebuilds every bone's rest pose, dynamic bones from their local transforms, and reports the node scale of the first dynamic bone; a failure is recorded as a decline. */

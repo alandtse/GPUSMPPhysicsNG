@@ -66,6 +66,30 @@ void TestBench::RegisterUxActions()
 		[](const json& a_args) { TestBench::GetCrowd().Turn(a_args.value("index", -1), a_args.value("degrees", 0.0f)); });
 	TOOL_COMMAND(kOwnerName, SmpPhysics::CrowdWearCommands::kStrip, "Take armor and weapons off the test characters standing now, except what a feature hook keeps (wigs, for GPU SMP Physics), so armor can be compared against bare bodies; later spawns start stripped while it is on. Args: enabled (bool, default true; false puts their outfits back).",
 		[](const json& a_args) { TestBench::GetCrowd().SetStripped(a_args.value("enabled", true)); });
+	TOOL_COMMAND(kOwnerName, "decapitateTestCrowd", "Kill and behead the test characters standing now with the game's own decapitation, to check what a feature does with a severed head. Args: index (number, which character, default -1 for all). Read the outcome from testCrowdReport.",
+		[](const json& a_args) {
+			const int index = a_args.value("index", -1);
+			if (auto* task = SKSE::GetTaskInterface()) {
+				task->AddTask([index] {
+					int beheaded = 0;
+					const auto standing = TestBench::GetCrowd().Standing();
+					for (std::size_t slot = 0; slot < standing.size(); ++slot) {
+						if (index >= 0 && static_cast<std::size_t>(index) != slot)
+							continue;
+						const auto reference = standing[slot].get();
+						auto* actor = reference ? reference->As<RE::Actor>() : nullptr;
+						if (!actor || !actor->Is3DLoaded())
+							continue;
+						actor->EnableAI(true);
+						actor->KillImpl(nullptr, 0.0f, true, true);
+						const bool done = actor->Decapitate();
+						logger::info("[Test Crowd] {} ({:08X}) killed, beheaded: {}", actor->GetDisplayFullName(), actor->GetFormID(), done);
+						beheaded += done ? 1 : 0;
+					}
+					TestBench::GetCrowd().SetReport(std::format("Beheaded {} of {} test characters.", beheaded, standing.size()));
+				});
+			}
+		});
 	TOOL_COMMAND(kOwnerName, "setTestCrowdIncludePlayer", "Make stripTestCrowd, cycleTestCrowdArmor and setTestCrowdCloak act on the player as well as the spawned characters, so a worn outfit can be checked on the player's own body. Turning it on dresses the player in what the crowd wears now; off puts the player's own outfit back and takes the cloak off. Args: enabled (bool, default true).",
 		[](const json& a_args) { TestBench::GetCrowd().SetIncludePlayer(a_args.value("enabled", true)); });
 	TOOL_COMMAND(kOwnerName, "cycleTestCrowdArmor", "Dress every test character in the next or previous playable body armor, with weapons and other gear off and what hooks keep left on, to compare armor types. Args: step (number, default 1; -1 goes back). Read the armor worn from testCrowdReport.",
