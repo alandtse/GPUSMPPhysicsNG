@@ -58,29 +58,35 @@ namespace SmpPhysics
 
 		float cell = std::max(a_cellSize, kMinimumCellSize);
 		const Vec3 extent = high - low;
+		m_origin = low;
+		m_ranges.resize(m_triangles.size());
+		std::size_t cellTotal = 0;
 		for (;;) {
-			const auto cells = [&](float a_extent) { return static_cast<std::size_t>(std::floor(a_extent / cell)) + 1; };
-			if (cells(extent.x) * cells(extent.y) * cells(extent.z) <= kMaximumGridCells)
+			m_cellSize = cell;
+			m_dimensions[0] = static_cast<int>(std::floor(extent.x / cell)) + 1;
+			m_dimensions[1] = static_cast<int>(std::floor(extent.y / cell)) + 1;
+			m_dimensions[2] = static_cast<int>(std::floor(extent.z / cell)) + 1;
+			cellTotal = static_cast<std::size_t>(m_dimensions[0]) * m_dimensions[1] * m_dimensions[2];
+			if (cellTotal > kMaximumGridCells) {
+				cell *= 1.5f;
+				continue;
+			}
+			std::size_t entries = 0;
+			for (std::size_t index = 0; index < m_triangles.size(); ++index) {
+				int first[3];
+				int last[3];
+				if (CellRange(m_boxes[index].low, m_boxes[index].high, first, last)) {
+					m_ranges[index] = { first[0], first[1], first[2], last[0], last[1], last[2] };
+					entries += static_cast<std::size_t>(last[0] - first[0] + 1) * (last[1] - first[1] + 1) * (last[2] - first[2] + 1);
+				} else {
+					m_ranges[index] = { 0, 0, 0, -1, -1, -1 };
+				}
+			}
+			if (entries <= kMaximumCellEntries || cellTotal == 1)
 				break;
 			cell *= 1.5f;
 		}
-		m_origin = low;
-		m_cellSize = cell;
-		m_dimensions[0] = static_cast<int>(std::floor(extent.x / cell)) + 1;
-		m_dimensions[1] = static_cast<int>(std::floor(extent.y / cell)) + 1;
-		m_dimensions[2] = static_cast<int>(std::floor(extent.z / cell)) + 1;
-
-		const std::size_t cellTotal = static_cast<std::size_t>(m_dimensions[0]) * m_dimensions[1] * m_dimensions[2];
 		m_cellStart.assign(cellTotal + 1, 0u);
-		m_ranges.resize(m_triangles.size());
-		for (std::size_t index = 0; index < m_triangles.size(); ++index) {
-			int first[3];
-			int last[3];
-			if (CellRange(m_boxes[index].low, m_boxes[index].high, first, last))
-				m_ranges[index] = { first[0], first[1], first[2], last[0], last[1], last[2] };
-			else
-				m_ranges[index] = { 0, 0, 0, -1, -1, -1 };
-		}
 		const auto forEachCell = [&](std::size_t a_triangle, auto&& a_visit) {
 			const std::array<int, 6>& range = m_ranges[a_triangle];
 			for (int z = range[2]; z <= range[5]; ++z) {

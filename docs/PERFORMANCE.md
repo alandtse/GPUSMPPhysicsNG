@@ -165,6 +165,24 @@ Running, `9316a49` is at 6.5 ms against 7.3.
 - The per-pass GPU timers put a pass's cost on the pass that reads its output (posing 10809 vertices was shown as 0.9 ms,
   the merge that waited for it as 2 ms). Their total is right; to cost a pass, skip it and read the frame time.
 
+## Building a claim when an outfit goes on
+
+Measured on SE on 2026-11-25: 20 extra characters in Dragonsreach, all dressed at once in the Qingshu dress (`YQS.xml`),
+frames counted over the 25 s that follow. A claim's collision data is built on the CPU when its mesh attaches.
+
+|                                        | Before | After  |
+| -------------------------------------- | ------ | ------ |
+| `YQS.xml` claim build, average         | 136 ms | 39 ms  |
+| Frame rate while the 20 dress, average | 41 fps | 63 fps |
+| Slowest quarter second                 | 0 fps  | 4 fps  |
+
+A newly attached mesh is posed before its bones are placed, so some of its triangles stretch 300 to 600 units. The
+surface grid entered each triangle in every 3-unit cell its box spans, which took 30 to 135 ms a surface; it now grows its
+cells when the entries pass `kMaximumCellEntries`. What is left of the dress's build is the body proxies (14 to 30 ms),
+the rest-pose probe (about 17 ms) and the spheres (3 ms); hair files spend theirs on spheres (`vipress.xml`, 36 of 47 ms).
+The frame still stalls for a quarter second or more while a crowd dresses, and spawning the 20 undressed characters, with no
+dress to claim, drops to 12 to 15 fps in its worst quarter second, so not all of the stall is this plugin's.
+
 ## Not measured
 
 VR frame time (the null driver caps the frame near 31 ms), capes, AE, frame generation state.
