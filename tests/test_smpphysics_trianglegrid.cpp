@@ -233,3 +233,24 @@ TEST_CASE("A grid whose triangles stretch across the whole mesh answers as a sin
 		CHECK(fine.NearestFaceDistance(point, 8.0f) == Approx(single.NearestFaceDistance(point, 8.0f)).margin(1e-5f));
 	}
 }
+
+TEST_CASE("A sphere in front of a thin limb is not taken by the face on its far side", "[smpphysics][trianglegrid]")
+{
+	// A slab six units thick: its top faces +Z at z = 0 and its bottom faces -Z at z = -6.
+	Mesh slab = MakeFloor(5.0f);
+	const auto base = static_cast<std::uint32_t>(slab.vertices.size());
+	for (const Vec3& corner : MakeFloor(5.0f).vertices)
+		slab.vertices.push_back({ corner.x, corner.y, -6.0f });
+	slab.indices.insert(slab.indices.end(), { base, base + 2, base + 1, base, base + 3, base + 2 });
+	const TriangleGrid grid = BuildGrid(slab);
+	REQUIRE(grid.TriangleCount() == 4);
+
+	// Hanging 1.5 units clear of the top, out of reach of it, the sphere is 7.5 units behind the bottom face.
+	const Contact hanging = grid.Query({ 0.0f, 0.0f, 1.5f }, 1.0f, 0.4f);
+	INFO("depth " << hanging.depth << " normal z " << hanging.normal.z);
+	CHECK(hanging.depth == 0.0f);
+
+	// Sunk a unit into the top it is pushed back out through the top, not on through the bottom.
+	const Contact sunk = grid.Query({ 0.0f, 0.0f, -1.0f }, 1.0f, 0.4f);
+	CHECK(sunk.normal.z == Approx(1.0f));
+}

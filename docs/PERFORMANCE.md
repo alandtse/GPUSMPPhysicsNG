@@ -201,6 +201,22 @@ dispatches 0.73 ms, writing the pose to the nodes 0.40, reading the collision dr
 recording skinning poses 0.22. Frame time was not compared for this one: the machine was busy and both plugins varied 2 to
 3 ms between launches.
 
+## A dense robe (issue 52)
+
+Issue 52 measured one character in the DDV Nocturnal Robe (`Noct.xml`, 7,000 to 8,800 spheres against two dense body
+meshes) at 3.6 to 4.4 ms per substep in `ContactSpheres` on 1.5.0, about 6.5 ms of frame time. SE, one test character
+in the robe, 2026-11-26, one launch each:
+
+|                           | Frame before the robe | Robe on, 20 s | Robe on, 90 s | Contact step, before to with the robe |
+| ------------------------- | --------------------- | ------------- | ------------- | ------------------------------------- |
+| 1.5.1                     | 10.1 ms               | 11.5 ms       | 9.9 ms        | 2.86 to 3.31 ms                       |
+| With the nearer-face rule | 8.6 ms                | 8.2 ms        | 8.1 ms        | 1.35 to 1.31 ms                       |
+
+1.5.1 already searches a surface within its own allowance first and caps the deep search at 256 nodes. A sphere hanging
+near the body without touching it still spent that budget every step. It now stops at the first face it is in front of:
+such a face ends the deep search, and it also means the sphere is outside the mesh, so a face further off cannot take it.
+The two rows are separate launches, so compare each row's own before and after.
+
 ## Not measured
 
 VR frame time (the null driver caps the frame near 31 ms), capes, AE, frame generation state.
