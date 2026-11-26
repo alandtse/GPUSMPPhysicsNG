@@ -15,6 +15,7 @@
 #include "smp/Collision.h"
 #include "smp/CollisionOverride.h"
 #include "smp/ItemStats.h"
+#include "smp/NodeWriters.h"
 #include "smp/PhysicsHealth.h"
 #include "smp/RefitGuard.h"
 #include "smp/RepairLog.h"
@@ -637,7 +638,7 @@ private:
 	void BindClaimSkins(Claim& a_claim);
 	/** @brief Identifies the set of the actor's other claims the GPU solver holds, so a change in it is noticed. */
 	[[nodiscard]] std::uint64_t SiblingSignature(const Claim& a_claim) const;
-	/** @brief Folds this frame's node writes into nodeWriter and forgets the nodes of claims that are gone. Called with stateMutex held. */
+	/** @brief Folds this frame's node writes into nodeWriter. Called with stateMutex held. */
 	void NoteNodeWriters();
 	void StepClaims();
 	/** @brief Advances the flutter clock and samples the Wind feature's field at each claim's head, outdoors only. */
@@ -685,11 +686,12 @@ private:
 	mutable std::mutex windProbeMutex;
 	std::optional<WindProbeRequest> windProbeRequest;
 	json windProbeResult = json::object();
-	std::shared_ptr<PatchProbeState> patchProbe;                               ///< Guarded by stateMutex.
-	std::unordered_map<const RE::NiAVObject*, std::uint64_t> nodeWriter;       ///< Per simulated node, the claim whose pose it holds: the last to write it in a frame. Guarded by stateMutex.
-	std::unordered_map<const RE::NiAVObject*, std::uint64_t> frameNodeWriter;  ///< This frame's writes, in order. Guarded by stateMutex.
-	std::uint64_t nodeWriterSerial{};                                          ///< Raised when nodeWriter changes. Guarded by stateMutex.
-	mutable std::mutex stateMutex;                                             ///< Guards everything below, and nothing is called into hdtSMP64 while it is held.
+	std::shared_ptr<PatchProbeState> patchProbe;  ///< Guarded by stateMutex.
+	SmpPhysics::NodeWriters nodeWriter;           ///< Guarded by stateMutex.
+	std::uint64_t claimSetSerial{};               ///< Raised when a claim is added, replaced or removed. Guarded by stateMutex.
+	std::uint64_t simulatedNodesSerial{ ~0ull };  ///< claimSetSerial that simulatedNodes was built from.
+	std::uint64_t nodeWriterSerial{};             ///< Raised when nodeWriter changes. Guarded by stateMutex.
+	mutable std::mutex stateMutex;                ///< Guards everything below, and nothing is called into hdtSMP64 while it is held.
 	std::string linkStatus;
 	SmpPhysics::BodyScanWindows bodyScanWindows;  ///< The actors an equip or load event has just touched.
 	SmpPhysics::RefitGuard refitGuard;            ///< Spaces out the soft reloads each actor asks for.
@@ -720,7 +722,7 @@ private:
 	std::vector<RE::FormID> bodyShapeActors;                                  ///< actors whose hair must be offered again because a body shape appeared
 	double totalStepMicroseconds{};
 	std::uint32_t registrationsThisFrame{};                    ///< Claims registered with the GPU solver so far this frame, capped at kRegistrationsPerFrame.
-	std::unordered_set<const RE::NiAVObject*> simulatedNodes;  ///< Every node a claim simulates, rebuilt each frame; write-back leaves these to their own claim.
+	std::unordered_set<const RE::NiAVObject*> simulatedNodes;  ///< Every node a claim simulates; write-back leaves these to their own claim.
 
 	struct BoneRecording
 	{

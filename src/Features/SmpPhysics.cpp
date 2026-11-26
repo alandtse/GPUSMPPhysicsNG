@@ -1836,6 +1836,7 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 		if (claim.cloth)
 			RegisterClothMeshes(claim.actorFormID, claim.cardGeometries);
 		claims.insert_or_assign(a_token, std::move(claim));
+		++claimSetSerial;
 	}
 	logger::info("{} Claimed '{}' for token {} ({} of the file's {} bones kept, {} missing from the skeleton, {} in groups no joint holds; {} dynamic, {} extra joints, {} collision spheres, {} of {} start inside a collider and are exempt, {} colliders, {} fitted, {} defaulted, {} layer pairs exempt) in {} ms",
 		kLogPrefix, path, a_token, boneCount, bonesInFile, bonesInFile - bonesOnSkeleton, bonesOnSkeleton - boneCount, dynamicCount, additionalJoints, sphereCount,
@@ -1963,6 +1964,7 @@ void SmpPhysicsFeature::ReleaseMesh(std::uint64_t a_token)
 	gpuSolver.RemoveClaim(a_token);
 	gpuSkinning.RemoveClaim(a_token);
 	claims.erase(a_token);
+	++claimSetSerial;
 }
 
 json SmpPhysicsFeature::QueueWindProbe(const json& a_args)
@@ -3405,10 +3407,13 @@ void SmpPhysicsFeature::StepClaims()
 		}
 
 		registrationsThisFrame = 0u;
-		simulatedNodes.clear();
-		for (const auto& entry : claims) {
-			for (const auto& node : entry.second.nodes)
-				simulatedNodes.insert(node.get());
+		if (simulatedNodesSerial != claimSetSerial) {
+			simulatedNodesSerial = claimSetSerial;
+			simulatedNodes.clear();
+			for (const auto& entry : claims) {
+				for (const auto& node : entry.second.nodes)
+					simulatedNodes.insert(node.get());
+			}
 		}
 		std::vector<SmpPhysics::GpuSolver::FrameClaim> submissions;
 		{
@@ -3435,6 +3440,7 @@ void SmpPhysicsFeature::StepClaims()
 			gpuSolver.RemoveClaim(claim->first);
 			gpuSkinning.RemoveClaim(claim->first);
 			claim = claims.erase(claim);
+			++claimSetSerial;
 		}
 
 		for (auto claim = claims.begin(); claim != claims.end();) {
@@ -3448,6 +3454,7 @@ void SmpPhysicsFeature::StepClaims()
 			gpuSolver.RemoveClaim(claim->first);
 			gpuSkinning.RemoveClaim(claim->first);
 			claim = claims.erase(claim);
+			++claimSetSerial;
 		}
 		smpInterface = linkedInterface;
 
@@ -3567,14 +3574,15 @@ void SmpPhysicsFeature::MeasureWindAreas(Claim& a_claim)
 
 void SmpPhysicsFeature::NoteNodeWriters()
 {
-	bool changed = std::erase_if(nodeWriter, [this](const auto& a_entry) { return !claims.contains(a_entry.second); }) != 0;
-	for (const auto& [node, token] : frameNodeWriter) {
-		const auto [entry, added] = nodeWriter.try_emplace(node, token);
-		changed = changed || added || entry->second != token;
-		entry->second = token;
-	}
-	frameNodeWriter.clear();
-	if (changed)
+	const auto alive = [this](std::uint64_t a_token) { return claims.contains(a_token); };
+	const auto forEachNode = [this](std::uint64_t a_token, auto&& a_visit) {
+		const Claim& claim = claims.find(a_token)->second;
+		for (std::size_t index = 0; claim.parsed && index < claim.parsed->rig.bones.size(); ++index) {
+			if (!claim.parsed->rig.bones[index].kinematic && claim.nodes[index])
+				a_visit(claim.nodes[index].get());
+		}
+	};
+	if (nodeWriter.EndFrame(claimSetSerial, alive, forEachNode))
 		++nodeWriterSerial;
 }
 
@@ -3613,8 +3621,8 @@ void SmpPhysicsFeature::BindClaimSkins(Claim& a_claim)
 		std::vector<std::uint64_t> others;
 		for (std::uint32_t index = 0; index < count; ++index) {
 			// Several of an actor's claims can simulate one node and the last to write it wins, so the bone is drawn from that claim's pose.
-			const auto writer = nodeWriter.find(skin->bones[index]);
-			const auto owner = writer == nodeWriter.end() || writer->second == a_claim.token ? claims.end() : claims.find(writer->second);
+			const std::uint64_t* writer = nodeWriter.Find(skin->bones[index]);
+			const auto owner = !writer || *writer == a_claim.token ? claims.end() : claims.find(*writer);
 			const bool sibling = owner != claims.end() && owner->second.actorFormID == a_claim.actorFormID && owner->second.gpuRegistered && owner->second.parsed;
 			const Claim& source = sibling ? owner->second : a_claim;
 			const auto sourceOffset = sibling ? gpuSolver.BoneOffset(source.token) : offset;
@@ -3782,6 +3790,7 @@ void SmpPhysicsFeature::SubmitGpuFrame(Claim& a_claim, float a_frameDelta, std::
 void SmpPhysicsFeature::WriteBackPose(Claim& a_claim)
 {
 	const SmpPhysics::SmpRig& rig = a_claim.parsed->rig;
+	nodeWriter.Wrote(a_claim.token);
 	for (std::size_t index = 0; index < rig.bones.size(); ++index) {
 		if (rig.bones[index].kinematic)
 			continue;
@@ -3791,7 +3800,6 @@ void SmpPhysicsFeature::WriteBackPose(Claim& a_claim)
 		const SmpPhysics::Transform world = a_claim.kinematicInput[static_cast<std::size_t>(a_claim.treeKinematicParent[index])] * a_claim.gpuLastBones[index];
 		SmpPhysics::ToRotationMatrix(world.rotation, node->world.rotate.entry);
 		node->world.translate = RE::NiPoint3{ world.translation.x, world.translation.y, world.translation.z };
-		frameNodeWriter[node] = a_claim.token;
 	}
 
 	RE::NiUpdateData updateData{};

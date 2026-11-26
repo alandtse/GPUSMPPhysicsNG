@@ -183,6 +183,17 @@ the rest-pose probe (about 17 ms) and the spheres (3 ms); hair files spend their
 The frame still stalls for a quarter second or more while a crowd dresses, and spawning the 20 undressed characters, with no
 dress to claim, drops to 12 to 15 fps in its worst quarter second, so not all of the stall is this plugin's.
 
+## Per-frame bookkeeping on the main thread
+
+With 95 simulated claims the plugin's main-thread step took 4.0 ms a frame (Tracy, 2026-11-25), of which 0.75 ms rebuilt two
+tables that only change with the claim set: the set of every simulated node, and the map of which claim last wrote each
+node. Both are now rebuilt only when a claim is added, replaced or removed, or when the claims that write differ from the
+frame before. SE, 30 extra characters in the Qingshu dress, hdtSMP64's throttles lifted, two readings each, one launch each:
+
+|            | Before        | After         | hdtSMP64    |
+| ---------- | ------------- | ------------- | ----------- |
+| Frame time | 18.8, 19.0 ms | 17.4, 17.5 ms | 50 to 52 ms |
+
 ## Not measured
 
 VR frame time (the null driver caps the frame near 31 ms), capes, AE, frame generation state.
