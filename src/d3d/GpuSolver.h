@@ -92,6 +92,15 @@ namespace SmpPhysics
 		bool CheckDeviceRemoved();
 		/** @brief The collision-surface path's current state and the sizes it was last packed to. */
 		[[nodiscard]] SurfacePrepInfo SurfacePrep() const noexcept;
+		/** @brief What the contact passes work through each step, summed over every claim, for a performance record. */
+		struct ContactWork
+		{
+			std::uint32_t spheres{};
+			std::uint32_t clothVertices{};
+			std::uint32_t clothTriangles{};
+			std::uint32_t clothBoneEntries{};  ///< Triangle references the per-bone merge reads.
+		};
+		[[nodiscard]] ContactWork Work() const noexcept { return { sphereCount, clothVertexCount, clothTriangleCount, static_cast<std::uint32_t>(clothBoneListShadow.size()) }; }
 
 		/** @brief What CheckSurfacePrep found: the last frame's GPU surface pass against the CPU reference. */
 		struct SurfacePrepCheckResult
@@ -136,7 +145,10 @@ namespace SmpPhysics
 		void RemoveClaim(std::uint64_t a_token);
 		/** @brief Uploads every claim's inputs and steps them with the rigid-body solver, then copies the output for readback. */
 		[[nodiscard]] bool SubmitFrame(const std::vector<FrameClaim>& a_claims);
+		bool waitForReadback{};  ///< Poll blocks until the pending readbacks are done instead of taking only the finished ones.
 		void SetFlushAfterSubmit(bool a_flush) noexcept { flushAfterSubmit = a_flush; }
+		/** @copydoc RigidGpuSolver::SetStepSettings */
+		void SetStepSettings(float a_tick, int a_maxTicks, int a_iterations, float a_erp) noexcept { rigidSolver.SetStepSettings(a_tick, a_maxTicks, a_iterations, a_erp); }
 		/** @return True when a newer completed result was read; a_results then holds one entry per live claim. */
 		[[nodiscard]] bool Poll(std::vector<ClaimResult>& a_results);
 		/** @brief The counter SubmitFrame stamps into a result's frame; read it right after a successful SubmitFrame. */
@@ -167,8 +179,8 @@ namespace SmpPhysics
 			std::uint32_t touching{};
 			float meanDepth{};
 			float maxDepth{};
-			std::vector<std::uint32_t> bones;           ///< rig bone indices that were touching
-			std::vector<GpuRig::BoneContact> contacts;  ///< the merged contact of each bone in bones, in the same order
+			std::vector<std::uint32_t> bones;           ///< the rig bone of each entry in contacts; a bone touching several drivers repeats
+			std::vector<GpuRig::BoneContact> contacts;  ///< every contact lane with depth, bone after bone; meanDepth and maxDepth are over these
 		};
 		/** @brief Asks for the contact buffer to be copied after the next dispatch; ContactStats reports it a few frames later. */
 		void RequestContactStats() const noexcept { contactStatsRequested = true; }
@@ -187,16 +199,17 @@ namespace SmpPhysics
 			std::uint32_t sphereBase{};  ///< where this claim's spheres start in the shared sphere list
 			GpuRig::RigData rig;         ///< Every stored range is already shifted into the shared slot space.
 			std::vector<SkinnedSurface> surfaces;
-			std::vector<int> surfaceDrivers;                 ///< the drivers the surfaces are skinned to
-			std::vector<GpuRig::SurfaceFrame> surfaceCache;  ///< one per surface, as last built
-			std::vector<TriangleBvh> surfaceBvhs;            ///< one per surface, refitted whenever its surface is rebuilt
-			std::vector<Transform> cachedDrivers;            ///< the driver list surfaceCache was posed from; empty until built
-			bool surfaceTopologyReady{};                     ///< the surfaceBvhs were built from the claim's first supplied drivers
-			std::uint32_t surfaceFirst{};                    ///< this claim's first record in the GPU surface metas
-			std::uint32_t surfaceCount{};                    ///< how many records the claim added to them
-			std::vector<GpuRig::TreeInput> inputs;           ///< One per tree, refreshed every submitted frame.
-			bool steppedDriversValid{};                      ///< The claim's driver slots in steppedDrivers hold its pose from the last frame the solver stepped.
-			std::uint64_t firstFrame{};                      ///< The first frame this claim's output is in the output buffer; zero until then.
+			std::vector<int> surfaceDrivers;                        ///< the drivers the surfaces are skinned to
+			std::vector<GpuRig::SurfaceFrame> surfaceCache;         ///< one per surface, as last built
+			std::vector<TriangleBvh> surfaceBvhs;                   ///< one per surface, refitted whenever its surface is rebuilt
+			std::vector<Transform> cachedDrivers;                   ///< the driver list surfaceCache was posed from; empty until built
+			bool surfaceTopologyReady{};                            ///< the surfaceBvhs were built from the claim's first supplied drivers
+			std::uint32_t surfaceFirst{};                           ///< this claim's first record in the GPU surface metas
+			std::uint32_t surfaceCount{};                           ///< how many records the claim added to them
+			std::vector<GpuRig::TreeInput> inputs;                  ///< One per tree, refreshed every submitted frame.
+			std::vector<GpuRig::ColliderPacked> uploadedExternals;  ///< The external colliders the collider buffer holds for this claim; empty when its slots were rewritten.
+			bool steppedDriversValid{};                             ///< The claim's driver slots in steppedDrivers hold its pose from the last frame the solver stepped.
+			std::uint64_t firstFrame{};                             ///< The first frame this claim's output is in the output buffer; zero until then.
 		};
 
 		struct Readback
@@ -219,6 +232,8 @@ namespace SmpPhysics
 		/** @brief Resets a_count merged contacts from a_offset to none, so a bone the contact pass never writes reads as untouched. */
 		void ClearContacts(std::uint32_t a_offset, std::uint32_t a_count);
 		void UploadStatics();
+		/** @brief Uploads the cloth triangle lists the statics pass gathered and sizes the two buffers the cloth passes write; with none it only zeroes the counts. */
+		void UploadClothStatics();
 		void Fail(const char* a_reason);
 		bool EnsureSurfacePrepShaders();
 		void RebuildSurfacePrep();
@@ -264,6 +279,33 @@ namespace SmpPhysics
 		std::uint32_t sphereListCapacity{};
 		std::vector<GpuRig::SphereRecord> sphereListShadow;  ///< The sphere list as uploaded, so an added claim appends to it instead of rebuilding it.
 		winrt::com_ptr<ID3D11ShaderResourceView> sphereListSrv;
+		std::unique_ptr<Buffer> boneCloth;        ///< Per bone slot, its slice of the cloth bone list.
+		std::unique_ptr<Buffer> clothVertexList;  ///< The three cloth lists are rewritten whole whenever the claims change, like the sphere list.
+		std::unique_ptr<Buffer> clothTriangleList;
+		std::unique_ptr<Buffer> clothBoneList;
+		std::unique_ptr<Buffer> clothPosed;      ///< Per cloth vertex, its world position this substep.
+		std::unique_ptr<Buffer> clothHits;       ///< kClothTriangleHits per cloth triangle, its contacts at the start of the substep.
+		std::unique_ptr<Buffer> clothHitCounts;  ///< Per cloth triangle, how many of its hit slots are filled.
+		std::unique_ptr<Buffer> clothFolds;      ///< kContactLanes per chunk of the cloth bone list, folded each substep.
+		std::vector<GpuRig::SphereRecord> clothVertexShadow;
+		std::vector<GpuRig::ClothTriangleRecord> clothTriangleShadow;
+		std::vector<GpuRig::ClothBoneEntry> clothBoneListShadow;
+		winrt::com_ptr<ID3D11ShaderResourceView> boneClothSrv;
+		winrt::com_ptr<ID3D11ShaderResourceView> clothVertexListSrv;
+		winrt::com_ptr<ID3D11ShaderResourceView> clothTriangleListSrv;
+		winrt::com_ptr<ID3D11ShaderResourceView> clothBoneListSrv;
+		winrt::com_ptr<ID3D11UnorderedAccessView> clothPosedUav;
+		winrt::com_ptr<ID3D11UnorderedAccessView> clothHitsUav;
+		winrt::com_ptr<ID3D11UnorderedAccessView> clothHitCountsUav;
+		winrt::com_ptr<ID3D11UnorderedAccessView> clothFoldsUav;
+		std::uint32_t clothFoldCapacity{};
+		std::uint32_t clothVertexCapacity{};
+		std::uint32_t clothTriangleCapacity{};
+		std::uint32_t clothBoneListCapacity{};
+		std::uint32_t clothPosedCapacity{};
+		std::uint32_t clothHitCapacity{};
+		std::uint32_t clothVertexCount{};      ///< Entries in the cloth vertex list as last uploaded.
+		std::uint32_t clothTriangleCount{};    ///< Entries in the cloth triangle list as last uploaded; zero keeps the cloth passes from being dispatched.
 		std::unique_ptr<Buffer> surfaceMetas;  ///< The three surface buffers are rewritten whole every frame and grow on demand.
 		std::unique_ptr<Buffer> surfaceTriangles;
 		std::unique_ptr<Buffer> surfaceNodes;
@@ -338,6 +380,9 @@ namespace SmpPhysics
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> contactCullShader;
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> contactSphereShader;
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> contactReduceShader;
+		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> clothVertexShader;
+		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> clothTriangleShader;
+		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> clothFoldShader;
 		std::unique_ptr<ConstantBuffer> surfacePrepConstants;  ///< Mirrored by SurfacePrepCS.hlsl.
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> surfaceBonesShader;
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> surfacePoseShader;
@@ -364,7 +409,8 @@ namespace SmpPhysics
 	{
 		std::uint32_t boneCount{};  ///< One past the highest bone slot any claim uses.
 		std::uint32_t sphereCount{};
-		std::uint32_t padding[2]{};
+		std::uint32_t clothVertexCount{};
+		std::uint32_t clothTriangleCount{};  ///< Zero when no claim has cloth triangles, which leaves the cloth buffers unread.
 	};
 	static_assert(sizeof(GpuSolverConstants) == 16);
 

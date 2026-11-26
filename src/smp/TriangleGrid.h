@@ -12,6 +12,12 @@ namespace SmpPhysics
 	/** @brief Cells a grid may have along all axes together; a larger mesh gets bigger cells instead. */
 	inline constexpr std::size_t kMaximumGridCells = 1u << 20;
 	/**
+	 * @brief Cell entries a grid may hold over all its triangles; past it the cells grow.
+	 * @details A triangle is entered in every cell its box spans, so a few triangles stretched across the mesh would otherwise cost
+	 *          millions of entries: a surface posed before its bones are placed took over 100 ms to build.
+	 */
+	inline constexpr std::size_t kMaximumCellEntries = 1u << 20;
+	/**
 	 * @brief How far, in Skyrim units, behind a one-sided face a sphere's centre still makes contact.
 	 * @details A sphere authored inside the body, or tunnelled in during a fast move, is deeper behind a face
 	 *          than the shape's allowance; without this reach it would rest inside the mesh forever.

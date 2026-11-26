@@ -44,3 +44,16 @@ TEST_CASE("A switch naming no piece or no surface changes nothing", "[smpphysics
 	CHECK(ApplyCollisionOverrides({ { "missing", kOverrideColliders }, { "skirt", "missing" } }, { "skirt" }, { "Skirtpart1" }, spheres, mask) == 0);
 	CHECK(spheres[0][0].exemptMask == 0u);
 }
+
+TEST_CASE("A surface switch clears that surface's bit on the named piece's cloth triangles", "[smpphysics][collisionoverride]")
+{
+	ClothTriangleSet cloth;
+	cloth.triangles.resize(5);
+	cloth.pieces = { { "skirt", 0u, 2u }, { "tassel", 2u, 3u } };
+	const std::vector<std::string> surfaces{ "Body", "Legs" };
+
+	CHECK(ApplyClothCollisionOverrides({ { "tassel", "Legs" }, { "tassel", kOverrideColliders }, { "veil", "Body" } }, surfaces, cloth) == 1);
+	CHECK(cloth.triangles[1].surfaceMask == 0xFFFFFFFFu);
+	for (std::size_t triangle = 2; triangle < 5; ++triangle)
+		CHECK(cloth.triangles[triangle].surfaceMask == 0xFFFFFFFDu);
+}

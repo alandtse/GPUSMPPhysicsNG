@@ -1,0 +1,90 @@
+[
+  {
+    "arm": "hdt",
+    "crowd": 30,
+    "armor": "Qingshu",
+    "frameMs": 52.497,
+    "claims": 0,
+    "gpuClaims": null,
+    "stepUs": null
+  },
+  {
+    "arm": "port",
+    "crowd": 30,
+    "armor": "Qingshu",
+    "frameMs": 19.138,
+    "claims": 127,
+    "gpuClaims": 95,
+    "stepUs": 1628.8999999999996,
+    "gpuPasses": {
+      "SmpPhysics::ClothFold": 0.053,
+      "SmpPhysics::ClothTriangles": 0.0176,
+      "SmpPhysics::ClothVertices": 0.019,
+      "SmpPhysics::ContactCull": 0.0353,
+      "SmpPhysics::ContactPasses": 0.4481,
+      "SmpPhysics::ContactReduce": 0.1017,
+      "SmpPhysics::ContactSpheres": 0.2171,
+      "SmpPhysics::RigidContact": 0.7479,
+      "SmpPhysics::RigidExport": 0.0075,
+      "SmpPhysics::RigidFrameBegin": 0.1134,
+      "SmpPhysics::RigidIntegrate": 0.0121,
+      "SmpPhysics::RigidPredict": 0.0169,
+      "SmpPhysics::RigidSetup": 0.0916,
+      "SmpPhysics::RigidSolve": 4.3753,
+      "SmpPhysics::SP_Bones": 0.0261,
+      "SmpPhysics::SP_Leaves": 0.0243,
+      "SmpPhysics::SP_Pose": 0.0256,
+      "SmpPhysics::SP_Refit": 0.1416,
+      "SmpPhysics::SP_Triangles": 0.0655,
+      "SmpPhysics::SkinPaletteBatch": 0.0147,
+      "SmpPhysics::SurfacePrep": 0.2842
+    },
+    "calls": {
+      "SmpPhysics::RigidSolve": 2.1
+    }
+  },
+  {
+    "arm": "hdt",
+    "crowd": 30,
+    "armor": "Qingshu",
+    "frameMs": 55.395,
+    "claims": 0,
+    "gpuClaims": null,
+    "stepUs": null
+  },
+  {
+    "arm": "port",
+    "crowd": 30,
+    "armor": "Qingshu",
+    "frameMs": 19.136,
+    "claims": 127,
+    "gpuClaims": 95,
+    "stepUs": 1367.7999999999995,
+    "gpuPasses": {
+      "SmpPhysics::ClothFold": 0.057,
+      "SmpPhysics::ClothTriangles": 0.0184,
+      "SmpPhysics::ClothVertices": 0.0192,
+      "SmpPhysics::ContactCull": 0.0373,
+      "SmpPhysics::ContactPasses": 0.4624,
+      "SmpPhysics::ContactReduce": 0.1077,
+      "SmpPhysics::ContactSpheres": 0.219,
+      "SmpPhysics::RigidContact": 0.7613,
+      "SmpPhysics::RigidExport": 0.0075,
+      "SmpPhysics::RigidFrameBegin": 0.1175,
+      "SmpPhysics::RigidIntegrate": 0.0112,
+      "SmpPhysics::RigidPredict": 0.0169,
+      "SmpPhysics::RigidSetup": 0.0946,
+      "SmpPhysics::RigidSolve": 4.3167,
+      "SmpPhysics::SP_Bones": 0.0249,
+      "SmpPhysics::SP_Leaves": 0.0244,
+      "SmpPhysics::SP_Pose": 0.0279,
+      "SmpPhysics::SP_Refit": 0.1393,
+      "SmpPhysics::SP_Triangles": 0.0667,
+      "SmpPhysics::SkinPaletteBatch": 0.0146,
+      "SmpPhysics::SurfacePrep": 0.2844
+    },
+    "calls": {
+      "SmpPhysics::RigidSolve": 2.11
+    }
+  }
+]

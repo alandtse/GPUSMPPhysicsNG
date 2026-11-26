@@ -174,6 +174,85 @@ TEST_CASE("A contact against the merged direction is dropped, as hdtSMP64 does",
 	REQUIRE(merge.deepest == Approx(1.0f));
 }
 
+TEST_CASE("Contacts of one key fill lane 0 exactly as the single merge does", "[SmpPhysics]")
+{
+	ContactMerge merge;
+	ContactLanes lanes;
+	const Contact contacts[] = { { 1.0f, { 0.0f, 0.6f, 0.8f }, 3 }, { 0.0f, { 0.0f, 0.0f, 1.0f }, 6 }, { 3.0f, { 0.0f, 0.0f, 1.0f }, 4 }, { 2.0f, { 0.0f, 0.0f, -1.0f }, 5 } };
+	float offset = 0.0f;
+	for (const Contact& contact : contacts) {
+		const Vec3 position{ offset, 1.0f, -2.0f };
+		merge.Add(contact, position);
+		lanes.Add(contact, position, 7u);
+		offset += 2.5f;
+	}
+	REQUIRE(lanes.used == 1u);
+	REQUIRE(lanes.keys[0] == 7u);
+	const ContactMerge& first = lanes.lanes[0];
+	CHECK(first.weight == merge.weight);
+	CHECK(first.normal.x == merge.normal.x);
+	CHECK(first.normal.y == merge.normal.y);
+	CHECK(first.normal.z == merge.normal.z);
+	CHECK(first.position.x == merge.position.x);
+	CHECK(first.position.y == merge.position.y);
+	CHECK(first.position.z == merge.position.z);
+	CHECK(first.deepest == merge.deepest);
+	CHECK(first.collider == merge.collider);
+	for (std::size_t lane = 1; lane < kContactLanes; ++lane) {
+		CHECK(lanes.lanes[lane].weight == 0.0f);
+		CHECK(lanes.lanes[lane].collider == -1);
+	}
+}
+
+TEST_CASE("Contacts of different keys stay apart, and opposing ones no longer cancel", "[SmpPhysics]")
+{
+	ContactLanes lanes;
+	lanes.Add({ 1.0f, { 0.0f, 0.0f, 1.0f }, 3 }, { 0.0f, 0.0f, 0.0f }, 1u);
+	lanes.Add({ 5.0f, { 0.0f, 0.0f, -1.0f }, 4 }, { 9.0f, 0.0f, 0.0f }, 2u);
+	lanes.Add({ 2.0f, { 0.0f, 0.0f, 1.0f }, 5 }, { 3.0f, 0.0f, 0.0f }, 1u);
+	REQUIRE(lanes.used == 2u);
+
+	Vec3 normal{};
+	Vec3 position{};
+	REQUIRE(lanes.lanes[0].Result(normal, position) == Approx(9.0f / 5.0f));
+	REQUIRE(normal.z == Approx(1.0f));
+	REQUIRE(lanes.lanes[0].collider == 5);
+	REQUIRE(lanes.lanes[1].Result(normal, position) == Approx(5.0f));
+	REQUIRE(normal.z == Approx(-1.0f));
+	REQUIRE(position.x == Approx(9.0f));
+	REQUIRE(lanes.lanes[1].collider == 4);
+}
+
+TEST_CASE("A key past the last lane joins the lane it is best aligned with", "[SmpPhysics]")
+{
+	ContactLanes lanes;
+	float total = 0.0f;
+	const auto add = [&lanes, &total](float a_depth, const Vec3& a_normal, std::uint32_t a_key) {
+		lanes.Add({ a_depth, a_normal, static_cast<int>(a_key) }, { static_cast<float>(a_key), 0.0f, 0.0f }, a_key);
+		total += a_depth * a_depth;
+	};
+	// The deepest lane has the longest normal sum, which must not win over the lane that actually faces the contact.
+	add(4.0f, { 1.0f, 0.0f, 0.0f }, 10u);
+	add(1.0f, { 0.0f, 1.0f, 0.0f }, 11u);
+	add(1.0f, { 0.0f, 0.0f, 1.0f }, 12u);
+	add(1.0f, { -1.0f, 0.0f, 0.0f }, 13u);
+	REQUIRE(lanes.used == kContactLanes);
+
+	add(2.0f, { 0.6f, 0.8f, 0.0f }, 14u);
+	add(3.0f, { 0.0f, 0.0f, 1.0f }, 15u);
+	CHECK(lanes.used == kContactLanes);
+	CHECK(lanes.lanes[0].weight == Approx(16.0f));
+	CHECK(lanes.lanes[1].weight == Approx(1.0f + 4.0f));
+	CHECK(lanes.lanes[1].collider == 14);
+	CHECK(lanes.lanes[2].weight == Approx(1.0f + 9.0f));
+	CHECK(lanes.lanes[3].weight == Approx(1.0f));
+
+	float kept = 0.0f;
+	for (const ContactMerge& lane : lanes.lanes)
+		kept += lane.weight;
+	CHECK(kept == Approx(total));
+}
+
 TEST_CASE("Hair sphere radius is the shape margin, never zero", "[SmpPhysics]")
 {
 	const std::vector<Transform> meshToBone(1);
@@ -189,6 +268,28 @@ TEST_CASE("Hair sphere radius is the shape margin, never zero", "[SmpPhysics]")
 
 	for (const BoneSphere& sphere : ReduceHairSpheres(spread, meshToBone, dynamic, 0.0f)[0])
 		REQUIRE(sphere.radius > 0.0f);
+}
+
+TEST_CASE("A hair sphere carries its vertex's other bones, weights and blended margin", "[SmpPhysics]")
+{
+	std::vector<Transform> meshToBone(2);
+	meshToBone[1].translation = { 0.0f, 0.0f, -5.0f };
+	const std::vector<bool> dynamic = { true, false };
+	VertexBlend blend;
+	blend.ownerWeight = 0.75f;
+	blend.flexible = 0.75f;
+	blend.marginMultiplier = 2.0f;
+	blend.others[0] = { 1, { 1.0f, 2.0f, 3.0f }, 0.25f };
+	const std::vector<std::vector<BoneSphere>> spheres = ReduceHairSpheres({ WeightedVertex({ 1.0f, 2.0f, 3.0f }, 0, 1.0f) }, meshToBone, dynamic, 0.5f, {}, { blend });
+	REQUIRE(spheres[0].size() == 1);
+	const BoneSphere& sphere = spheres[0][0];
+	CHECK(sphere.weight == Approx(0.75f));
+	CHECK(sphere.flexible == Approx(0.75f));
+	CHECK(sphere.radius == Approx(1.0f));
+	REQUIRE(sphere.others[0].bone == 1);
+	CHECK(sphere.others[0].weight == Approx(0.25f));
+	CHECK(sphere.others[0].local.z == Approx(-2.0f));
+	CHECK(sphere.others[1].bone == -1);
 }
 
 TEST_CASE("A head ellipsoid follows the vertex cloud's principal axes", "[SmpPhysics]")
@@ -352,6 +453,25 @@ TEST_CASE("Skinning blends a vertex between its bones' world transforms", "[SmpP
 	vertex.bone[0] = 1;
 	vertex.weight[0] = 0.25f;
 	REQUIRE(SkinVertexToWorld(vertex, boneToWorld, skinToBone).x == Approx(10.0f).margin(1e-4f));
+}
+
+TEST_CASE("Skinning scales a vertex about its bone by the bone's skin scale", "[SmpPhysics]")
+{
+	std::vector<Transform> skinToBone(1);
+	skinToBone[0].translation = { -4.0f, 0.0f, 0.0f };
+	std::vector<Transform> boneToWorld(1);
+	boneToWorld[0].translation = { 10.0f, 0.0f, 0.0f };
+	boneToWorld[0].rotation = FromAxisAngle(Vec3{ 0.0f, 0.0f, 1.0f }, 1.5707963f);
+
+	SkinnedVertex vertex;
+	vertex.position = { 6.0f, 0.0f, 0.0f };
+	vertex.bone[0] = 0;
+	vertex.weight[0] = 1.0f;
+	// The bind translation is already in world units, so the bone-space point is -4 + 1.5 * 6 = 5 along the bone's x, which the bone turns to world y.
+	const Vec3 world = SkinVertexToWorld(vertex, boneToWorld, skinToBone, { 1.5f });
+	REQUIRE(world.x == Approx(10.0f).margin(1e-4f));
+	REQUIRE(world.y == Approx(5.0f).margin(1e-4f));
+	REQUIRE(SkinVertexToWorld(vertex, boneToWorld, skinToBone).y == Approx(2.0f).margin(1e-4f));
 }
 
 TEST_CASE("Collider queries give finite distances and outward normals", "[SmpPhysics]")

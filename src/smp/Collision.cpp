@@ -165,7 +165,7 @@ namespace SmpPhysics
 	}
 
 	Vec3 SkinVertexToWorld(const SkinnedVertex& a_vertex, const std::vector<Transform>& a_boneToWorld,
-		const std::vector<Transform>& a_skinToBone) noexcept
+		const std::vector<Transform>& a_skinToBone, const std::vector<float>& a_skinScale) noexcept
 	{
 		Vec3 sum{};
 		float total = 0.0f;
@@ -178,7 +178,8 @@ namespace SmpPhysics
 			if (!(weight > 0.0f))
 				continue;
 			const Transform skin = a_boneToWorld[static_cast<std::size_t>(bone)] * a_skinToBone[static_cast<std::size_t>(bone)];
-			sum = sum + skin.TransformPoint(a_vertex.position) * weight;
+			const float scale = static_cast<std::size_t>(bone) < a_skinScale.size() ? a_skinScale[static_cast<std::size_t>(bone)] : 1.0f;
+			sum = sum + ScaledSkinPoint(skin, a_vertex.position, scale) * weight;
 			total += weight;
 		}
 		if (!(total > 0.0f))
@@ -194,15 +195,16 @@ namespace SmpPhysics
 
 	std::vector<std::vector<BoneSphere>> ReduceHairSpheres(const std::vector<SkinnedVertex>& a_vertices,
 		const std::vector<Transform>& a_meshToBone, const std::vector<bool>& a_dynamicBone, float a_margin,
-		const std::vector<float>& a_marginMultiplier)
+		const std::vector<float>& a_marginMultiplier, const std::vector<VertexBlend>& a_blend)
 	{
 		std::vector<std::vector<BoneSphere>> result(a_meshToBone.size());
-		std::vector<std::vector<Vec3>> clusters(a_meshToBone.size());
+		std::vector<std::vector<BoneSphere>> clusters(a_meshToBone.size());
 		float margin = a_margin;
 		if (!std::isfinite(margin) || margin < 0.0f)
 			margin = 0.0f;
 
-		for (const SkinnedVertex& vertex : a_vertices) {
+		for (std::size_t vertexIndex = 0; vertexIndex < a_vertices.size(); ++vertexIndex) {
+			const SkinnedVertex& vertex = a_vertices[vertexIndex];
 			if (!IsFiniteVector(vertex.position))
 				continue;
 			for (std::size_t slot = 0; slot < Util::kSkinInfluences; ++slot) {
@@ -212,18 +214,37 @@ namespace SmpPhysics
 				const std::size_t boneIndex = static_cast<std::size_t>(bone);
 				if (boneIndex >= a_dynamicBone.size() || !a_dynamicBone[boneIndex] || !IsFiniteTransform(a_meshToBone[boneIndex]))
 					continue;
-				clusters[boneIndex].push_back(a_meshToBone[boneIndex].TransformPoint(vertex.position));
+				BoneSphere sphere;
+				sphere.centerLocal = a_meshToBone[boneIndex].TransformPoint(vertex.position);
+				if (vertexIndex < a_blend.size()) {
+					const VertexBlend& blend = a_blend[vertexIndex];
+					sphere.weight = blend.ownerWeight;
+					if (blend.marginMultiplier >= 0.0f)
+						sphere.radius = std::max(margin * blend.marginMultiplier, kMinimumSphereRadius);
+					sphere.flexible = blend.flexible;
+					for (std::size_t other = 0; other < blend.others.size(); ++other) {
+						const SphereInfluence& influence = blend.others[other];
+						if (influence.bone < 0 || static_cast<std::size_t>(influence.bone) >= a_meshToBone.size() || !(influence.weight > 0.0f) || !IsFiniteVector(influence.local))
+							continue;
+						sphere.others[other] = { influence.bone, a_meshToBone[static_cast<std::size_t>(influence.bone)].TransformPoint(influence.local), influence.weight };
+					}
+				}
+				clusters[boneIndex].push_back(sphere);
 			}
 		}
 
 		for (std::size_t bone = 0; bone < clusters.size(); ++bone) {
-			const std::vector<Vec3>& cluster = clusters[bone];
+			const std::vector<BoneSphere>& cluster = clusters[bone];
 			const std::size_t wanted = std::min<std::size_t>(kMaxContactSpheresPerBone, cluster.size());
 			result[bone].reserve(wanted);
 			const float multiplier = bone < a_marginMultiplier.size() && std::isfinite(a_marginMultiplier[bone]) ? std::max(a_marginMultiplier[bone], 0.0f) : 1.0f;
 			const float radius = std::max(margin * multiplier, kMinimumSphereRadius);
-			for (std::size_t index = 0; index < wanted; ++index)
-				result[bone].push_back({ cluster[index * cluster.size() / wanted], radius });
+			for (std::size_t index = 0; index < wanted; ++index) {
+				BoneSphere sphere = cluster[index * cluster.size() / wanted];
+				if (!(sphere.radius > 0.0f))
+					sphere.radius = radius;
+				result[bone].push_back(sphere);
+			}
 		}
 		return result;
 	}
@@ -242,13 +263,13 @@ namespace SmpPhysics
 		return bound;
 	}
 
-	void ContactMerge::Add(const Contact& a_contact, const Vec3& a_position) noexcept
+	void ContactMerge::Add(const Contact& a_contact, const Vec3& a_position, float a_count) noexcept
 	{
 		if (!(a_contact.depth > 0.0f))
 			return;
 		if (weight > 0.0f && Dot(normal, a_contact.normal) < 0.0f)
 			return;
-		const float squared = a_contact.depth * a_contact.depth;
+		const float squared = a_contact.depth * a_contact.depth * a_count;
 		weight += squared;
 		normal = normal + a_contact.normal * (squared * a_contact.depth);
 		position = position + a_position * squared;
@@ -266,6 +287,32 @@ namespace SmpPhysics
 		a_normal = normal / length;
 		a_position = position / weight;
 		return length / weight;
+	}
+
+	void ContactLanes::Add(const Contact& a_contact, const Vec3& a_position, std::uint32_t a_key, float a_count) noexcept
+	{
+		if (!(a_contact.depth > 0.0f))
+			return;
+		std::uint32_t lane = 0;
+		while (lane < used && keys[lane] != a_key)
+			++lane;
+		if (lane == used) {
+			if (used < kContactLanes) {
+				keys[used++] = a_key;
+			} else {
+				lane = 0;
+				float best = -2.0f;
+				for (std::uint32_t index = 0; index < kContactLanes; ++index) {
+					const float length = Length(lanes[index].normal);
+					const float aligned = length > 0.0f ? Dot(lanes[index].normal, a_contact.normal) / length : -1.0f;
+					if (aligned > best) {
+						best = aligned;
+						lane = index;
+					}
+				}
+			}
+		}
+		lanes[lane].Add(a_contact, a_position, a_count);
 	}
 
 	Collider FitHeadEllipsoid(const std::vector<Vec3>& a_verticesInDriver, int a_driverIndex)

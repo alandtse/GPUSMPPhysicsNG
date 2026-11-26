@@ -200,3 +200,36 @@ TEST_CASE("Faces at exactly equal depth resolve to the lower triangle index", "[
 	CHECK(zWins.normal.z == Approx(1.0f));
 	CHECK(zWins.normal.x == Approx(0.0f));
 }
+
+TEST_CASE("A grid whose triangles stretch across the whole mesh answers as a single-cell one does", "[smpphysics][trianglegrid]")
+{
+	// A fine patch of small faces plus faces stretched 600 units to a far corner, as a surface posed before its bones are placed has.
+	Mesh mesh;
+	constexpr int kSide = 24;
+	for (int y = 0; y <= kSide; ++y) {
+		for (int x = 0; x <= kSide; ++x)
+			mesh.vertices.push_back({ static_cast<float>(x), static_cast<float>(y), 0.0f });
+	}
+	for (int y = 0; y < kSide; ++y) {
+		for (int x = 0; x < kSide; ++x) {
+			const auto corner = static_cast<std::uint32_t>(y * (kSide + 1) + x);
+			mesh.indices.insert(mesh.indices.end(), { corner, corner + 1, corner + kSide + 2, corner, corner + kSide + 2, corner + kSide + 1 });
+		}
+	}
+	const auto far = static_cast<std::uint32_t>(mesh.vertices.size());
+	mesh.vertices.push_back({ 600.0f, 500.0f, 300.0f });
+	for (std::uint32_t edge = 0; edge + 1 < 60; ++edge)
+		mesh.indices.insert(mesh.indices.end(), { edge % (kSide + 1), edge % (kSide + 1) + 1, far });
+
+	TriangleGrid fine;
+	fine.Build(mesh.vertices, mesh.indices, 2.0f);
+	TriangleGrid single;
+	single.Build(mesh.vertices, mesh.indices, 5000.0f);
+	REQUIRE(fine.TriangleCount() == single.TriangleCount());
+	for (const Vec3& point : { Vec3{ 3.3f, 4.1f, 0.4f }, Vec3{ 12.2f, 20.7f, -0.3f }, Vec3{ 23.5f, 0.5f, 0.6f }, Vec3{ 300.0f, 250.0f, 150.0f }, Vec3{ 50.0f, 40.0f, 20.0f } }) {
+		const Contact a = fine.Query(point, 1.0f, 0.4f);
+		const Contact b = single.Query(point, 1.0f, 0.4f);
+		CHECK(a.depth == Approx(b.depth).margin(1e-5f));
+		CHECK(fine.NearestFaceDistance(point, 8.0f) == Approx(single.NearestFaceDistance(point, 8.0f)).margin(1e-5f));
+	}
+}

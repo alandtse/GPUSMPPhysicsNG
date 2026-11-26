@@ -36,6 +36,12 @@ namespace SmpPhysics
 		return a_params;
 	}
 
+	float TurnAngle(const Quat& a_from, const Quat& a_to) noexcept
+	{
+		const float cosine = std::abs(a_from.w * a_to.w + a_from.x * a_to.x + a_from.y * a_to.y + a_from.z * a_to.z);
+		return 2.0f * std::acos(std::min(cosine, 1.0f));
+	}
+
 	void SmpStepClock::Reset() noexcept
 	{
 		averageInterval = 1.0f / 60.0f;
@@ -44,25 +50,26 @@ namespace SmpPhysics
 
 	SmpStepClock::Frame SmpStepClock::Advance(float a_interval) noexcept
 	{
-		constexpr float kTimeTick = 1.0f / 60.0f;
-		constexpr int kMaxTicks = 4;
 		constexpr float kMinStep = 1.0f / 300.0f;
 		Frame frame;
 		if (!std::isfinite(a_interval) || a_interval <= 0.0f)
 			return frame;
 		accumulated += a_interval;
 		averageInterval += (a_interval - averageInterval) * kIntervalSmoothing;
-		const float tick = std::min(averageInterval, kTimeTick);
-		if (!(accumulated * 2.0f > tick))
+		const float step = std::min(averageInterval, tick);
+		if (!(accumulated * 2.0f > step))
 			return frame;
-		float remaining = std::min(accumulated, tick * static_cast<float>(kMaxTicks));
+		float remaining = std::min(accumulated, step * static_cast<float>(maxTicks));
 		frame.total = remaining;
-		while (remaining > tick && frame.count < static_cast<int>(frame.steps.size())) {
-			frame.steps[static_cast<std::size_t>(frame.count++)] = tick;
-			remaining -= tick;
+		while (remaining > step && frame.count < static_cast<int>(frame.steps.size())) {
+			frame.steps[static_cast<std::size_t>(frame.count++)] = step;
+			remaining -= step;
 		}
 		if (remaining > kMinStep && frame.count < static_cast<int>(frame.steps.size()))
 			frame.steps[static_cast<std::size_t>(frame.count++)] = remaining;
+		// hdtSMP64 drops a shorter remainder, which leaves the bodies up to a sixth of a frame behind the pose they are drawn at.
+		else if (frame.count > 0)
+			frame.steps[static_cast<std::size_t>(frame.count - 1)] += remaining;
 		accumulated = 0.0f;
 		return frame;
 	}

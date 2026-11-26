@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "smp/ClothTriangles.h"
 #include "smp/Collision.h"
 
 #include <cstdint>
@@ -30,4 +31,11 @@ namespace SmpPhysics
 	 */
 	std::size_t ApplyCollisionOverrides(const std::vector<CollisionOverride>& a_overrides, const std::vector<std::string>& a_boneShapeName,
 		const std::vector<std::string>& a_surfaceNames, std::vector<std::vector<BoneSphere>>& a_spheres, std::vector<std::uint32_t>& a_boneSurfaceMask);
+
+	/**
+	 * @brief Applies the surface switches to a claim's cloth triangles, which touch surfaces without a bone's mask.
+	 * @return How many pieces a switch changed.
+	 */
+	std::size_t ApplyClothCollisionOverrides(const std::vector<CollisionOverride>& a_overrides, const std::vector<std::string>& a_surfaceNames,
+		ClothTriangleSet& a_cloth);
 }

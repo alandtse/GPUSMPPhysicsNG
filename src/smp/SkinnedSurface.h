@@ -18,13 +18,16 @@ namespace SmpPhysics
 		std::string name;                          ///< the shape's mesh name in the rig file
 		std::vector<SkinnedVertex> vertices;       ///< bind-space positions; bone indices are local to the mesh's skin bones
 		std::vector<std::uint32_t> indices;        ///< the kept triangles, three vertex indices each
-		std::vector<Transform> skinToBone;         ///< one per skin bone, as NiSkinData stores it
+		std::vector<Transform> skinToBone;         ///< one per skin bone, as NiSkinData stores it, its translation times the bone's world scale
+		std::vector<float> skinScale;              ///< one per skin bone: the bone's world scale times the bind scale, applied to the rotated vertex; a missing entry is 1
 		std::vector<int> boneDriver;               ///< one per skin bone: its index in the claim's driver list, or -1
+		std::vector<float> boneThreshold;          ///< one per skin bone: the shape's weight-threshold for it; a missing entry is zero
 		float margin{};                            ///< the shape's collision margin, which thickens the surface
 		float contactPenetration{};                ///< the shape's penetration allowance in hdtSMP64's contact rule, see TriangleGrid::Query
 		float penetration{ kDefaultPenetration };  ///< depth the solver's safety clamp tolerates before it holds a bone back
 		bool deepPush{ true };                     ///< whether a one-sided face also holds a sphere resting deep behind it, see kDeepPushReach
 		bool clothOnly{};                          ///< admitted only for the claim's own pieces of cloth to collide with each other; the rest-pose retarget and the wind shelter leave it out
+		bool perVertex{};                          ///< built from a per-vertex shape, whose vertices hdtSMP64 collides as spheres; a cloth's triangles test them (ClothTriangles.h)
 		bool skin{};                               ///< the mesh is the character's skin, which the hair was authored against, rather than something worn over it
 	};
 

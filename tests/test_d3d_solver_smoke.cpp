@@ -11,6 +11,7 @@
 #include <d3d11.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -197,6 +198,122 @@ TEST_CASE("A grab pin pulls a rigid hair claim's bone toward the hand", "[smpphy
 	for (const Transform& bone : held)
 		REQUIRE(std::isfinite(bone.translation.y));
 	CHECK(held[tip].translation.y - free[tip].translation.y > 1.0f);
+}
+
+namespace
+{
+	/** @brief Steps the two-bone rig over a body proxy with one vertex just under Hair01, and returns the deepest contact the solver reports for that bone. */
+	float DeepestClothContact(WarpDevice& a_gpu, bool a_clothTriangles)
+	{
+		const ParseResult parsed = ParseSmpXml(kRigXml);
+		REQUIRE(parsed.status == ParseStatus::Ok);
+		const std::vector<Transform> rest(parsed.rig.bones.size());
+		constexpr int kHair01 = 1;
+
+		SkinnedSurface body;
+		body.name = "body";
+		body.margin = 0.55f;
+		body.perVertex = true;
+		for (const Vec3& position : { Vec3{ 0.0f, 0.0f, -0.3f }, Vec3{ 30.0f, 0.0f, -40.0f }, Vec3{ 0.0f, 30.0f, -40.0f } }) {
+			SkinnedVertex vertex;
+			vertex.position = position;
+			vertex.bone[0] = 0;
+			vertex.weight[0] = 1.0f;
+			body.vertices.push_back(vertex);
+		}
+		body.indices = { 0, 1, 2 };
+		body.skinToBone = { Transform{} };
+		body.boneDriver = { 0 };
+
+		GpuRig::CollisionData collision = GpuRig::PackCollision(std::vector<std::vector<BoneSphere>>(rest.size()), {}, 1);
+		if (a_clothTriangles) {
+			std::vector<SkinnedVertex> vertices;
+			for (const Vec3& position : { Vec3{ -2.0f, -2.0f, 0.0f }, Vec3{ 2.0f, -2.0f, 0.0f }, Vec3{ 0.0f, 2.0f, 0.0f } }) {
+				SkinnedVertex vertex;
+				vertex.position = position;
+				vertex.bone[0] = 0;
+				vertex.weight[0] = 1.0f;
+				vertices.push_back(vertex);
+			}
+			const std::vector<std::uint16_t> triangles{ 0, 1, 2 };
+			const std::vector<int> rigBoneOfSkinBone{ kHair01 };
+			const std::vector<Transform> skinToBone(1);
+			const std::vector<bool> dynamicBone{ false, true, true };
+			const std::vector<float> ones(rest.size(), 1.0f);
+			const std::vector<float> zeros(rest.size(), 0.0f);
+			ClothTriangleSet cloth;
+			REQUIRE(AppendClothTriangles(cloth, { "cloth", &vertices, &triangles, &rigBoneOfSkinBone, &skinToBone, &dynamicBone, &ones, &zeros, 0.1f, -0.1f }) == 1);
+			GpuRig::PackClothTriangles(collision, cloth);
+		}
+
+		GpuSolver solver;
+		std::string reason;
+		REQUIRE(solver.AddClaim(1, parsed.rig, rest, SolverParams{}, collision, { body }, {}, reason));
+		const std::vector<Transform> drivers(1);
+		std::vector<GpuSolver::FrameClaim> frame(1);
+		frame[0].token = 1;
+		frame[0].kinematicWorld = &rest;
+		frame[0].driverWorld = &drivers;
+		frame[0].rigidContacts = true;
+		frame[0].deltaTime = 1.0f / 60.0f;
+		solver.waitForReadback = true;
+		std::vector<GpuSolver::ClaimResult> results;
+		float deepest = 0.0f;
+		for (int step = 0; step < 30; ++step) {
+			frame[0].hasPreviousInput = step > 0;
+			solver.RequestContactStats();
+			REQUIRE(solver.SubmitFrame(frame));
+			a_gpu.context->Flush();
+			(void)solver.Poll(results);
+			for (const GpuSolver::ContactStat& stat : solver.ContactStats()) {
+				for (std::size_t index = 0; index < stat.contacts.size(); ++index) {
+					if (stat.bones[index] == kHair01 && stat.contacts[index].normal[2] > 0.9f)
+						deepest = std::max(deepest, stat.contacts[index].depth);
+				}
+			}
+		}
+		INFO(solver.UnavailableReason());
+		REQUIRE(solver.Available());
+		return deepest;
+	}
+}
+
+TEST_CASE("The solver host runs the cloth triangle passes for a claim that has cloth triangles", "[smpphysics][d3d]")
+{
+	WarpDevice gpu;
+	CHECK(DeepestClothContact(gpu, false) == 0.0f);
+	const float deepest = DeepestClothContact(gpu, true);
+	CHECK(deepest > 0.05f);
+	CHECK(deepest <= 0.55f + 0.1f + 0.1f);
+}
+
+TEST_CASE("A blocking poll returns the result of the frame just submitted", "[smpphysics][d3d]")
+{
+	WarpDevice gpu;
+	const ParseResult parsed = ParseSmpXml(kRigXml);
+	REQUIRE(parsed.status == ParseStatus::Ok);
+	const std::vector<Transform> rest(parsed.rig.bones.size());
+	GpuSolver solver;
+	std::string reason;
+	REQUIRE(solver.AddClaim(1, parsed.rig, rest, SolverParams{}, {}, {}, {}, reason));
+
+	std::vector<GpuSolver::FrameClaim> frame(1);
+	frame[0].token = 1;
+	frame[0].kinematicWorld = &rest;
+	frame[0].deltaTime = 1.0f / 60.0f;
+	solver.waitForReadback = true;
+	std::vector<GpuSolver::ClaimResult> results;
+	for (int step = 0; step < 3; ++step) {
+		frame[0].hasPreviousInput = step > 0;
+		REQUIRE(solver.SubmitFrame(frame));
+		REQUIRE(solver.Poll(results));
+		REQUIRE(results.size() == 1);
+		CHECK(results[0].frame == solver.Frame());
+		CHECK_FALSE(results[0].failed);
+		REQUIRE(results[0].bones.size() == rest.size());
+		for (const Transform& bone : results[0].bones)
+			CHECK(std::isfinite(bone.translation.x));
+	}
 }
 
 TEST_CASE("Resource names are stored under the narrow debug-name GUID so RenderDoc reads them as text", "[smpphysics][d3d]")

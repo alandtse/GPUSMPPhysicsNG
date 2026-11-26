@@ -55,6 +55,9 @@ namespace SmpPhysics
 	/** @brief Distance behind a one-sided face past which a probe counts the sphere as behind it, a little over the armor allowance and skin. */
 	inline constexpr float kProbeLostBehind = 0.5f;
 
+	/** @brief The angle in radians between two rotations, from 0 to pi. */
+	[[nodiscard]] float TurnAngle(const Quat& a_from, const Quat& a_to) noexcept;
+
 	/**
 	 * @brief hdtSMP64's frame-to-step policy: SkyrimPhysicsWorld::doUpdate and SkinnedMeshWorld::stepSimulation.
 	 * @details Frames accumulate until more than half a tick has passed, then run whole ticks plus a variable
@@ -95,6 +98,9 @@ namespace SmpPhysics
 		[[nodiscard]] Frame Advance(float a_interval) noexcept;
 		/** @brief Forgets the accumulated time and restarts the interval average at one tick. */
 		void Reset() noexcept;
+
+		float tick{ 1.0f / 60.0f };  ///< Longest fixed step: one over hdtSMP64's min-fps.
+		int maxTicks{ 4 };           ///< hdtSMP64's maxSubSteps.
 
 	private:
 		float averageInterval{ 1.0f / 60.0f };

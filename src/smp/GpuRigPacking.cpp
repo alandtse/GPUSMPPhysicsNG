@@ -38,6 +38,18 @@ namespace SmpPhysics::GpuRig
 			return true;
 		}
 
+		void PackInfluences(SphereRecord& a_record, const std::array<SphereInfluence, Util::kSkinInfluences>& a_others) noexcept
+		{
+			std::uint32_t* otherBone[4] = { &a_record.otherBone.x, &a_record.otherBone.y, &a_record.otherBone.z, &a_record.otherBone.w };
+			for (std::size_t other = 0; other < a_others.size(); ++other) {
+				const SphereInfluence& influence = a_others[other];
+				if (influence.bone < 0 || !(influence.weight > 0.0f))
+					continue;
+				a_record.other[other] = { influence.local.x, influence.local.y, influence.local.z, influence.weight };
+				*otherBone[other] = static_cast<std::uint32_t>(influence.bone);
+			}
+		}
+
 		/** @brief The root of a dynamic bone's tree: the last dynamic ancestor before the chain reaches a kinematic bone. */
 		int FindTreeRoot(const SmpRig& a_rig, const std::vector<int>& a_jointOfBone, int a_bone) noexcept
 		{
@@ -135,8 +147,11 @@ namespace SmpPhysics::GpuRig
 			packed.bound = { bound.centre.x, bound.centre.y, bound.centre.z, bound.radius };
 			for (const BoneSphere& sphere : spheres) {
 				// The rest-exemption masks are one bit per claim-local collider, so laying the claim out does not move them.
-				data.sphereList.push_back({ { sphere.centerLocal.x, sphere.centerLocal.y, sphere.centerLocal.z, sphere.radius },
-					{ sphere.exemptMask, 0u, 0u, 0u } });
+				SphereRecord record{ { sphere.centerLocal.x, sphere.centerLocal.y, sphere.centerLocal.z, sphere.radius },
+					{ sphere.exemptMask, 0u, sphere.triangleContacts ? 1u : 0u, 0u } };
+				record.weights = { sphere.weight, sphere.flexible, 0.0f, 0.0f };
+				PackInfluences(record, sphere.others);
+				data.sphereList.push_back(record);
 			}
 		}
 
@@ -144,6 +159,46 @@ namespace SmpPhysics::GpuRig
 		for (const Collider& collider : a_colliders)
 			data.colliders.push_back(PackCollider(collider));
 		return data;
+	}
+
+	void PackClothTriangles(CollisionData& a_data, const ClothTriangleSet& a_cloth)
+	{
+		a_data.clothVertices.clear();
+		a_data.clothTriangles.clear();
+		a_data.boneCloth.clear();
+		a_data.clothBoneList.clear();
+		if (a_cloth.triangles.empty())
+			return;
+
+		a_data.clothVertices.reserve(a_cloth.vertices.size());
+		for (const ClothVertex& vertex : a_cloth.vertices) {
+			SphereRecord record{ { vertex.local.x, vertex.local.y, vertex.local.z, 0.0f },
+				{ 0u, vertex.bone < 0 ? kNoSphereBone : static_cast<std::uint32_t>(vertex.bone), 0u, 0u } };
+			record.weights = { vertex.weight, 1.0f, 0.0f, 0.0f };
+			PackInfluences(record, vertex.others);
+			a_data.clothVertices.push_back(record);
+		}
+
+		a_data.clothTriangles.reserve(a_cloth.triangles.size());
+		for (const ClothTriangle& triangle : a_cloth.triangles) {
+			a_data.clothTriangles.push_back({ { triangle.corners[0], triangle.corners[1], triangle.corners[2], kNoSphereBone },
+				{ triangle.margin, triangle.penetration, std::bit_cast<float>(triangle.surfaceMask), 0.0f } });
+		}
+
+		a_data.boneCloth.resize(a_cloth.boneTriangles.size());
+		for (std::size_t bone = 0; bone < a_cloth.boneTriangles.size(); ++bone) {
+			a_data.boneCloth[bone].range = { static_cast<std::uint32_t>(a_data.clothBoneList.size()), 0u, 0u, 0u };
+			for (const ClothBoneTriangle& owned : a_cloth.boneTriangles[bone]) {
+				if (owned.triangle >= a_data.clothTriangles.size())
+					continue;
+				a_data.clothBoneList.push_back({ owned.triangle, owned.flexible, owned.corners, 0u });
+				++a_data.boneCloth[bone].range.y;
+				std::uint32_t& owner = a_data.clothTriangles[owned.triangle].corners.w;
+				if (owner == kNoSphereBone)
+					owner = static_cast<std::uint32_t>(bone);
+			}
+			a_data.clothBoneList.resize((a_data.clothBoneList.size() + kClothFoldChunk - 1u) / kClothFoldChunk * kClothFoldChunk);
+		}
 	}
 
 	ColliderPacked PackCollider(const Collider& a_collider)
@@ -200,7 +255,7 @@ namespace SmpPhysics::GpuRig
 		SurfaceMeta meta;
 		meta.dimensions = { 0u, 0u, 0u, static_cast<std::uint32_t>(leafOrder.size()) };
 		meta.base = { static_cast<std::uint32_t>(a_frame.triangles.size()), static_cast<std::uint32_t>(a_frame.nodes.size()),
-			static_cast<std::uint32_t>(a_bvh.Nodes().size()), 0u };
+			static_cast<std::uint32_t>(a_bvh.Nodes().size()), a_surface.perVertex ? 1u : 0u };
 		meta.contact = { a_surface.margin, a_surface.contactPenetration, a_surface.deepPush ? kDeepPushReach : 0.0f, 0.0f };
 		a_frame.metas.push_back(meta);
 
@@ -260,7 +315,8 @@ namespace SmpPhysics::GpuRig
 		return slots;
 	}
 
-	ClaimStatics PackClaimStatics(const RigData& a_rig, std::uint32_t a_boneOffset, std::uint32_t a_boneCount, std::uint32_t a_sphereBase)
+	ClaimStatics PackClaimStatics(const RigData& a_rig, std::uint32_t a_boneOffset, std::uint32_t a_boneCount, std::uint32_t a_sphereBase,
+		const ClothBase& a_clothBase)
 	{
 		ClaimStatics statics;
 		statics.bones = a_rig.bones;
@@ -276,10 +332,39 @@ namespace SmpPhysics::GpuRig
 			const BoneSpheres& packed = a_rig.collision.spheres[bone];
 			for (std::uint32_t member = 0; member < packed.range.y; ++member) {
 				const std::size_t record = packed.range.x + member;
-				if (record < statics.sphereList.size())
-					statics.sphereList[record].exempt.y = a_boneOffset + static_cast<std::uint32_t>(bone);
+				if (record >= statics.sphereList.size())
+					continue;
+				SphereRecord& sphere = statics.sphereList[record];
+				sphere.exempt.y = a_boneOffset + static_cast<std::uint32_t>(bone);
+				for (std::uint32_t* other : { &sphere.otherBone.x, &sphere.otherBone.y, &sphere.otherBone.z, &sphere.otherBone.w }) {
+					if (*other != kNoSphereBone)
+						*other += a_boneOffset;
+				}
 			}
 		}
+		statics.clothVertices = a_rig.collision.clothVertices;
+		for (SphereRecord& vertex : statics.clothVertices) {
+			for (std::uint32_t* bone : { &vertex.exempt.y, &vertex.otherBone.x, &vertex.otherBone.y, &vertex.otherBone.z, &vertex.otherBone.w }) {
+				if (*bone != kNoSphereBone)
+					*bone += a_boneOffset;
+			}
+		}
+		statics.clothTriangles = a_rig.collision.clothTriangles;
+		for (ClothTriangleRecord& triangle : statics.clothTriangles) {
+			triangle.corners.x += a_clothBase.vertex;
+			triangle.corners.y += a_clothBase.vertex;
+			triangle.corners.z += a_clothBase.vertex;
+			if (triangle.corners.w != kNoSphereBone)
+				triangle.corners.w += a_boneOffset;
+		}
+		statics.boneCloth.assign(a_boneCount, BoneCloth{});
+		for (std::size_t bone = 0; bone < a_rig.collision.boneCloth.size() && bone < statics.boneCloth.size(); ++bone) {
+			statics.boneCloth[bone] = a_rig.collision.boneCloth[bone];
+			statics.boneCloth[bone].range.x += a_clothBase.boneList;
+		}
+		statics.clothBoneList = a_rig.collision.clothBoneList;
+		for (ClothBoneEntry& entry : statics.clothBoneList)
+			entry.triangle += a_clothBase.triangle;
 		return statics;
 	}
 
@@ -485,8 +570,8 @@ namespace SmpPhysics::GpuRig
 			                                     kInvalidDriverSlot;
 			SurfacePrepBone packed;
 			packed.rotation = { skin.rotation.w, skin.rotation.x, skin.rotation.y, skin.rotation.z };
-			packed.translation = { skin.translation.x, skin.translation.y, skin.translation.z, 0.0f };
-			packed.driver = { driverSlot, 0u, 0u, 0u };
+			packed.translation = { skin.translation.x, skin.translation.y, skin.translation.z, bone < a_surface.skinScale.size() ? a_surface.skinScale[bone] : 1.0f };
+			packed.driver = { driverSlot, std::bit_cast<std::uint32_t>(bone < a_surface.boneThreshold.size() ? a_surface.boneThreshold[bone] : 0.0f), 0u, 0u };
 			a_data.bones.push_back(packed);
 		}
 
@@ -535,7 +620,7 @@ namespace SmpPhysics::GpuRig
 
 		SurfaceMeta meta;
 		meta.dimensions = { 0u, 0u, 0u, static_cast<std::uint32_t>(leafOrder.size()) };
-		meta.base = { triangleBase, nodeBase, static_cast<std::uint32_t>(sourceNodes.size()), 0u };
+		meta.base = { triangleBase, nodeBase, static_cast<std::uint32_t>(sourceNodes.size()), a_surface.perVertex ? 1u : 0u };
 		meta.contact = { a_surface.margin, a_surface.contactPenetration, a_surface.deepPush ? kDeepPushReach : 0.0f, 0.0f };
 		a_data.metas.push_back(meta);
 		return true;
@@ -589,7 +674,7 @@ namespace SmpPhysics::GpuRig
 				const float weight = weights[slot];
 				if (!(weight > 0.0f))
 					continue;
-				sum = sum + skin[bone].TransformPoint(bind) * weight;
+				sum = sum + ScaledSkinPoint(skin[bone], bind, a_data.bones[bone].translation.w) * weight;
 				total += weight;
 			}
 			posed[index] = total > 0.0f ? sum / total : bind;

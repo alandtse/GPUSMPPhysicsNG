@@ -169,7 +169,8 @@ namespace SmpPhysics
 	GpuSkinning::GpuSkinning() = default;
 	GpuSkinning::~GpuSkinning() = default;
 
-	bool GpuSkinning::Register(RE::NiSkinInstance* a_skin, std::uint64_t a_token, std::vector<std::uint32_t> a_slots, std::vector<SkinRows> a_skinToBone)
+	bool GpuSkinning::Register(RE::NiSkinInstance* a_skin, std::uint64_t a_token, std::vector<std::uint32_t> a_slots, std::vector<SkinRows> a_skinToBone,
+		std::vector<std::uint64_t> a_otherTokens)
 	{
 		if (!a_skin || a_slots.empty() || a_slots.size() != a_skinToBone.size() || a_slots.size() > kMaximumBones)
 			return false;
@@ -179,6 +180,7 @@ namespace SmpPhysics
 		entry = {};
 		entry.skin.reset(a_skin);
 		entry.token = a_token;
+		entry.otherTokens = std::move(a_otherTokens);
 		entry.slots = std::move(a_slots);
 		entry.skinToBone = std::move(a_skinToBone);
 		entry.batchable = a_skin->bones != nullptr && a_skin->skinData != nullptr;
@@ -188,11 +190,19 @@ namespace SmpPhysics
 		return true;
 	}
 
+	bool GpuSkinning::OthersPosed(const Entry& a_entry, const ID3D11ShaderResourceView* a_worlds) const
+	{
+		return std::ranges::all_of(a_entry.otherTokens, [&](std::uint64_t a_token) {
+			const auto state = claimStates.find(a_token);
+			return state != claimStates.end() && state->second.active && state->second.worlds.get() == a_worlds;
+		});
+	}
+
 	void GpuSkinning::RemoveClaim(std::uint64_t a_token)
 	{
 		const std::scoped_lock lock(mutex);
 		for (auto entry = entries.begin(); entry != entries.end();) {
-			if (entry->second.token == a_token) {
+			if (entry->second.token == a_token || std::ranges::find(entry->second.otherTokens, a_token) != entry->second.otherTokens.end()) {
 				ReleaseBatchSlot(entry->second);
 				entry = entries.erase(entry);
 			} else
@@ -393,7 +403,7 @@ namespace SmpPhysics
 		for (auto& [skin, entry] : entries) {
 			const auto state = claimStates.find(entry.token);
 			const bool eligible = entry.batchable && state != claimStates.end() && state->second.active && state->second.worlds && entry.skin->bones &&
-			                      (!worlds || worlds == state->second.worlds.get());
+			                      (!worlds || worlds == state->second.worlds.get()) && OthersPosed(entry, state->second.worlds.get());
 			if (!eligible) {
 				entry.batchHasLast = false;
 				continue;
@@ -651,6 +661,7 @@ namespace SmpPhysics
 		const auto boneCount = static_cast<std::uint32_t>(a_entry.slots.size());
 		Capture capture;
 		capture.boneCount = boneCount;
+		capture.engineFrame = a_skin->frameID;
 		capture.slots = a_entry.slots;
 		const auto read = [&](ID3D11Buffer* a_source, std::vector<SkinRows>& a_rows) {
 			context->CopyResource(resources.staging.get(), a_source);
@@ -711,7 +722,15 @@ namespace SmpPhysics
 	void GpuSkinning::Apply(RE::NiSkinInstance* a_skin)
 	{
 		const std::scoped_lock lock(mutex);
-		if (!enabled || entries.empty() || !a_skin)
+		if (!a_skin)
+			return;
+		if (const auto watch = watches.find(a_skin); watch != watches.end() && a_skin->boneMatrices && a_skin->skinData) {
+			watch->second.boneCount = std::min<std::uint32_t>(a_skin->skinData->GetBoneCount(), kMaximumBones);
+			CopyRows(a_skin->boneMatrices, watch->second.boneCount, watch->second.engineCurrent);
+			watch->second.engineFrame = a_skin->frameID;
+			watch->second.valid = true;
+		}
+		if (!enabled || entries.empty())
 			return;
 		const auto found = entries.find(a_skin);
 		if (found == entries.end())
@@ -736,7 +755,7 @@ namespace SmpPhysics
 			return;
 		}
 		const auto stateFound = claimStates.find(entry.token);
-		if (stateFound == claimStates.end() || !stateFound->second.active || !stateFound->second.worlds)
+		if (stateFound == claimStates.end() || !stateFound->second.active || !stateFound->second.worlds || !OthersPosed(entry, stateFound->second.worlds.get()))
 			return;
 		if (!a_skin->boneMatrices || !a_skin->prevBoneMatrices || !a_skin->bones || entry.resourcesFailed || !globals::d3d::context)
 			return;
@@ -773,6 +792,18 @@ namespace SmpPhysics
 			cached[kEnginePreviousSlot] = Util::AsW32(previous);
 		}
 		++appliedCount;
+	}
+
+	GpuSkinning::Capture GpuSkinning::WatchEngine(const RE::NiSkinInstance* a_skin)
+	{
+		const std::scoped_lock lock(mutex);
+		return a_skin ? watches[a_skin] : Capture{};
+	}
+
+	void GpuSkinning::ClearWatches()
+	{
+		const std::scoped_lock lock(mutex);
+		watches.clear();
 	}
 
 	GpuSkinning::Capture GpuSkinning::RequestCapture(const RE::NiSkinInstance* a_skin)

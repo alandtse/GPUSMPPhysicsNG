@@ -77,6 +77,14 @@ namespace SmpPhysics
 		RigidGpuSolver& operator=(const RigidGpuSolver&) = delete;
 
 		[[nodiscard]] bool Available() const noexcept { return available; }
+		/** @brief Sets the fixed step, substep cap, iteration count and error reduction every later step uses: hdtSMP64's solver settings. */
+		void SetStepSettings(float a_tick, int a_maxTicks, int a_iterations, float a_erp) noexcept
+		{
+			stepClock.tick = a_tick;
+			stepClock.maxTicks = a_maxTicks;
+			iterations = a_iterations;
+			erp = a_erp;
+		}
 		/** @brief How the islands of the last buffer build split by constraint count. */
 		[[nodiscard]] const RigidGpu::IslandSizes& IslandSizeSummary() const noexcept { return islandSizes; }
 		[[nodiscard]] const std::string& UnavailableReason() const noexcept { return unavailableReason; }
@@ -93,7 +101,7 @@ namespace SmpPhysics
 		 * @param a_worlds The GPU solver's world pose target.
 		 * @param a_outputs The GPU solver's root-relative output target.
 		 * @param a_contacts The GPU solver's per-bone merged contacts; with a_contactPass, bodies are moved out of the colliders it reports.
-		 * @param a_contactPass Records the GPU solver's contact passes for a substep (1-based) once the bodies' poses are exported, how far into the frame that substep begins, from 0 to under 1, and the seconds the frame's steps cover.
+		 * @param a_contactPass Records the GPU solver's contact passes for a substep (1-based) once the bodies' poses are exported, how far into the frame that substep ends, from above 0 to 1, and the seconds the frame's steps cover.
 		 */
 		[[nodiscard]] bool Dispatch(const std::vector<FrameClaim>& a_frame, ID3D11UnorderedAccessView* a_worlds,
 			ID3D11UnorderedAccessView* a_outputs, ID3D11ShaderResourceView* a_contacts = nullptr,
@@ -137,7 +145,8 @@ namespace SmpPhysics
 		{
 			std::uint32_t bodyCount{};
 			float frameTime{};
-			std::uint32_t padding[2]{};
+			float lookAhead{};  ///< Seconds RigidWorldExport predicts each pose ahead: the coming substep's length.
+			std::uint32_t padding{};
 		};
 		static_assert(sizeof(RuntimeConstants) == 16);
 
@@ -188,6 +197,8 @@ namespace SmpPhysics
 		std::unique_ptr<ConstantBuffer> runtimeConstants;
 		std::vector<FrameInput> frameScratch;
 		SmpStepClock stepClock;
+		int iterations{ RigidReference::SolverSettings{}.iterations };
+		float erp{ RigidReference::SolverSettings{}.erp };
 
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> frameBeginShader;
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> predictShader;

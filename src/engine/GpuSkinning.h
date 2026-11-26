@@ -48,6 +48,7 @@ namespace SmpPhysics
 		struct Capture
 		{
 			bool valid{};
+			std::uint32_t engineFrame{};  ///< The engine frame the skin instance was drawn in when this was read.
 			std::uint32_t boneCount{};
 			std::vector<std::uint32_t> slots;
 			std::vector<SkinRows> current;         ///< What this class bound to b10.
@@ -80,7 +81,8 @@ namespace SmpPhysics
 		 * @param a_skinToBone One entry per skin bone, from PackSkinToBone.
 		 * @return false for a skin instance this class cannot serve, which keeps the engine's matrices.
 		 */
-		[[nodiscard]] bool Register(RE::NiSkinInstance* a_skin, std::uint64_t a_token, std::vector<std::uint32_t> a_slots, std::vector<SkinRows> a_skinToBone);
+		[[nodiscard]] bool Register(RE::NiSkinInstance* a_skin, std::uint64_t a_token, std::vector<std::uint32_t> a_slots, std::vector<SkinRows> a_skinToBone,
+			std::vector<std::uint64_t> a_otherTokens = {});
 		/** @brief Forgets every skin instance registered for a_token. */
 		void RemoveClaim(std::uint64_t a_token);
 		/**
@@ -97,6 +99,10 @@ namespace SmpPhysics
 		void InvalidateShader();
 		/** @brief Asks the next Apply of a_skin to read its matrices back, and returns what the previous request read. */
 		[[nodiscard]] Capture RequestCapture(const RE::NiSkinInstance* a_skin);
+		/** @brief Starts recording the engine's own matrices of a skin instance this class does not serve, each time it is drawn, and returns the latest: valid, engineFrame and engineCurrent only. */
+		[[nodiscard]] Capture WatchEngine(const RE::NiSkinInstance* a_skin);
+		/** @brief Stops every WatchEngine recording. */
+		void ClearWatches();
 		/** @brief Turns the batched palette on or off; while off, every skin instance builds its own palette at draw time. */
 		void SetBatched(bool a_batched);
 		/**
@@ -122,6 +128,7 @@ namespace SmpPhysics
 		{
 			RE::NiPointer<RE::NiSkinInstance> skin;
 			std::uint64_t token{};
+			std::vector<std::uint64_t> otherTokens;  ///< Other claims whose simulated bones some of the slots name; all must be posed for the mesh to be drawn from the solver.
 			std::vector<std::uint32_t> slots;
 			std::vector<SkinRows> skinToBone;
 			std::shared_ptr<Resources> resources;
@@ -150,6 +157,8 @@ namespace SmpPhysics
 		struct Batch;
 		[[nodiscard]] bool EnsureBatch();
 		void ReleaseBatchSlot(Entry& a_entry);
+		/** @brief Whether every other claim a_entry draws bones from is posed in the same world buffer. Called with mutex held. */
+		[[nodiscard]] bool OthersPosed(const Entry& a_entry, const ID3D11ShaderResourceView* a_worlds) const;
 		[[nodiscard]] bool AssignBatchSlot(Entry& a_entry);
 		[[nodiscard]] bool EnsureShader();
 		[[nodiscard]] bool CreateResources(Entry& a_entry);
@@ -159,6 +168,7 @@ namespace SmpPhysics
 
 		mutable std::mutex mutex;
 		std::unordered_map<const RE::NiSkinInstance*, Entry> entries;
+		std::unordered_map<const RE::NiSkinInstance*, Capture> watches;  ///< Guarded by mutex.
 		std::unordered_map<std::uint64_t, ClaimState> claimStates;
 		std::unique_ptr<Util::LazyShader<ID3D11ComputeShader>> shader;
 		std::unique_ptr<ConstantBuffer> constants;

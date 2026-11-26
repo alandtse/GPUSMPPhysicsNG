@@ -3,6 +3,7 @@
 #include "Math.h"
 #include "Utils/SkinVertexBlock.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -49,6 +50,14 @@ namespace SmpPhysics
 	 */
 	inline constexpr std::size_t kMaximumExemptColliders = 32;
 
+	/** @brief Another bone a sphere's vertex is skinned to: where that bone carries the vertex, and how much of it. */
+	struct SphereInfluence
+	{
+		int bone{ -1 };  ///< rig bone, or -1 for an unused slot
+		Vec3 local;      ///< the vertex in that bone's rest frame
+		float weight{};
+	};
+
 	/** @brief One collision sphere of a dynamic bone, in that bone's rest frame. */
 	struct BoneSphere
 	{
@@ -60,6 +69,10 @@ namespace SmpPhysics
 		 *          such a collider must not shove it, or the safety clamp fights the spring every frame.
 		 */
 		std::uint32_t exemptMask{};
+		float weight{ 1.0f };                                         ///< the owning bone's skin weight on the vertex
+		float flexible{ 1.0f };                                       ///< the vertex's summed weight on dynamic bones, hdtSMP64's flexible: it scales the contact depth
+		std::array<SphereInfluence, Util::kSkinInfluences> others{};  ///< the vertex's other rig bones; the sphere sits at the weighted blend, as hdtSMP64 collides the skinned vertex
+		bool triangleContacts{};                                      ///< the sphere's shape meets per-vertex surfaces with its triangles (ClothTriangles.h), so the sphere leaves those surfaces out
 	};
 
 	/**
@@ -120,9 +133,28 @@ namespace SmpPhysics
 		float deepest{};     ///< deepest single contact
 		int collider{ -1 };  ///< collider of the deepest single contact
 
-		void Add(const Contact& a_contact, const Vec3& a_position) noexcept;
+		/** @param a_count How many times the contact is added, as hdtSMP64 adds a triangle's once per corner weight of the bone. */
+		void Add(const Contact& a_contact, const Vec3& a_position, float a_count = 1.0f) noexcept;
 		/** @return The merged depth, zero when nothing was added; a_normal and a_position receive the rest. */
 		[[nodiscard]] float Result(Vec3& a_normal, Vec3& a_position) const noexcept;
+	};
+
+	/** @brief Contacts one bone keeps apart, one per contacted driver; mirrors kContactLanes in ContactCS.hlsl. */
+	inline constexpr std::uint32_t kContactLanes{ 4 };
+
+	/**
+	 * @brief hdtSMP64 merges a bone's contacts per contacted body bone, so two body bones give the bone two contacts.
+	 * @details A contact joins the lane of its key; a new key takes a free lane, or with none left the lane whose
+	 *          merged normal is closest to the contact's. The CPU twin of ContactReduce in ContactCS.hlsl.
+	 */
+	struct ContactLanes
+	{
+		std::array<ContactMerge, kContactLanes> lanes{};
+		std::array<std::uint32_t, kContactLanes> keys{};
+		std::uint32_t used{};
+
+		/** @param a_key What the contact touched: its driver slot plus one, 0 when unknown. */
+		void Add(const Contact& a_contact, const Vec3& a_position, std::uint32_t a_key, float a_count = 1.0f) noexcept;
 	};
 
 	/** @brief One mesh vertex and the bones it is skinned to, as the mesh reader finds them. */
@@ -133,15 +165,25 @@ namespace SmpPhysics
 		float weight[Util::kSkinInfluences]{};
 	};
 
+	/** @brief The rest of a vertex's skinning, for a vertex ReduceHairSpheres is handed one owning bone at a time. */
+	struct VertexBlend
+	{
+		std::array<SphereInfluence, Util::kSkinInfluences> others{};  ///< local is in the same space the owner's position is given in
+		float ownerWeight{ 1.0f };                                    ///< the owning bone's own skin weight on the vertex; 0 when it owns the vertex only through a triangle
+		float marginMultiplier{ -1.0f };                              ///< the vertex's weight-blended margin multiplier, as hdtSMP64 sizes it; negative uses the owning bone's
+		float flexible{ 1.0f };
+	};
+
 	/**
 	 * @brief A mesh vertex skinned by its bones' current world transforms, as the renderer would draw it.
 	 * @param a_vertex The vertex, with its position in mesh space and its skinning slots filled in.
 	 * @param a_boneToWorld One world transform per skin bone.
 	 * @param a_skinToBone One mesh-space to bone-space transform per skin bone, as NiSkinData stores it.
+	 * @param a_skinScale One scale per skin bone, see SkinnedSurface::skinScale; a missing entry is 1.
 	 * @return The blended world position, or the mesh-space position when no slot has a usable weight.
 	 */
 	[[nodiscard]] Vec3 SkinVertexToWorld(const SkinnedVertex& a_vertex, const std::vector<Transform>& a_boneToWorld,
-		const std::vector<Transform>& a_skinToBone) noexcept;
+		const std::vector<Transform>& a_skinToBone, const std::vector<float>& a_skinScale = {}) noexcept;
 
 	/**
 	 * @brief The bone a vertex's skinning is dominated by.
@@ -161,7 +203,7 @@ namespace SmpPhysics
 	 */
 	[[nodiscard]] std::vector<std::vector<BoneSphere>> ReduceHairSpheres(const std::vector<SkinnedVertex>& a_vertices,
 		const std::vector<Transform>& a_meshToBone, const std::vector<bool>& a_dynamicBone, float a_margin,
-		const std::vector<float>& a_marginMultiplier = {});
+		const std::vector<float>& a_marginMultiplier = {}, const std::vector<VertexBlend>& a_blend = {});
 
 	/**
 	 * @brief Fits an ellipsoid to a head mesh's vertices, already expressed in the head driver's frame.

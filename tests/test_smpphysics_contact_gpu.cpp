@@ -1,8 +1,10 @@
 // Runs the contact passes (ContactCS.hlsl: ContactCull, ContactSpheres, ContactReduce) on a WARP
 // device and compares every bone's merged contact with the CPU's QueryColliders and ContactMerge, then checks which
-// trees the passes serve.
+// trees the passes serve. A scene with cloth triangles also runs ClothVertices and ClothTriangles, against
+// TestVertexAgainstTriangle.
 
 #include "rigid_gpu_harness.h"
+#include "smp/ClothTriangles.h"
 #include "smp/Collision.h"
 #include "smp/GpuRigPacking.h"
 #include "smp/SolverCommon.h"
@@ -11,10 +13,14 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
+#include <initializer_list>
+#include <utility>
 #include <vector>
 
 using namespace SmpPhysics;
@@ -38,6 +44,9 @@ namespace
 		ComPtr<ID3D11ComputeShader> cull;
 		ComPtr<ID3D11ComputeShader> spheres;
 		ComPtr<ID3D11ComputeShader> reduce;
+		ComPtr<ID3D11ComputeShader> clothVertices;
+		ComPtr<ID3D11ComputeShader> clothTriangles;
+		ComPtr<ID3D11ComputeShader> clothFold;
 	};
 
 	const ContactKernels& LoadKernels()
@@ -50,6 +59,9 @@ namespace
 			value.cull = CompileKernel(device, "ContactCull", path);
 			value.spheres = CompileKernel(device, "ContactSpheres", path);
 			value.reduce = CompileKernel(device, "ContactReduce", path);
+			value.clothVertices = CompileKernel(device, "ClothVertices", path);
+			value.clothTriangles = CompileKernel(device, "ClothTriangles", path);
+			value.clothFold = CompileKernel(device, "ClothFold", path);
 			return value;
 		}();
 		return built;
@@ -64,6 +76,10 @@ namespace
 		Transform driver;
 		std::vector<SkinnedSurface> surfaces;
 		float contactSkin{ kContactSkin };
+		std::uint32_t driverCount{ 1 };                    ///< every driver sits at driver
+		ClothTriangleSet cloth;                            ///< empty runs the passes a claim without cloth triangles gets
+		bool bodyBones{};                                  ///< bind the surfaces' vertices, bones and faces, so a hit is credited to every bone of its body vertex
+		std::vector<std::vector<std::uint32_t>> faceKeys;  ///< per surface and source face, the driver slot plus one the GPU surface pass writes into the posed face; a missing entry is 0
 	};
 
 	Scene MakeScene()
@@ -100,27 +116,48 @@ namespace
 		return scene;
 	}
 
-	/** @brief The merged contact the CPU makes for one bone, the oracle for ContactReduce. */
-	GpuRig::BoneContact ExpectedContact(const Scene& a_scene, std::size_t a_bone)
+	GpuRig::BoneContact ToBoneContact(const ContactMerge& a_merge)
 	{
-		ContactMerge merge;
-		for (const BoneSphere& sphere : a_scene.spheres[a_bone]) {
-			const Vec3 centre = a_scene.boneWorld[a_bone].TransformPoint(sphere.centerLocal);
-			const Contact contact = QueryColliders(a_scene.colliders, { a_scene.driver }, centre, sphere.radius + a_scene.contactSkin, sphere.exemptMask);
-			merge.Add(contact, centre);
-		}
 		GpuRig::BoneContact expected;
 		Vec3 normal{};
 		Vec3 position{};
-		expected.depth = merge.Result(normal, position);
-		expected.deepest = merge.deepest;
-		expected.collider = merge.collider;
+		expected.depth = a_merge.Result(normal, position);
+		expected.deepest = a_merge.deepest;
+		expected.collider = a_merge.collider;
 		expected.normal[0] = normal.x;
 		expected.normal[1] = normal.y;
 		expected.normal[2] = normal.z;
 		expected.position[0] = position.x;
 		expected.position[1] = position.y;
 		expected.position[2] = position.z;
+		return expected;
+	}
+
+	/** @brief The single contact the CPU merges for one bone, the oracle for a bone that touches one driver. */
+	GpuRig::BoneContact ExpectedContact(const Scene& a_scene, std::size_t a_bone)
+	{
+		ContactMerge merge;
+		for (const BoneSphere& sphere : a_scene.spheres[a_bone]) {
+			const Vec3 centre = a_scene.boneWorld[a_bone].TransformPoint(sphere.centerLocal);
+			const Contact contact = QueryColliders(a_scene.colliders, std::vector<Transform>(a_scene.driverCount, a_scene.driver), centre, sphere.radius + a_scene.contactSkin, sphere.exemptMask);
+			merge.Add(contact, centre);
+		}
+		return ToBoneContact(merge);
+	}
+
+	/** @brief The contact lanes the CPU makes for one bone of a scene without surfaces, each collider keyed by its driver. */
+	std::array<GpuRig::BoneContact, kContactLanes> ExpectedLanes(const Scene& a_scene, std::size_t a_bone)
+	{
+		ContactLanes lanes;
+		for (const BoneSphere& sphere : a_scene.spheres[a_bone]) {
+			const Vec3 centre = a_scene.boneWorld[a_bone].TransformPoint(sphere.centerLocal);
+			const Contact contact = QueryColliders(a_scene.colliders, std::vector<Transform>(a_scene.driverCount, a_scene.driver), centre, sphere.radius + a_scene.contactSkin, sphere.exemptMask);
+			if (contact.collider >= 0)
+				lanes.Add(contact, centre, static_cast<std::uint32_t>(a_scene.colliders[static_cast<std::size_t>(contact.collider)].driverIndex + 1));
+		}
+		std::array<GpuRig::BoneContact, kContactLanes> expected;
+		for (std::size_t lane = 0; lane < kContactLanes; ++lane)
+			expected[lane] = ToBoneContact(lanes.lanes[lane]);
 		return expected;
 	}
 
@@ -223,14 +260,16 @@ namespace
 		std::vector<GpuRig::DriverDelta> driverDeltas;
 	};
 
-	/** @brief Dispatches the three contact passes over a scene and returns each bone's merged contact; a skipped bone keeps the sentinel. */
-	std::vector<GpuRig::BoneContact> RunPasses(const Scene& a_scene, const PassOptions& a_options)
+	/** @brief Dispatches the contact passes over a scene, the two cloth passes among them when it has cloth triangles, and returns every bone's contact lanes, kContactLanes per bone; a skipped bone keeps the sentinel in each. */
+	std::vector<GpuRig::BoneContact> RunLanes(const Scene& a_scene, const PassOptions& a_options)
 	{
 		const ContactKernels& kernels = LoadKernels();
 		ID3D11Device* device = kernels.gpu.device.Get();
 		ID3D11DeviceContext* context = kernels.gpu.context.Get();
 
-		const GpuRig::CollisionData collision = GpuRig::PackCollision(a_scene.spheres, a_scene.colliders, 1);
+		GpuRig::CollisionData collision = GpuRig::PackCollision(a_scene.spheres, a_scene.colliders, a_scene.driverCount);
+		GpuRig::PackClothTriangles(collision, a_scene.cloth);
+		const bool cloth = !collision.clothTriangles.empty();
 		std::vector<GpuRig::SphereRecord> sphereList = collision.sphereList;
 		std::size_t cursor = 0;
 		for (std::size_t bone = 0; bone < kBoneCount; ++bone)
@@ -239,7 +278,7 @@ namespace
 
 		std::vector<GpuRig::TreeStatic> trees(kTreeCount);
 		for (GpuRig::TreeStatic& tree : trees)
-			tree.contact = { 0u, static_cast<std::uint32_t>(collision.colliders.size()), 0u, 1u };
+			tree.contact = { 0u, static_cast<std::uint32_t>(collision.colliders.size()), 0u, a_scene.driverCount };
 
 		std::vector<GpuRig::TreeInput> inputs(kTreeCount);
 		for (GpuRig::TreeInput& input : inputs)
@@ -253,7 +292,7 @@ namespace
 			worlds[bone].rotation = { 1.0f, 0.0f, 0.0f, 0.0f };
 			worlds[bone].translation = { translation.x, translation.y, translation.z, 0.0f };
 		}
-		const std::vector<GpuRig::DriverWorld> drivers{ { { 1.0f, 0.0f, 0.0f, 0.0f }, { a_scene.driver.translation.x, a_scene.driver.translation.y, a_scene.driver.translation.z, 0.0f } } };
+		const std::vector<GpuRig::DriverWorld> drivers(a_scene.driverCount, { { 1.0f, 0.0f, 0.0f, 0.0f }, { a_scene.driver.translation.x, a_scene.driver.translation.y, a_scene.driver.translation.z, 0.0f } });
 		GpuRig::SurfaceFrame surfaceFrame;
 		std::uint32_t firstMeta = 0;
 		std::uint32_t metaCount = 0;
@@ -263,20 +302,38 @@ namespace
 			input.surface.x = firstMeta;
 			input.surface.y = metaCount;
 		}
-		const std::vector<GpuRig::BoneContact> contacts(kBoneCount, Sentinel());
+		for (std::size_t surface = 0; surface < a_scene.faceKeys.size() && surface < surfaceFrame.metas.size(); ++surface) {
+			const GpuRig::SurfaceMeta& meta = surfaceFrame.metas[surface];
+			for (std::uint32_t slot = 0; slot < meta.dimensions.w; ++slot) {
+				GpuRig::SurfaceTriangle& face = surfaceFrame.triangles[meta.base.x + slot];
+				const std::uint32_t source = std::bit_cast<std::uint32_t>(face.a.w);
+				if (source < a_scene.faceKeys[surface].size())
+					face.b.w = std::bit_cast<float>(a_scene.faceKeys[surface][source]);
+			}
+		}
+		const std::vector<GpuRig::BoneContact> contacts(kBoneCount * kContactLanes, Sentinel());
 		const std::vector<std::uint32_t> boneTrees(kBoneTrees.begin(), kBoneTrees.end());
 		const std::vector<float> hits(sphereList.size() * 12);
 		const std::vector<std::uint32_t> cull(kBoneCount * 4);
 		const std::vector<std::uint32_t> unused(4);
 
-		std::array<ComPtr<ID3D11Buffer>, 7> targetBuffers;
+		std::array<ComPtr<ID3D11Buffer>, 8> targetBuffers;
 		targetBuffers[1] = CreateTyped(device, worlds, D3D11_BIND_UNORDERED_ACCESS);
 		targetBuffers[3] = CreateTyped(device, contacts, D3D11_BIND_UNORDERED_ACCESS);
-		targetBuffers[5] = CreateStructured(device, 48, sphereList.size(), D3D11_BIND_UNORDERED_ACCESS);
+		targetBuffers[5] = CreateStructured(device, sizeof(GpuRig::SphereHit), sphereList.size(), D3D11_BIND_UNORDERED_ACCESS);
 		targetBuffers[6] = CreateStructured(device, 16, kBoneCount, D3D11_BIND_UNORDERED_ACCESS);
-		const std::array<std::size_t, 7> targetCounts{ 0, kBoneCount, 0, kBoneCount, 0, sphereList.size(), kBoneCount };
-		std::array<ID3D11UnorderedAccessView*, 7> targets{};
-		std::array<ComPtr<ID3D11UnorderedAccessView>, 7> targetViews;
+		const std::size_t clothHitCount = collision.clothTriangles.size() * kClothTriangleHits;
+		const std::size_t clothFoldChunks = collision.clothBoneList.size() / GpuRig::kClothFoldChunk;
+		const std::size_t clothFoldCount = std::max<std::size_t>(clothFoldChunks, 1) * kContactLanes;
+		if (cloth) {
+			targetBuffers[0] = CreateStructured(device, sizeof(GpuRig::Float4), collision.clothVertices.size(), D3D11_BIND_UNORDERED_ACCESS);
+			targetBuffers[2] = CreateStructured(device, sizeof(GpuRig::SphereHit), clothHitCount, D3D11_BIND_UNORDERED_ACCESS);
+			targetBuffers[4] = CreateStructured(device, sizeof(std::uint32_t), collision.clothTriangles.size(), D3D11_BIND_UNORDERED_ACCESS);
+			targetBuffers[7] = CreateStructured(device, sizeof(GpuRig::ClothFold), clothFoldCount, D3D11_BIND_UNORDERED_ACCESS);
+		}
+		const std::array<std::size_t, 8> targetCounts{ collision.clothVertices.size(), kBoneCount, clothHitCount, kBoneCount * kContactLanes, collision.clothTriangles.size(), sphereList.size(), kBoneCount, clothFoldCount };
+		std::array<ID3D11UnorderedAccessView*, 8> targets{};
+		std::array<ComPtr<ID3D11UnorderedAccessView>, 8> targetViews;
 		for (std::size_t slot = 0; slot < targets.size(); ++slot) {
 			if (!targetBuffers[slot])
 				continue;
@@ -284,12 +341,18 @@ namespace
 			targets[slot] = targetViews[slot].Get();
 		}
 
-		std::array<ComPtr<ID3D11Buffer>, 15> sourceBuffers;
-		std::array<std::size_t, 15> sourceCounts{};
+		std::array<ComPtr<ID3D11Buffer>, 18> sourceBuffers;
+		std::array<std::size_t, 18> sourceCounts{};
 		const auto bind = [&](std::size_t slot, auto& values) {
 			sourceBuffers[slot] = CreateTyped(device, values, D3D11_BIND_SHADER_RESOURCE);
 			sourceCounts[slot] = values.size();
 		};
+		if (cloth) {
+			bind(0, collision.clothVertices);
+			bind(3, collision.clothTriangles);
+			bind(4, collision.boneCloth);
+			bind(11, collision.clothBoneList);
+		}
 		bind(1, trees);
 		bind(2, inputs);
 		bind(5, collision.spheres);
@@ -302,8 +365,41 @@ namespace
 		bind(13, boneTrees);
 		if (!a_options.driverDeltas.empty())
 			bind(14, a_options.driverDeltas);
-		std::array<ComPtr<ID3D11ShaderResourceView>, 15> sourceViews;
-		std::array<ID3D11ShaderResourceView*, 15> sources{};
+		std::vector<GpuRig::SurfacePrepVertex> bodyVertices;
+		std::vector<GpuRig::SurfacePrepBone> bodyBones;
+		std::vector<GpuRig::Uint4> bodyFaces(surfaceFrame.triangles.size(), { GpuRig::kInvalidDriverSlot, GpuRig::kInvalidDriverSlot, GpuRig::kInvalidDriverSlot, 0u });
+		for (std::size_t surface = 0; a_scene.bodyBones && surface < a_scene.surfaces.size() && surface < surfaceFrame.metas.size(); ++surface) {
+			const SkinnedSurface& body = a_scene.surfaces[surface];
+			const auto vertexBase = static_cast<std::uint32_t>(bodyVertices.size());
+			const auto boneBase = static_cast<std::uint32_t>(bodyBones.size());
+			for (const SkinnedVertex& vertex : body.vertices) {
+				GpuRig::SurfacePrepVertex packed;
+				packed.position = { vertex.position.x, vertex.position.y, vertex.position.z, 0.0f };
+				const auto slotOf = [&](std::size_t a_slot) { return vertex.bone[a_slot] >= 0 ? boneBase + static_cast<std::uint32_t>(vertex.bone[a_slot]) : GpuRig::kInvalidDriverSlot; };
+				packed.bones = { slotOf(0), slotOf(1), slotOf(2), slotOf(3) };
+				packed.weights = { vertex.weight[0], vertex.weight[1], vertex.weight[2], vertex.weight[3] };
+				bodyVertices.push_back(packed);
+			}
+			for (std::size_t bone = 0; bone < body.boneDriver.size(); ++bone) {
+				GpuRig::SurfacePrepBone packed;
+				packed.driver = { body.boneDriver[bone] >= 0 ? static_cast<std::uint32_t>(body.boneDriver[bone]) : GpuRig::kInvalidDriverSlot,
+					std::bit_cast<std::uint32_t>(bone < body.boneThreshold.size() ? body.boneThreshold[bone] : 0.0f), 0u, 0u };
+				bodyBones.push_back(packed);
+			}
+			const GpuRig::SurfaceMeta& meta = surfaceFrame.metas[surface];
+			for (std::uint32_t slot = 0; slot < meta.dimensions.w; ++slot) {
+				const std::size_t source = std::bit_cast<std::uint32_t>(surfaceFrame.triangles[meta.base.x + slot].a.w);
+				if (source * 3 + 2 < body.indices.size())
+					bodyFaces[meta.base.x + slot] = { vertexBase + body.indices[source * 3], vertexBase + body.indices[source * 3 + 1], vertexBase + body.indices[source * 3 + 2], 0u };
+			}
+		}
+		if (a_scene.bodyBones && !bodyVertices.empty() && !bodyBones.empty() && !bodyFaces.empty()) {
+			bind(15, bodyVertices);
+			bind(16, bodyBones);
+			bind(17, bodyFaces);
+		}
+		std::array<ComPtr<ID3D11ShaderResourceView>, 18> sourceViews;
+		std::array<ID3D11ShaderResourceView*, 18> sources{};
 		for (std::size_t slot = 0; slot < sources.size(); ++slot) {
 			if (!sourceBuffers[slot])
 				continue;
@@ -313,9 +409,10 @@ namespace
 
 		struct Constants
 		{
-			std::uint32_t boneCount, sphereCount, padding[2];
+			std::uint32_t boneCount, sphereCount, clothVertexCount, clothTriangleCount;
 		};
-		const Constants constants{ static_cast<std::uint32_t>(kBoneCount), static_cast<std::uint32_t>(sphereList.size()), {} };
+		const Constants constants{ static_cast<std::uint32_t>(kBoneCount), static_cast<std::uint32_t>(sphereList.size()),
+			static_cast<std::uint32_t>(collision.clothVertices.size()), static_cast<std::uint32_t>(collision.clothTriangles.size()) };
 		D3D11_BUFFER_DESC constantsDesc{};
 		constantsDesc.ByteWidth = sizeof(Constants);
 		constantsDesc.Usage = D3D11_USAGE_IMMUTABLE;
@@ -330,17 +427,52 @@ namespace
 		context->CSSetUnorderedAccessViews(0, static_cast<UINT>(targets.size()), targets.data(), nullptr);
 		context->CSSetShader(kernels.cull.Get(), nullptr, 0);
 		context->Dispatch(GroupCount(kBoneCount), 1, 1);
+		if (cloth) {
+			context->CSSetShader(kernels.clothVertices.Get(), nullptr, 0);
+			context->Dispatch(GroupCount(collision.clothVertices.size()), 1, 1);
+			context->CSSetShader(kernels.clothTriangles.Get(), nullptr, 0);
+			context->Dispatch(GroupCount(collision.clothTriangles.size()), 1, 1);
+			context->CSSetShader(kernels.clothFold.Get(), nullptr, 0);
+			context->Dispatch(GroupCount(clothFoldChunks), 1, 1);
+		}
 		context->CSSetShader(kernels.spheres.Get(), nullptr, 0);
 		context->Dispatch(GroupCount(sphereList.size()), 1, 1);
 		context->CSSetShader(kernels.reduce.Get(), nullptr, 0);
 		context->Dispatch(GroupCount(kBoneCount), 1, 1);
 
-		std::array<ID3D11UnorderedAccessView*, 7> noTargets{};
+		std::array<ID3D11UnorderedAccessView*, 8> noTargets{};
 		std::array<ID3D11ShaderResourceView*, 15> noSources{};
 		context->CSSetUnorderedAccessViews(0, static_cast<UINT>(noTargets.size()), noTargets.data(), nullptr);
 		context->CSSetShaderResources(0, static_cast<UINT>(noSources.size()), noSources.data());
 		context->CSSetShader(nullptr, nullptr, 0);
-		return ReadBack<GpuRig::BoneContact>(device, context, targetBuffers[3].Get(), kBoneCount);
+		return ReadBack<GpuRig::BoneContact>(device, context, targetBuffers[3].Get(), kBoneCount * kContactLanes);
+	}
+
+	bool IsSkipped(const GpuRig::BoneContact& a_contact)
+	{
+		return a_contact.depth == kSentinelDepth;
+	}
+
+	bool IsEmptyLane(const GpuRig::BoneContact& a_contact)
+	{
+		const GpuRig::BoneContact empty;
+		return std::memcmp(&a_contact, &empty, sizeof(empty)) == 0;
+	}
+
+	/** @brief Runs a scene whose bones each touch one driver at most and returns lane 0 of every bone; the other lanes must be empty, or skipped with it. */
+	std::vector<GpuRig::BoneContact> RunPasses(const Scene& a_scene, const PassOptions& a_options)
+	{
+		const std::vector<GpuRig::BoneContact> lanes = RunLanes(a_scene, a_options);
+		std::vector<GpuRig::BoneContact> first(kBoneCount);
+		for (std::size_t bone = 0; bone < kBoneCount; ++bone) {
+			first[bone] = lanes[bone * kContactLanes];
+			for (std::size_t lane = 1; lane < kContactLanes; ++lane) {
+				INFO("bone " << bone << " lane " << lane);
+				const GpuRig::BoneContact& other = lanes[bone * kContactLanes + lane];
+				REQUIRE((IsSkipped(first[bone]) ? IsSkipped(other) : IsEmptyLane(other)));
+			}
+		}
+		return first;
 	}
 
 	void RequireMatches(const GpuRig::BoneContact& a_actual, const GpuRig::BoneContact& a_expected, std::size_t a_bone)
@@ -355,10 +487,6 @@ namespace
 		}
 	}
 
-	bool IsSkipped(const GpuRig::BoneContact& a_contact)
-	{
-		return a_contact.depth == kSentinelDepth;
-	}
 }
 
 TEST_CASE("The scene exercises a contact, an exemption and a bone out of reach", "[smpphysics][contact_gpu]")
@@ -421,6 +549,26 @@ TEST_CASE("The passes find a bone's penetration of a skinned surface as the CPU 
 	CHECK(probes[3].depth == 0.0f);
 }
 
+TEST_CASE("A sphere sits at the blend of its vertex's bones and its depth is scaled by flexible", "[smpphysics][contact_gpu]")
+{
+	const Scene rigid = MakeSurfaceScene();
+	const std::vector<GpuRig::BoneContact> before = RunPasses(rigid, {});
+	REQUIRE(before[0].depth > 0.0f);
+	REQUIRE(before[2].depth > 0.0f);
+
+	Scene blended = rigid;
+	blended.spheres[0][0].weight = 0.75f;
+	blended.spheres[0][0].others[0] = { 1, { 0.0f, 0.0f, 0.0f }, 0.25f };
+	blended.spheres[2][0].flexible = 0.5f;
+	const std::vector<GpuRig::BoneContact> after = RunPasses(blended, {});
+
+	const Vec3 expected = rigid.boneWorld[0].translation * 0.75f + rigid.boneWorld[1].translation * 0.25f;
+	CHECK(after[0].position[0] == Approx(expected.x).margin(1.0e-4f));
+	CHECK(after[0].position[2] == Approx(expected.z).margin(1.0e-4f));
+	CHECK(after[0].depth == Approx(before[0].depth - (expected.z - rigid.boneWorld[0].translation.z)).margin(1.0e-3f));
+	CHECK(after[2].depth == Approx(before[2].depth * 0.5f).margin(1.0e-4f));
+}
+
 TEST_CASE("The passes find the deep push reach of a surface as the CPU probe does", "[smpphysics][contact_gpu]")
 {
 	std::vector<SphereProbe> probes;
@@ -468,4 +616,580 @@ TEST_CASE("A contact with no driver delta bound reports no velocity", "[smpphysi
 	const std::vector<GpuRig::BoneContact> contacts = RunPasses(MakeScene(), {});
 	for (const GpuRig::BoneContact& contact : contacts)
 		CHECK(contact.velocityValid == 0u);
+}
+
+/** @brief Two unit balls on two drivers, with bone 0 resting one sphere on top of the first and one against the side of the second. */
+Scene MakeTwoDriverScene()
+{
+	Scene scene;
+	scene.driver = Transform{};
+	scene.driverCount = 2;
+	Collider under;
+	under.type = Collider::Type::Ellipsoid;
+	under.driverIndex = 0;
+	under.halfExtents = { 1.0f, 1.0f, 1.0f };
+	Collider beside = under;
+	beside.driverIndex = 1;
+	beside.center = { 1.5f, 0.0f, 1.5f };
+	scene.colliders = { under, beside };
+
+	scene.boneWorld.resize(kBoneCount);
+	scene.spheres.resize(kBoneCount);
+	for (std::size_t bone = 0; bone < kBoneCount; ++bone) {
+		scene.boneWorld[bone].translation = { 0.0f, 0.0f, 1.0f + 40.0f * static_cast<float>(bone) };
+		scene.spheres[bone].push_back({ { 0.0f, 0.0f, 0.0f }, 0.1f, 0u });
+	}
+	scene.spheres[0].push_back({ { 0.55f, 0.0f, 0.5f }, 0.1f, 0u });
+	return scene;
+}
+
+TEST_CASE("A bone touching two drivers keeps one contact for each", "[smpphysics][contact_gpu]")
+{
+	const Scene scene = MakeTwoDriverScene();
+	const GpuRig::BoneContact merged = ExpectedContact(scene, 0);
+	// One merged contact would point between the two surfaces and hold the bone off neither.
+	REQUIRE(merged.normal[0] < -0.5f);
+	REQUIRE(merged.normal[2] > 0.2f);
+
+	const std::vector<GpuRig::BoneContact> lanes = RunLanes(scene, {});
+	const std::array<GpuRig::BoneContact, kContactLanes> expected = ExpectedLanes(scene, 0);
+	for (std::size_t lane = 0; lane < kContactLanes; ++lane)
+		RequireMatches(lanes[lane], expected[lane], lane);
+
+	CHECK(lanes[0].collider == 0);
+	CHECK(lanes[0].depth == Approx(0.12f).margin(1.0e-3f));
+	CHECK(lanes[0].normal[2] == Approx(1.0f).margin(1.0e-3f));
+	CHECK(lanes[0].position[2] == Approx(1.0f).margin(1.0e-4f));
+	CHECK(lanes[1].collider == 1);
+	CHECK(lanes[1].depth == Approx(0.17f).margin(1.0e-3f));
+	CHECK(lanes[1].normal[0] == Approx(-1.0f).margin(1.0e-3f));
+	CHECK(lanes[1].position[0] == Approx(0.55f).margin(1.0e-4f));
+	CHECK(lanes[1].position[2] == Approx(1.5f).margin(1.0e-4f));
+	for (std::size_t lane = 2; lane < kContactLanes; ++lane)
+		CHECK(IsEmptyLane(lanes[lane]));
+	for (std::size_t lane = 0; lane < kContactLanes; ++lane)
+		CHECK(IsEmptyLane(lanes[kContactLanes + lane]));
+}
+
+TEST_CASE("A bone touching one driver keeps the single merged contact in lane 0", "[smpphysics][contact_gpu]")
+{
+	const Scene scene = MakeScene();
+	const std::vector<GpuRig::BoneContact> lanes = RunLanes(scene, {});
+	for (std::size_t bone = 0; bone < kBoneCount; ++bone) {
+		RequireMatches(lanes[bone * kContactLanes], ExpectedContact(scene, bone), bone);
+		for (std::size_t lane = 1; lane < kContactLanes; ++lane) {
+			INFO("bone " << bone << " lane " << lane);
+			CHECK(IsEmptyLane(lanes[bone * kContactLanes + lane]));
+		}
+	}
+}
+
+namespace
+{
+	constexpr std::size_t kCrowdedDrivers{ kContactLanes + 1 };
+	constexpr float kCrowdedSpacing{ 3.0f };
+	/** @brief The tilt of each sphere's normal about Y; the last is nearest the third, whose lane it must join. */
+	constexpr std::array<float, kCrowdedDrivers> kCrowdedTilt{ -0.6f, -0.2f, 0.2f, 0.6f, 0.25f };
+	constexpr std::size_t kCrowdedSharedLane{ 2 };
+
+	/** @brief A row of unit balls, one per driver and one more than there are lanes, with bone 0 resting one sphere on each. */
+	Scene MakeCrowdedScene()
+	{
+		static_assert(kContactLanes == 4, "kCrowdedTilt lists one sphere per lane and one more");
+		Scene scene;
+		scene.driver = Transform{};
+		scene.driverCount = static_cast<std::uint32_t>(kCrowdedDrivers);
+		scene.boneWorld.resize(kBoneCount);
+		scene.spheres.resize(kBoneCount);
+		for (std::size_t bone = 1; bone < kBoneCount; ++bone) {
+			scene.boneWorld[bone].translation = { 0.0f, 0.0f, 40.0f * static_cast<float>(bone) };
+			scene.spheres[bone].push_back({ { 0.0f, 0.0f, 0.0f }, 0.1f, 0u });
+		}
+		for (std::size_t index = 0; index < kCrowdedDrivers; ++index) {
+			Collider ball;
+			ball.type = Collider::Type::Ellipsoid;
+			ball.driverIndex = static_cast<int>(index);
+			ball.halfExtents = { 1.0f, 1.0f, 1.0f };
+			ball.center = { kCrowdedSpacing * static_cast<float>(index), 0.0f, 0.0f };
+			scene.colliders.push_back(ball);
+			const float distance = index + 1 == kCrowdedDrivers ? 0.97f : 0.95f;
+			scene.spheres[0].push_back({ { ball.center.x + distance * std::sin(kCrowdedTilt[index]), 0.0f, distance * std::cos(kCrowdedTilt[index]) }, 0.1f, 0u });
+		}
+		return scene;
+	}
+}
+
+TEST_CASE("More contacted drivers than lanes fold into the best aligned lane", "[smpphysics][contact_gpu]")
+{
+	const Scene scene = MakeCrowdedScene();
+	const std::vector<GpuRig::BoneContact> lanes = RunLanes(scene, {});
+	const std::array<GpuRig::BoneContact, kContactLanes> expected = ExpectedLanes(scene, 0);
+	for (std::size_t lane = 0; lane < kContactLanes; ++lane) {
+		RequireMatches(lanes[lane], expected[lane], lane);
+		CHECK(lanes[lane].depth > 0.0f);
+		CHECK(lanes[lane].collider == static_cast<int>(lane));
+	}
+
+	// The fifth sphere is not dropped: it pulls the shared lane's position off the third sphere, toward its own.
+	const Vec3& own = scene.spheres[0][kCrowdedSharedLane].centerLocal;
+	const Vec3& extra = scene.spheres[0][kContactLanes].centerLocal;
+	const float ownWeight = 0.17f * 0.17f;
+	const float extraWeight = 0.15f * 0.15f;
+	CHECK(lanes[kCrowdedSharedLane].position[0] == Approx((own.x * ownWeight + extra.x * extraWeight) / (ownWeight + extraWeight)).margin(0.1f));
+	CHECK(lanes[kCrowdedSharedLane].position[0] > own.x + 1.0f);
+	CHECK(lanes[kCrowdedSharedLane].deepest == Approx(0.17f).margin(1.0e-3f));
+	for (std::size_t lane = 0; lane < kContactLanes; ++lane) {
+		if (lane != kCrowdedSharedLane)
+			CHECK(lanes[lane].position[0] == Approx(scene.spheres[0][lane].centerLocal.x).margin(1.0e-4f));
+	}
+}
+
+namespace
+{
+	// tara2.xml's dress and body shapes: a body vertex is held from 0.32 behind the cloth's plane to 0.87 in front.
+	constexpr float kClothMargin{ 0.1f };
+	constexpr float kClothPenetration{ -0.1f };
+	constexpr float kClothMultiplier{ 3.2f };
+	constexpr float kBodyRadius{ 0.55f };
+	constexpr float kClothReach{ kBodyRadius + kClothMargin * kClothMultiplier };
+	constexpr std::uint32_t kLeftKey{ 1 };
+	constexpr std::uint32_t kRightKey{ 2 };
+
+	SkinnedVertex RigidVertex(const Vec3& a_position)
+	{
+		SkinnedVertex vertex;
+		vertex.position = a_position;
+		vertex.bone[0] = 0;
+		vertex.weight[0] = 1.0f;
+		return vertex;
+	}
+
+	/**
+	 * @brief A 4 by 2 sheet in the z = 0 plane, its x = 0 edge skinned to bone 0, its x = 4 edge to bone 1 and the middle to both.
+	 * @details Triangles 0 and 1 span x 0 to 2 below and above the diagonal, triangles 2 and 3 span x 2 to 4. Their normals
+	 *          are +Z and the negative penetration turns them, so the body belongs below the sheet.
+	 */
+	ClothTriangleSet MakeSheet(const std::vector<bool>& a_dynamicBone)
+	{
+		std::vector<SkinnedVertex> vertices;
+		for (const float y : { 0.0f, 2.0f }) {
+			for (const float x : { 0.0f, 2.0f, 4.0f }) {
+				SkinnedVertex vertex = RigidVertex({ x, y, 0.0f });
+				vertex.weight[0] = 1.0f - x / 4.0f;
+				vertex.bone[1] = 1;
+				vertex.weight[1] = x / 4.0f;
+				vertices.push_back(vertex);
+			}
+		}
+		const std::vector<std::uint16_t> triangles{ 0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4 };
+		const std::vector<int> rigBoneOfSkinBone{ 0, 1 };
+		const std::vector<Transform> skinToBone(2);
+		const std::vector<float> marginMultiplier(kBoneCount, kClothMultiplier);
+		const std::vector<float> weightThreshold(kBoneCount, 0.0f);
+		ClothTriangleSet cloth;
+		AppendClothTriangles(cloth, { "sheet", &vertices, &triangles, &rigBoneOfSkinBone, &skinToBone, &a_dynamicBone, &marginMultiplier, &weightThreshold, kClothMargin, kClothPenetration });
+		return cloth;
+	}
+
+	/**
+	 * @brief A body proxy built from a per-vertex shape: three slivers whose vertices sit under, above and far from the sheet.
+	 * @details Face 0, on the left driver, holds a vertex 0.5 under triangle 1 and one 0.3 under triangle 0. Face 1, on the
+	 *          right driver, holds one 0.2 under triangle 1 and one 0.4 under triangle 2. Face 2, on the left driver, holds
+	 *          one 0.2 above triangle 3, inside its window, and one 0.5 above it, past the window.
+	 */
+	SkinnedSurface MakeBodyProxy()
+	{
+		SkinnedSurface body;
+		body.name = "body";
+		body.margin = kBodyRadius;
+		body.perVertex = true;
+		for (const Vec3& position : { Vec3{ 0.5f, 1.2f, -0.5f }, Vec3{ 1.2f, 0.4f, -0.3f }, Vec3{ 0.8f, 0.9f, -3.0f },
+				 Vec3{ 0.6f, 1.5f, -0.2f }, Vec3{ 3.0f, 0.5f, -0.4f }, Vec3{ 3.0f, 1.0f, -6.0f },
+				 Vec3{ 2.5f, 1.5f, 0.2f }, Vec3{ 2.6f, 1.6f, 0.5f }, Vec3{ 2.4f, 1.8f, 3.0f } })
+			body.vertices.push_back(RigidVertex(position));
+		body.indices = { 0, 1, 2, 3, 4, 5, 6, 7, 8 };
+		body.skinToBone = { Transform{} };
+		body.boneDriver = { 0 };
+		return body;
+	}
+
+	/** @brief The sheet on bones 0 and 1 over the body proxy; bones 2 and 3 are far away and own no triangle. */
+	Scene MakeClothScene()
+	{
+		Scene scene;
+		scene.contactSkin = 0.0f;
+		scene.driverCount = 2;
+		scene.boneWorld.resize(kBoneCount);
+		scene.boneWorld[2].translation = { 0.0f, 0.0f, 40.0f };
+		scene.boneWorld[3].translation = { 0.0f, 0.0f, 80.0f };
+		scene.spheres.resize(kBoneCount);
+		scene.spheres[3].push_back({ { 0.0f, 0.0f, 0.0f }, 0.1f, 0u });
+		scene.cloth = MakeSheet(std::vector<bool>(kBoneCount, true));
+		scene.surfaces = { MakeBodyProxy() };
+		scene.faceKeys = { { kLeftKey, kRightKey, kLeftKey } };
+		return scene;
+	}
+
+	struct ClothHit
+	{
+		TriangleContact contact;
+		std::uint32_t key{};
+		int collider{ -1 };
+	};
+
+	/** @brief OfferClothHit in ContactCS.hlsl: the deepest hit on each driver, the deepest drivers first. */
+	void OfferClothHit(std::array<ClothHit, kClothTriangleHits>& a_slots, const ClothHit& a_hit)
+	{
+		const auto held = std::ranges::find_if(a_slots, [&a_hit](const ClothHit& a_slot) { return a_slot.contact.depth > 0.0f && a_slot.key == a_hit.key; });
+		if (held != a_slots.end()) {
+			if (!(a_hit.contact.depth > held->contact.depth))
+				return;
+			std::move(held + 1, a_slots.end(), held);
+			a_slots.back() = {};
+		}
+		const auto place = std::ranges::find_if(a_slots, [&a_hit](const ClothHit& a_slot) { return a_hit.contact.depth > a_slot.contact.depth; });
+		if (place == a_slots.end())
+			return;
+		std::move_backward(place, a_slots.end() - 1, a_slots.end());
+		*place = a_hit;
+	}
+
+	/** @brief The driver keys a body vertex's hit is credited to: every bone above its threshold, else the face's key. */
+	std::vector<std::uint32_t> BodyVertexKeys(const Scene& a_scene, std::size_t a_surface, std::size_t a_vertex, std::size_t a_face)
+	{
+		std::vector<std::uint32_t> keys;
+		const SkinnedSurface& body = a_scene.surfaces[a_surface];
+		for (std::size_t slot = 0; a_scene.bodyBones && slot < Util::kSkinInfluences; ++slot) {
+			const int bone = body.vertices[a_vertex].bone[slot];
+			const float weight = body.vertices[a_vertex].weight[slot];
+			if (bone < 0 || static_cast<std::size_t>(bone) >= body.boneDriver.size() || body.boneDriver[static_cast<std::size_t>(bone)] < 0 || !(weight > kTriangleContactEpsilon))
+				continue;
+			if (weight > (static_cast<std::size_t>(bone) < body.boneThreshold.size() ? body.boneThreshold[static_cast<std::size_t>(bone)] : 0.0f))
+				keys.push_back(static_cast<std::uint32_t>(body.boneDriver[static_cast<std::size_t>(bone)]) + 1u);
+		}
+		if (keys.empty())
+			keys.push_back(a_surface < a_scene.faceKeys.size() && a_face < a_scene.faceKeys[a_surface].size() ? a_scene.faceKeys[a_surface][a_face] : 0u);
+		return keys;
+	}
+
+	/** @brief Per cloth triangle, its deepest hit on each driver, found by testing every vertex of every per-vertex surface. */
+	std::vector<std::array<ClothHit, kClothTriangleHits>> ExpectedClothHits(const Scene& a_scene)
+	{
+		std::vector<Vec3> posed;
+		for (const ClothVertex& vertex : a_scene.cloth.vertices)
+			posed.push_back(PoseClothVertex(vertex, a_scene.boneWorld));
+		std::vector<std::array<ClothHit, kClothTriangleHits>> expected(a_scene.cloth.triangles.size());
+		for (std::size_t index = 0; index < expected.size(); ++index) {
+			const ClothTriangle& triangle = a_scene.cloth.triangles[index];
+			for (std::size_t surface = 0; surface < a_scene.surfaces.size(); ++surface) {
+				const SkinnedSurface& body = a_scene.surfaces[surface];
+				if (!body.perVertex || (surface < kMaskedSurfaceLimit && (triangle.surfaceMask & (1u << surface)) == 0u))
+					continue;
+				const std::vector<Vec3> bodyPosed = PoseSurface(body, std::vector<Transform>(a_scene.driverCount, a_scene.driver));
+				for (std::size_t corner = 0; corner < body.indices.size(); ++corner) {
+					const TriangleContact contact = TestVertexAgainstTriangle(bodyPosed[body.indices[corner]], body.margin, posed[triangle.corners[0]],
+						posed[triangle.corners[1]], posed[triangle.corners[2]], triangle.margin, triangle.penetration);
+					if (!(contact.depth > 0.0f))
+						continue;
+					for (const std::uint32_t key : BodyVertexKeys(a_scene, surface, body.indices[corner], corner / 3))
+						OfferClothHit(expected[index], { contact, key, static_cast<int>(a_scene.colliders.size() + surface) });
+				}
+			}
+		}
+		return expected;
+	}
+
+	/** @brief The lanes the CPU makes for one bone from its cloth triangles' hits, added to a_lanes, which holds what its spheres gave. */
+	std::array<GpuRig::BoneContact, kContactLanes> ExpectedClothLanes(const Scene& a_scene, std::size_t a_bone, ContactLanes a_lanes = {})
+	{
+		const std::vector<std::array<ClothHit, kClothTriangleHits>> hits = ExpectedClothHits(a_scene);
+		for (const ClothBoneTriangle& owned : a_scene.cloth.boneTriangles[a_bone]) {
+			for (const ClothHit& hit : hits[owned.triangle]) {
+				if (hit.contact.depth > 0.0f)
+					a_lanes.Add({ hit.contact.depth * owned.flexible, hit.contact.normal, hit.collider }, hit.contact.point, hit.key, static_cast<float>(owned.corners));
+			}
+		}
+		std::array<GpuRig::BoneContact, kContactLanes> expected;
+		for (std::size_t lane = 0; lane < kContactLanes; ++lane)
+			expected[lane] = ToBoneContact(a_lanes.lanes[lane]);
+		return expected;
+	}
+
+	void RequireClothLanes(const Scene& a_scene, const std::vector<GpuRig::BoneContact>& a_lanes, std::size_t a_bone, const ContactLanes& a_sphereLanes = {})
+	{
+		const std::array<GpuRig::BoneContact, kContactLanes> expected = ExpectedClothLanes(a_scene, a_bone, a_sphereLanes);
+		for (std::size_t lane = 0; lane < kContactLanes; ++lane) {
+			INFO("lane " << lane);
+			RequireMatches(a_lanes[a_bone * kContactLanes + lane], expected[lane], a_bone);
+		}
+	}
+
+	/** @brief hdtSMP64's merged depth of contacts on one lane: each a depth and how many times it is added. */
+	float MergedDepth(std::initializer_list<std::pair<float, float>> a_contacts)
+	{
+		float cubed = 0.0f;
+		float squared = 0.0f;
+		for (const auto& [depth, count] : a_contacts) {
+			cubed += count * depth * depth * depth;
+			squared += count * depth * depth;
+		}
+		return cubed / squared;
+	}
+}
+
+TEST_CASE("A cloth's triangles take contacts from a body proxy's vertices inside the triangle's window", "[smpphysics][contact_gpu][clothtriangles]")
+{
+	const Scene scene = MakeClothScene();
+	const std::vector<std::array<ClothHit, kClothTriangleHits>> hits = ExpectedClothHits(scene);
+	REQUIRE(hits.size() == 4);
+	CHECK(hits[0][0].contact.depth == Approx(kClothReach - 0.3f));
+	CHECK(hits[0][1].contact.depth == 0.0f);
+	CHECK(hits[1][0].contact.depth == Approx(kClothReach - 0.2f));
+	CHECK(hits[1][0].key == kRightKey);
+	CHECK(hits[1][1].contact.depth == Approx(kClothReach - 0.5f));
+	CHECK(hits[1][1].key == kLeftKey);
+	CHECK(hits[2][0].contact.depth == Approx(kClothReach - 0.4f));
+	// The vertex above the sheet is inside the window and is the deepest; the one past the window is let go.
+	CHECK(hits[3][0].contact.depth == Approx(kClothReach + 0.2f));
+	CHECK(hits[3][1].contact.depth == 0.0f);
+
+	const std::vector<GpuRig::BoneContact> lanes = RunLanes(scene, {});
+	RequireClothLanes(scene, lanes, 0);
+	RequireClothLanes(scene, lanes, 1);
+
+	// Bone 0 holds three corner weights of triangles 0 and 1, one of triangle 2 and two of triangle 3; each driver has its lane.
+	const GpuRig::BoneContact& left = lanes[0];
+	CHECK(left.depth == Approx(MergedDepth({ { 0.57f, 3.0f }, { 0.37f, 3.0f }, { 1.07f, 2.0f } })).margin(kTolerance));
+	CHECK(left.deepest == Approx(1.07f).margin(kTolerance));
+	CHECK(left.collider == 0);
+	CHECK(left.normal[2] == Approx(1.0f).margin(kTolerance));
+	const GpuRig::BoneContact& right = lanes[1];
+	CHECK(right.depth == Approx(MergedDepth({ { 0.67f, 3.0f }, { 0.47f, 1.0f } })).margin(kTolerance));
+	CHECK(right.normal[2] == Approx(1.0f).margin(kTolerance));
+	// A lane's position is on the cloth, where the vertices project.
+	CHECK(right.position[2] == Approx(0.0f).margin(kTolerance));
+	CHECK(right.position[0] == Approx((3.0f * 0.67f * 0.67f * 0.6f + 0.47f * 0.47f * 3.0f) / (3.0f * 0.67f * 0.67f + 0.47f * 0.47f)).margin(kTolerance));
+	for (std::size_t lane = 2; lane < kContactLanes; ++lane)
+		CHECK(IsEmptyLane(lanes[lane]));
+	for (std::size_t bone = 2; bone < kBoneCount; ++bone) {
+		for (std::size_t lane = 0; lane < kContactLanes; ++lane)
+			CHECK(IsEmptyLane(lanes[bone * kContactLanes + lane]));
+	}
+}
+
+TEST_CASE("A bone with more cloth triangles than a chunk holds merges its chunks into the same lanes", "[smpphysics][contact_gpu][clothtriangles]")
+{
+	Scene scene = MakeClothScene();
+	const std::size_t triangles = scene.cloth.triangles.size();
+	std::vector<std::vector<ClothBoneTriangle>> owned = scene.cloth.boneTriangles;
+	for (std::uint32_t copy = 1; copy < 40; ++copy) {
+		for (std::size_t triangle = 0; triangle < triangles; ++triangle)
+			scene.cloth.triangles.push_back(scene.cloth.triangles[triangle]);
+		for (std::size_t bone = 0; bone < owned.size(); ++bone) {
+			for (ClothBoneTriangle entry : owned[bone]) {
+				entry.triangle += copy * static_cast<std::uint32_t>(triangles);
+				scene.cloth.boneTriangles[bone].push_back(entry);
+			}
+		}
+	}
+	REQUIRE(scene.cloth.boneTriangles[0].size() > GpuRig::kClothFoldChunk);
+	const std::vector<GpuRig::BoneContact> lanes = RunLanes(scene, {});
+	RequireClothLanes(scene, lanes, 0);
+	RequireClothLanes(scene, lanes, 1);
+	CHECK(lanes[0].deepest == Approx(1.07f).margin(kTolerance));
+}
+
+TEST_CASE("Cloth triangles are tested where their bones pose them, and their depth is scaled by flexible", "[smpphysics][contact_gpu][clothtriangles]")
+{
+	Scene tilted = MakeClothScene();
+	tilted.boneWorld[1].translation = { 0.0f, 0.0f, 0.3f };
+	const std::vector<GpuRig::BoneContact> moved = RunLanes(tilted, {});
+	RequireClothLanes(tilted, moved, 0);
+	RequireClothLanes(tilted, moved, 1);
+	const std::vector<GpuRig::BoneContact> flat = RunLanes(MakeClothScene(), {});
+	CHECK(moved[kContactLanes].depth > 0.0f);
+	CHECK(std::fabs(moved[kContactLanes].depth - flat[kContactLanes].depth) > 0.01f);
+
+	// With bone 1 not simulated, bone 0 owns every triangle alone and each depth is scaled by the triangle's simulated weight.
+	Scene half = MakeClothScene();
+	half.cloth = MakeSheet({ true, false, true, true });
+	REQUIRE(half.cloth.boneTriangles[1].empty());
+	const std::vector<GpuRig::BoneContact> scaled = RunLanes(half, {});
+	RequireClothLanes(half, scaled, 0);
+	CHECK(scaled[0].deepest == Approx(0.57f * 2.0f / 3.0f).margin(kTolerance));
+	for (std::size_t lane = 0; lane < kContactLanes; ++lane)
+		CHECK(IsEmptyLane(scaled[kContactLanes + lane]));
+}
+
+TEST_CASE("A cloth triangle leaves out a masked surface and a tree that takes no contacts, and is two-sided without penetration", "[smpphysics][contact_gpu][clothtriangles]")
+{
+	Scene masked = MakeClothScene();
+	for (ClothTriangle& triangle : masked.cloth.triangles)
+		triangle.surfaceMask = ~1u;
+	const std::vector<GpuRig::BoneContact> none = RunLanes(masked, {});
+	for (std::size_t lane = 0; lane < 2 * kContactLanes; ++lane)
+		CHECK(IsEmptyLane(none[lane]));
+
+	// A surface that was not built from a per-vertex shape is not tested against the triangles at all.
+	Scene faces = MakeClothScene();
+	faces.surfaces[0].perVertex = false;
+	const std::vector<GpuRig::BoneContact> untested = RunLanes(faces, {});
+	for (std::size_t lane = 0; lane < 2 * kContactLanes; ++lane)
+		CHECK(IsEmptyLane(untested[lane]));
+
+	// With no penetration a triangle is two-sided, so the vertex past the one-sided window above triangle 3 is now held from above.
+	Scene twoSided = MakeClothScene();
+	for (ClothTriangle& triangle : twoSided.cloth.triangles)
+		triangle.penetration = 0.0f;
+	const std::vector<std::array<ClothHit, kClothTriangleHits>> hits = ExpectedClothHits(twoSided);
+	CHECK(hits[3][0].contact.depth == Approx(kClothReach - 0.2f));
+	CHECK(hits[3][0].contact.normal.z == Approx(-1.0f));
+	const std::vector<GpuRig::BoneContact> both = RunLanes(twoSided, {});
+	RequireClothLanes(twoSided, both, 0);
+	RequireClothLanes(twoSided, both, 1);
+
+	PassOptions options;
+	options.takesContacts = { false, true };
+	const std::vector<GpuRig::BoneContact> skipped = RunLanes(MakeClothScene(), options);
+	for (std::size_t lane = 0; lane < 2 * kContactLanes; ++lane)
+		CHECK(IsSkipped(skipped[lane]));
+}
+
+TEST_CASE("A cloth triangle's contact carries the velocity of the body vertex's driver", "[smpphysics][contact_gpu][clothtriangles]")
+{
+	Scene scene = MakeClothScene();
+	// Only the vertex under triangle 2 is left, so bone 1's lane is that one hit.
+	scene.surfaces[0].indices = { 3, 4, 5 };
+	scene.faceKeys = { { kRightKey } };
+	scene.surfaces[0].vertices[3].position = { 0.6f, 1.5f, -9.0f };
+	PassOptions options;
+	GpuRig::DriverDelta still;
+	still.translation.w = 60.0f;
+	GpuRig::DriverDelta moving;
+	moving.translation = { 0.5f, -1.0f, 2.0f, 60.0f };
+	options.driverDeltas = { still, moving };
+	const std::vector<GpuRig::BoneContact> lanes = RunLanes(scene, options);
+	const GpuRig::BoneContact& lane = lanes[kContactLanes];
+	REQUIRE(lane.depth == Approx(kClothReach - 0.4f).margin(kTolerance));
+	REQUIRE(lane.velocityValid == 1u);
+	CHECK(lane.velocity[0] == Approx(30.0f).margin(5.0e-3f));
+	CHECK(lane.velocity[1] == Approx(-60.0f).margin(5.0e-3f));
+	CHECK(lane.velocity[2] == Approx(120.0f).margin(5.0e-3f));
+}
+
+namespace
+{
+	/**
+	 * @brief The cloth scene with a sphere on bones 0 and 1 over two floors beside the sheet: the body proxy's own, at z = -1,
+	 *        and a second surface built from triangles, at z = -1.3. Bone 0's sphere reaches only the first, bone 1's both.
+	 */
+	Scene MakeClothAndSphereScene()
+	{
+		Scene scene = MakeClothScene();
+		SkinnedSurface& body = scene.surfaces[0];
+		const auto first = static_cast<std::uint32_t>(body.vertices.size());
+		for (const Vec3& corner : { Vec3{ 5.0f, -3.0f, -1.0f }, Vec3{ 12.0f, -3.0f, -1.0f }, Vec3{ 12.0f, 5.0f, -1.0f }, Vec3{ 5.0f, 5.0f, -1.0f } })
+			body.vertices.push_back(RigidVertex(corner));
+		for (const std::uint32_t offset : { 0u, 1u, 2u, 0u, 2u, 3u })
+			body.indices.push_back(first + offset);
+		SkinnedSurface lower = MakeFloorSurface(-1.3f);
+		for (SkinnedVertex& vertex : lower.vertices)
+			vertex.position.x += 8.0f;
+		scene.surfaces.push_back(lower);
+		scene.spheres[0].push_back({ { 7.0f, 1.0f, -0.8f }, 0.4f, 0u });
+		scene.spheres[1].push_back({ { 9.0f, 1.0f, -1.1f }, 0.4f, 0u });
+		return scene;
+	}
+}
+
+TEST_CASE("A cloth triangle's contact is credited to every bone of the body vertex above its threshold", "[smpphysics][contact_gpu][clothtriangles]")
+{
+	Scene scene = MakeClothScene();
+	scene.bodyBones = true;
+	// Only the vertex under triangle 2 is left, and it is skinned to both drivers.
+	scene.surfaces[0].indices = { 3, 4, 5 };
+	scene.surfaces[0].vertices[3].position = { 0.6f, 1.5f, -9.0f };
+	scene.surfaces[0].skinToBone = { Transform{}, Transform{} };
+	scene.surfaces[0].boneDriver = { 0, 1 };
+	scene.surfaces[0].vertices[4].bone[1] = 1;
+	scene.surfaces[0].vertices[4].weight[0] = 0.6f;
+	scene.surfaces[0].vertices[4].weight[1] = 0.4f;
+	PassOptions options;
+	GpuRig::DriverDelta still;
+	still.translation.w = 60.0f;
+	GpuRig::DriverDelta moving;
+	moving.translation = { 0.5f, -1.0f, 2.0f, 60.0f };
+	options.driverDeltas = { still, moving };
+
+	const std::vector<std::array<ClothHit, kClothTriangleHits>> hits = ExpectedClothHits(scene);
+	CHECK(hits[2][0].key == kLeftKey);
+	CHECK(hits[2][1].key == kRightKey);
+	CHECK(hits[2][1].contact.depth == Approx(kClothReach - 0.4f));
+	const std::vector<GpuRig::BoneContact> both = RunLanes(scene, options);
+	RequireClothLanes(scene, both, 1);
+	// Each driver has its own lane, moving as that driver does.
+	REQUIRE(both[kContactLanes].velocityValid == 1u);
+	CHECK(both[kContactLanes].velocity[2] == Approx(0.0f).margin(5.0e-3f));
+	REQUIRE(both[kContactLanes + 1].depth == Approx(kClothReach - 0.4f).margin(kTolerance));
+	REQUIRE(both[kContactLanes + 1].velocityValid == 1u);
+	CHECK(both[kContactLanes + 1].velocity[2] == Approx(120.0f).margin(5.0e-3f));
+
+	// A bone at or under the shape's threshold for it is left out, as hdtSMP64 leaves it.
+	scene.surfaces[0].boneThreshold = { 0.0f, 0.4f };
+	const std::vector<GpuRig::BoneContact> one = RunLanes(scene, options);
+	RequireClothLanes(scene, one, 1);
+	CHECK(one[kContactLanes].depth == Approx(kClothReach - 0.4f).margin(kTolerance));
+	CHECK(IsEmptyLane(one[kContactLanes + 1]));
+
+	// With no bone above its threshold the hit falls back to the face's driver.
+	scene.surfaces[0].boneThreshold = { 0.6f, 0.4f };
+	scene.faceKeys = { { kRightKey } };
+	const std::vector<GpuRig::BoneContact> fallback = RunLanes(scene, options);
+	RequireClothLanes(scene, fallback, 1);
+	CHECK(fallback[kContactLanes].velocity[2] == Approx(120.0f).margin(5.0e-3f));
+	CHECK(IsEmptyLane(fallback[kContactLanes + 1]));
+}
+
+TEST_CASE("Without cloth triangles a per-vertex surface is collided as its faces, as before", "[smpphysics][contact_gpu][clothtriangles]")
+{
+	Scene scene = MakeClothAndSphereScene();
+	scene.cloth = {};
+	std::vector<SphereProbe> probes;
+	ProbeSpheres(scene.spheres, scene.colliders, scene.surfaces, scene.boneWorld, { scene.driver, scene.driver }, probes);
+	REQUIRE(probes.size() == 3);
+	CHECK(probes[0].depth == Approx(0.4f + kBodyRadius - 0.2f));
+	CHECK(probes[1].depth == Approx(0.4f + kBodyRadius - 0.1f));
+
+	const std::vector<GpuRig::BoneContact> lanes = RunLanes(scene, {});
+	CHECK(lanes[0].depth == Approx(probes[0].depth).margin(1.0e-3f));
+	CHECK(lanes[0].collider == 0);
+	CHECK(lanes[kContactLanes].depth == Approx(probes[1].depth).margin(1.0e-3f));
+	CHECK(lanes[kContactLanes].collider == 0);
+
+	// The mark alone changes nothing: the same surface built from triangles gives the same contacts.
+	Scene unmarked = scene;
+	unmarked.surfaces[0].perVertex = false;
+	const std::vector<GpuRig::BoneContact> same = RunLanes(unmarked, {});
+	REQUIRE(same.size() == lanes.size());
+	CHECK(std::memcmp(same.data(), lanes.data(), lanes.size() * sizeof(GpuRig::BoneContact)) == 0);
+}
+
+TEST_CASE("A sphere of a shape with cloth triangles leaves per-vertex surfaces to them and keeps the others", "[smpphysics][contact_gpu][clothtriangles]")
+{
+	Scene scene = MakeClothAndSphereScene();
+	for (std::vector<BoneSphere>& spheres : scene.spheres) {
+		for (BoneSphere& sphere : spheres)
+			sphere.triangleContacts = true;
+	}
+	const std::vector<GpuRig::BoneContact> lanes = RunLanes(scene, {});
+
+	// Bone 0's sphere touched only the body proxy, so its lanes are its triangles' alone.
+	RequireClothLanes(scene, lanes, 0);
+	// Bone 1's sphere still rests on the surface built from triangles, whose faces carry no driver here.
+	ContactLanes sphereLanes;
+	sphereLanes.Add({ 0.2f, { 0.0f, 0.0f, 1.0f }, 1 }, { 9.0f, 1.0f, -1.1f }, 0u);
+	RequireClothLanes(scene, lanes, 1, sphereLanes);
+	CHECK(lanes[kContactLanes].collider == 1);
+	CHECK(lanes[kContactLanes].depth == Approx(0.2f).margin(kTolerance));
+	CHECK(lanes[kContactLanes + 1].depth > 0.0f);
 }

@@ -1,0 +1,98 @@
+[
+  {
+    "arm": "hdt",
+    "crowd": 0,
+    "fps": 112.25,
+    "frameMs": 8.909,
+    "claims": 0,
+    "stepUs": null
+  },
+  {
+    "arm": "port",
+    "crowd": 0,
+    "fps": 139.93,
+    "frameMs": 7.146,
+    "claims": 17,
+    "stepUs": 109.59999999999998,
+    "gpuPasses": {
+      "SmpPhysics::ClothFold": 0.0236,
+      "SmpPhysics::ClothTriangles": 0.0069,
+      "SmpPhysics::ClothVertices": 0.0045,
+      "SmpPhysics::ContactCull": 0.0153,
+      "SmpPhysics::ContactPasses": 0.1669,
+      "SmpPhysics::ContactReduce": 0.0417,
+      "SmpPhysics::ContactSpheres": 0.0731,
+      "SmpPhysics::RigidContact": 1.0711,
+      "SmpPhysics::RigidExport": 0.0065,
+      "SmpPhysics::RigidFrameBegin": 0.012,
+      "SmpPhysics::RigidIntegrate": 0.0042,
+      "SmpPhysics::RigidPredict": 0.0047,
+      "SmpPhysics::RigidSetup": 0.0223,
+      "SmpPhysics::RigidSolve": 1.7841,
+      "SmpPhysics::SP_Bones": 0.0058,
+      "SmpPhysics::SP_Leaves": 0.0059,
+      "SmpPhysics::SP_Pose": 0.0062,
+      "SmpPhysics::SP_Refit": 0.869,
+      "SmpPhysics::SP_Triangles": 0.012,
+      "SmpPhysics::SkinPaletteBatch": 0.0064,
+      "SmpPhysics::SurfacePrep": 0.899
+    },
+    "gpuFrames": 2103
+  },
+  {
+    "arm": "hdt",
+    "crowd": 0,
+    "fps": 112.28,
+    "frameMs": 8.907,
+    "claims": 0,
+    "stepUs": null
+  },
+  {
+    "arm": "hdt",
+    "crowd": 10,
+    "fps": 73.43,
+    "frameMs": 13.618,
+    "claims": 0,
+    "stepUs": null
+  },
+  {
+    "arm": "port",
+    "crowd": 10,
+    "fps": 99.02,
+    "frameMs": 10.099,
+    "claims": 47,
+    "stepUs": 320.20000000000005,
+    "gpuPasses": {
+      "SmpPhysics::ClothFold": 0.0233,
+      "SmpPhysics::ClothTriangles": 0.007,
+      "SmpPhysics::ClothVertices": 0.0044,
+      "SmpPhysics::ContactCull": 0.0141,
+      "SmpPhysics::ContactPasses": 0.1638,
+      "SmpPhysics::ContactReduce": 0.0418,
+      "SmpPhysics::ContactSpheres": 0.0717,
+      "SmpPhysics::RigidContact": 1.781,
+      "SmpPhysics::RigidExport": 0.006,
+      "SmpPhysics::RigidFrameBegin": 0.0326,
+      "SmpPhysics::RigidIntegrate": 0.0043,
+      "SmpPhysics::RigidPredict": 0.0046,
+      "SmpPhysics::RigidSetup": 0.0221,
+      "SmpPhysics::RigidSolve": 1.7998,
+      "SmpPhysics::SP_Bones": 0.0057,
+      "SmpPhysics::SP_Leaves": 0.006,
+      "SmpPhysics::SP_Pose": 0.0064,
+      "SmpPhysics::SP_Refit": 1.5744,
+      "SmpPhysics::SP_Triangles": 0.0122,
+      "SmpPhysics::SkinPaletteBatch": 0.008,
+      "SmpPhysics::SurfacePrep": 1.6119
+    },
+    "gpuFrames": 1489
+  },
+  {
+    "arm": "hdt",
+    "crowd": 10,
+    "fps": 70.76,
+    "frameMs": 14.132,
+    "claims": 0,
+    "stepUs": null
+  }
+]

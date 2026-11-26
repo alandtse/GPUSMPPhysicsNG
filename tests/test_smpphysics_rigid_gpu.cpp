@@ -3,6 +3,7 @@
 
 #include "rigid_gpu_harness.h"
 #include "rigid_trace_loader.h"
+#include "smp/Collision.h"
 #include "smp/RigidGpuPacking.h"
 #include "smp/RigidReference.h"
 
@@ -157,7 +158,7 @@ namespace
 				const std::uint32_t first = a_packed.colorOffsets[island * kMaxColors + color];
 				const std::uint32_t last = color + 1 < record.range.z ? a_packed.colorOffsets[island * kMaxColors + color + 1] : record.range.y;
 				for (std::uint32_t offset = first; offset < last; ++offset)
-					ordered.constraints.push_back(a_world.constraints[a_packed.coloredConstraints[record.range.x + offset]]);
+					ordered.constraints.push_back(a_world.constraints[a_packed.coloredConstraints[record.range.x + offset] & kColoredIndexMask]);
 			}
 		}
 		return ordered;
@@ -442,6 +443,57 @@ TEST_CASE("The coloured GPU rigid solve stays near the CPU reference", "[smpphys
 	CHECK(worst.bodies == bodyCount * fixture.steps.size());
 }
 
+TEST_CASE("A hub class keeps the bodies' momentum and stays near the sequential solve", "[smpphysics][rigid_gpu][rigid_colored]")
+{
+	constexpr std::size_t kLeaves{ 24 };
+	constexpr float kStep{ 1.0f / 60.0f };
+	World world;
+	for (std::size_t index = 0; index <= kLeaves; ++index) {
+		Body body;
+		body.inverseMass = index == 0 ? 0.2f : 1.0f;
+		body.inverseInertiaLocal = { 1.0f, 1.0f, 1.0f };
+		body.linearVelocity = index == 0 ? Vec3{} : Vec3{ std::sin(static_cast<float>(index)), std::cos(static_cast<float>(index) * 1.7f), 0.25f };
+		world.bodies.push_back(body);
+	}
+	for (std::size_t leaf = 1; leaf <= kLeaves; ++leaf) {
+		Generic6DofSpring2 constraint;
+		constraint.bodyA = static_cast<int>(leaf);
+		constraint.bodyB = 0;
+		world.constraints.push_back(constraint);
+	}
+	const auto momentum = [](const World& a_world) {
+		Vec3 total{};
+		for (const Body& body : a_world.bodies)
+			total = Vec3{ total.x + body.linearVelocity.x / body.inverseMass, total.y + body.linearVelocity.y / body.inverseMass, total.z + body.linearVelocity.z / body.inverseMass };
+		return total;
+	};
+
+	const StepData packed = PackStep(world, kStep);
+	REQUIRE(packed.colorsFit);
+	REQUIRE(packed.islands.size() == 1);
+	REQUIRE(packed.islands[0].range.z == 1);
+	const RigidKernels& kernels = LoadKernels();
+	const std::vector<BodyRecord> integrated = RunStep(kernels.gpu, kernels.kernels, packed, kernels.kernels.solveColored.Get(), 1u);
+	World actual = world;
+	UnpackBodies(integrated, actual);
+	World reference = world;
+	reference.Step(kStep);
+
+	const Vec3 before = momentum(world);
+	const Vec3 after = momentum(actual);
+	CHECK(Length(Sub(after, before)) < 1.0e-3f * (1.0f + Length(before)));
+	float worst = 0.0f;
+	float moved = 0.0f;
+	for (std::size_t body = 0; body <= kLeaves; ++body) {
+		REQUIRE(std::isfinite(actual.bodies[body].linearVelocity.x));
+		worst = std::max(worst, Length(Sub(actual.bodies[body].linearVelocity, reference.bodies[body].linearVelocity)));
+		moved = std::max(moved, Length(Sub(reference.bodies[body].linearVelocity, world.bodies[body].linearVelocity)));
+	}
+	WARN("hub class against the sequential solve: worst velocity difference " << worst << " where the solve changes velocities by up to " << moved);
+	REQUIRE(moved > 0.1f);
+	CHECK(worst < 0.25f * moved);
+}
+
 TEST_CASE("The rigid packing colours each island's constraints", "[smpphysics][rigid_gpu][rigid_colored]")
 {
 	/** @brief A world of a_bodies chain of dynamic bodies joined end to end, in a_ring closing the last to the first. */
@@ -491,7 +543,7 @@ TEST_CASE("The rigid packing colours each island's constraints", "[smpphysics][r
 		CHECK(packed.coloredConstraints.size() == kRingBodies);
 	}
 
-	SECTION("a body held by more constraints than the old 32 classes still colours")
+	SECTION("a body held by many joints has them in one hub class")
 	{
 		constexpr std::size_t kLeaves{ 40 };
 		World world = buildWorld(kLeaves + 1, false);
@@ -505,13 +557,31 @@ TEST_CASE("The rigid packing colours each island's constraints", "[smpphysics][r
 		const StepData packed = PackStep(world, 1.0f / 60.0f);
 		REQUIRE(packed.colorsFit);
 		REQUIRE(packed.islands.size() == 1);
-		CHECK(colorCount(packed, 0) == kLeaves);
-		CHECK(packed.coloredConstraints.size() == kLeaves);
+		CHECK(colorCount(packed, 0) == 1);
+		REQUIRE(packed.coloredConstraints.size() == kLeaves);
+		std::vector<std::uint32_t> seen;
+		for (const std::uint32_t entry : packed.coloredConstraints) {
+			CHECK((entry >> kColoredHubShift) == 2u);
+			seen.push_back(entry & kColoredIndexMask);
+		}
+		std::ranges::sort(seen);
+		CHECK(std::ranges::adjacent_find(seen) == seen.end());
+
+		// A second joint from the hub to a body already in the class would share that body, so it takes a colour of its own.
+		Generic6DofSpring2 doubled;
+		doubled.bodyA = 1;
+		doubled.bodyB = 0;
+		world.constraints.push_back(doubled);
+		const StepData twice = PackStep(world, 1.0f / 60.0f);
+		REQUIRE(twice.colorsFit);
+		CHECK(colorCount(twice, 0) == 2);
+		CHECK((twice.coloredConstraints.front() >> kColoredHubShift) == 0u);
 	}
 
 	SECTION("an island needing more classes than the packing holds reports failure")
 	{
-		constexpr std::size_t kCliqueBodies{ kMaxColors + 1 };
+		// Every body of the clique is a hub, and each but the last owns a class.
+		constexpr std::size_t kCliqueBodies{ kMaxColors + 2 };
 		World world = buildWorld(kCliqueBodies, false);
 		world.constraints.clear();
 		for (std::size_t first = 0; first < kCliqueBodies; ++first) {
@@ -550,7 +620,7 @@ TEST_CASE("The rigid packing colours each island's constraints", "[smpphysics][r
 				const std::uint32_t last = color + 1 < colorCount ? packed.colorOffsets[island * kMaxColors + color + 1] : record.range.y;
 				REQUIRE(first <= last);
 				for (std::uint32_t offset = first; offset < last; ++offset)
-					classes[color].push_back(packed.coloredConstraints[record.range.x + offset]);
+					classes[color].push_back(packed.coloredConstraints[record.range.x + offset] & kColoredIndexMask);
 			}
 			REQUIRE(packed.colorOffsets[island * kMaxColors + colorCount - 1] <= record.range.y);
 
@@ -581,6 +651,59 @@ TEST_CASE("The rigid packing colours each island's constraints", "[smpphysics][r
 			CHECK(occurrences[constraint] == 1u);
 		}
 	}
+}
+
+TEST_CASE("Every dynamic body gets one contact constraint per contact lane", "[smpphysics][rigid_gpu][rigid_colored]")
+{
+	constexpr std::uint32_t kLanes{ SmpPhysics::kContactLanes };
+	constexpr std::uint32_t kBoneOffset{ 10 };
+	constexpr std::size_t kBodies{ 4 };
+	constexpr std::size_t kJoints{ kBodies - 1 };
+	World world;
+	for (std::size_t index = 0; index < kBodies; ++index) {
+		Body body;
+		body.kinematic = index == 0;
+		body.inverseMass = index == 0 ? 0.0f : 1.0f;
+		body.friction = 0.4f;
+		world.bodies.push_back(body);
+	}
+	for (std::size_t index = 0; index < kJoints; ++index) {
+		Generic6DofSpring2 constraint;
+		constraint.bodyA = static_cast<int>(index + 1);
+		constraint.bodyB = static_cast<int>(index);
+		world.constraints.push_back(constraint);
+	}
+
+	World unanchored = world;
+	unanchored.bodies[0].kinematic = false;
+	AppendBoneContacts(unanchored, kBoneOffset, kLanes);
+	CHECK(unanchored.constraints.size() == kJoints);
+
+	AppendBoneContacts(world, kBoneOffset, kLanes);
+	REQUIRE(world.constraints.size() == kJoints + (kBodies - 1) * kLanes);
+	const StepData packed = PackStep(world, 1.0f / 60.0f);
+	REQUIRE(packed.rowsFit);
+	REQUIRE(packed.colorsFit);
+	REQUIRE(packed.constraints.size() == world.constraints.size());
+	for (std::uint32_t body = 1; body < kBodies; ++body) {
+		for (std::uint32_t lane = 0; lane < kLanes; ++lane) {
+			const std::size_t index = kJoints + (body - 1) * kLanes + lane;
+			INFO("body " << body << " lane " << lane);
+			const Generic6DofSpring2& contact = world.constraints[index];
+			CHECK(contact.bodyA == static_cast<int>(body));
+			CHECK(contact.bodyB == 0);
+			CHECK(contact.contactSlot == (kBoneOffset + body) * kLanes + lane + 1u);
+			CHECK(contact.contactFriction == 0.4f * kSurfaceBodyFriction);
+			CHECK(packed.constraints[index].constraintFlags.y == contact.contactSlot);
+		}
+	}
+
+	REQUIRE(packed.islands.size() == 1);
+	CHECK(packed.islands[0].range.y == world.constraints.size());
+	CHECK(packed.islands[0].range.w == (kBodies - 1) * kLanes);
+	// A mid-chain body holds two joints and its lanes, and no two of them may share a colour.
+	CHECK(packed.islands[0].range.z == kLanes + 2u);
+	CHECK(packed.coloredConstraints.size() == world.constraints.size());
 }
 
 TEST_CASE("The GPU rigid solver reproduces non-Hookean springs, motors and servos", "[smpphysics][rigid_gpu]")

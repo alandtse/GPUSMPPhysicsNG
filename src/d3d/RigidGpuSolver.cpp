@@ -3,6 +3,7 @@
 #include "Globals.h"
 #include "GpuPass.h"
 #include "Utils/D3D.h"
+#include "smp/Collision.h"
 #include "smp/GpuViews.h"
 #include "smp/RigidRigBuilder.h"
 
@@ -146,20 +147,7 @@ namespace SmpPhysics
 			a_reason = "the rigid claim's body tables do not match its world";
 			return false;
 		}
-		const auto anchor = std::ranges::find_if(a_setup.world.bodies, [](const RigidReference::Body& a_body) { return a_body.kinematic; });
-		if (anchor != a_setup.world.bodies.end()) {
-			const int anchorIndex = static_cast<int>(anchor - a_setup.world.bodies.begin());
-			for (std::size_t body = 0; body < bones; ++body) {
-				if (a_setup.world.bodies[body].kinematic)
-					continue;
-				RigidReference::Generic6DofSpring2 contact;
-				contact.bodyA = static_cast<int>(body);
-				contact.bodyB = anchorIndex;
-				contact.contactSlot = a_setup.boneOffset + static_cast<std::uint32_t>(body) + 1u;
-				contact.contactFriction = a_setup.world.bodies[body].friction * RigidReference::kSurfaceBodyFriction;
-				a_setup.world.constraints.push_back(contact);
-			}
-		}
+		RigidGpu::AppendBoneContacts(a_setup.world, a_setup.boneOffset, kContactLanes);
 		Claim claim;
 		claim.data = RigidGpu::PackStep(a_setup.world, kDefaultFixedStep);
 		if (!claim.data.rowsFit || !claim.data.colorsFit) {
@@ -425,7 +413,9 @@ namespace SmpPhysics
 			context->Dispatch(Groups(bodyCount), 1, 1);
 		}
 
-		const RigidReference::SolverSettings solver;
+		RigidReference::SolverSettings solver;
+		solver.iterations = iterations;
+		solver.erp = erp;
 		RigidGpu::StepConstants step;
 		step.bodyCount = bodyCount;
 		step.constraintCount = constraintCount;
@@ -443,6 +433,8 @@ namespace SmpPhysics
 		for (int subStep = 0; subStep < plan.count; ++subStep) {
 			if (a_contacts && a_contactPass) {
 				CS_GPU_PASS("SmpPhysics::RigidContact");
+				runtime.lookAhead = plan.steps[static_cast<std::size_t>(subStep)];
+				runtimeConstants->Update(runtime);
 				context->CSSetConstantBuffers(0, 1, &runtimeBuffer);
 				context->CSSetShaderResources(0, kRuntimeViewCount, runtimeViews);
 				context->CSSetUnorderedAccessViews(0, kRuntimeTargetCount, runtimeTargets, nullptr);

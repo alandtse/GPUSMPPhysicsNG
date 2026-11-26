@@ -85,6 +85,43 @@ TEST_CASE("ReadSkinVertexBlock reads weights then palette slots", "[utils]")
 	CHECK(vertex.paletteSlot == std::array<std::uint8_t, 4>{ 9, 8, 7, 6 });
 }
 
+TEST_CASE("TurnAngle measures the rotation between two poses whatever their sign", "[solver]")
+{
+	const SmpPhysics::Vec3 up{ 0.0f, 0.0f, 1.0f };
+	const SmpPhysics::Quat from = SmpPhysics::FromAxisAngle(up, 0.25f);
+	CHECK(SmpPhysics::TurnAngle(from, from) == Catch::Approx(0.0f).margin(1e-3f));
+	CHECK(SmpPhysics::TurnAngle(from, from * -1.0f) == Catch::Approx(0.0f).margin(1e-3f));
+	CHECK(SmpPhysics::TurnAngle(from, SmpPhysics::FromAxisAngle(up, 1.25f)) == Catch::Approx(1.0f).margin(1e-4f));
+	CHECK(SmpPhysics::TurnAngle(from, SmpPhysics::FromAxisAngle(up, 0.25f + 3.14159265f)) == Catch::Approx(3.14159265f).margin(1e-3f));
+}
+
+TEST_CASE("SmpStepClock steps at the configured tick", "[solver]")
+{
+	SmpPhysics::SmpStepClock clock;
+	clock.tick = 1.0f / 90.0f;
+	SmpPhysics::SmpStepClock::Frame frame;
+	for (int warm = 0; warm < 64; ++warm)
+		frame = clock.Advance(0.0195f);
+	REQUIRE(frame.count == 2);
+	CHECK(frame.steps[0] == Catch::Approx(1.0f / 90.0f));
+	CHECK(frame.steps[0] + frame.steps[1] == Catch::Approx(0.0195f));
+
+	clock.maxTicks = 1;
+	frame = clock.Advance(0.0195f);
+	CHECK(frame.total == Catch::Approx(1.0f / 90.0f));
+}
+
+TEST_CASE("SmpStepClock keeps a remainder too short to step alone", "[solver]")
+{
+	SmpPhysics::SmpStepClock clock;
+	SmpPhysics::SmpStepClock::Frame frame;
+	for (int warm = 0; warm < 64; ++warm)
+		frame = clock.Advance(0.0190f);
+	REQUIRE(frame.count == 1);
+	CHECK(frame.steps[0] == Catch::Approx(0.0190f));
+	CHECK(frame.total == Catch::Approx(0.0190f));
+}
+
 TEST_CASE("SmpStepClock skips short frames and caps long ones", "[solver]")
 {
 	SmpPhysics::SmpStepClock clock;

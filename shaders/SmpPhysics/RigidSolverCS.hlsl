@@ -601,6 +601,8 @@ float SolvePush(uint a_constraint)
 }
 
 groupshared uint gColoredResidual;
+groupshared float4 gHubLinear[kColoredGroupThreads];
+groupshared float4 gHubAngular[kColoredGroupThreads];
 
 /** @brief Largest island the groupshared copy of the solver bodies serves; a bigger one solves from the global buffers. */
 static const uint kCachedConstraints = 512u;
@@ -656,7 +658,7 @@ uint FindBodySlot(uint a_body)
  * @details The row masks load together and each row's record is requested before the previous row is solved, so a
  *          constraint's rows do not each wait on a global-memory round trip; the rows are solved in the same order.
  */
-float SolveConstraintCached(uint a_constraint, uint a_slotA, uint a_slotB)
+float SolveConstraintCached(uint a_constraint, uint a_slotA, uint a_slotB, uint a_hubSide, float a_hubScale, inout float3 a_hubLinear, inout float3 a_hubAngular)
 {
 	const uint maskBase = a_constraint * (uint)HairRigidSolver::kAxisSlots;
 	const uint rowBase = a_constraint * (uint)HairRigidSolver::kRowsPerConstraint;
@@ -701,18 +703,46 @@ float SolveConstraintCached(uint a_constraint, uint a_slotA, uint a_slotB)
 		if (!skip) {
 			HairRigidSolver::SolverBody bodyA = (HairRigidSolver::SolverBody)0;
 			HairRigidSolver::SolverBody bodyB = (HairRigidSolver::SolverBody)0;
-			bodyA.deltaLinearVelocity = gDeltaLinear[a_slotA].xyz;
-			bodyA.deltaAngularVelocity = gDeltaAngular[a_slotA].xyz;
+			bodyA.deltaLinearVelocity = a_hubSide == 1u ? a_hubLinear : gDeltaLinear[a_slotA].xyz;
+			bodyA.deltaAngularVelocity = a_hubSide == 1u ? a_hubAngular : gDeltaAngular[a_slotA].xyz;
 			bodyA.inverseMassVector = gInverseMass[a_slotA].xyz;
-			bodyB.deltaLinearVelocity = gDeltaLinear[a_slotB].xyz;
-			bodyB.deltaAngularVelocity = gDeltaAngular[a_slotB].xyz;
+			bodyB.deltaLinearVelocity = a_hubSide == 2u ? a_hubLinear : gDeltaLinear[a_slotB].xyz;
+			bodyB.deltaAngularVelocity = a_hubSide == 2u ? a_hubAngular : gDeltaAngular[a_slotB].xyz;
 			bodyB.inverseMassVector = gInverseMass[a_slotB].xyz;
+			if (a_hubSide != 0u && row.jacDiagABInv != 0.0f) {
+				// The hub's copy for this constraint has 1/a_hubScale of its mass, so the row's effective mass is rebuilt for it.
+				const float term = a_hubSide == 1u ?
+					dot(row.normal1 * bodyA.inverseMassVector, row.normal1) + dot(row.angularComponentA, row.relpos1CrossNormal) :
+					dot(row.normal2 * bodyB.inverseMassVector, row.normal2) + dot(row.angularComponentB, row.relpos2CrossNormal);
+				const float rescaled = 1.0f / (1.0f / row.jacDiagABInv + (a_hubScale - 1.0f) * term);
+				const float ratio = rescaled / row.jacDiagABInv;
+				row.rhs *= ratio;
+				row.cfm *= ratio;
+				row.jacDiagABInv = rescaled;
+				if (a_hubSide == 1u) {
+					bodyA.inverseMassVector *= a_hubScale;
+					row.angularComponentA *= a_hubScale;
+				} else {
+					bodyB.inverseMassVector *= a_hubScale;
+					row.angularComponentB *= a_hubScale;
+				}
+			}
 			const float residual = HairRigidSolver::ResolveRow(row, bodyA, bodyB);
 			HairRigidRows[slotBase + rowIndex].impulse.w = row.appliedImpulse;
-			gDeltaLinear[a_slotA] = float4(bodyA.deltaLinearVelocity, 0.0f);
-			gDeltaAngular[a_slotA] = float4(bodyA.deltaAngularVelocity, 0.0f);
-			gDeltaLinear[a_slotB] = float4(bodyB.deltaLinearVelocity, 0.0f);
-			gDeltaAngular[a_slotB] = float4(bodyB.deltaAngularVelocity, 0.0f);
+			if (a_hubSide == 1u) {
+				a_hubLinear = bodyA.deltaLinearVelocity;
+				a_hubAngular = bodyA.deltaAngularVelocity;
+			} else {
+				gDeltaLinear[a_slotA] = float4(bodyA.deltaLinearVelocity, 0.0f);
+				gDeltaAngular[a_slotA] = float4(bodyA.deltaAngularVelocity, 0.0f);
+			}
+			if (a_hubSide == 2u) {
+				a_hubLinear = bodyB.deltaLinearVelocity;
+				a_hubAngular = bodyB.deltaAngularVelocity;
+			} else {
+				gDeltaLinear[a_slotB] = float4(bodyB.deltaLinearVelocity, 0.0f);
+				gDeltaAngular[a_slotB] = float4(bodyB.deltaAngularVelocity, 0.0f);
+			}
 			const float residual2 = residual * residual;
 			leastSquaresResidual = leastSquaresResidual < residual2 ? residual2 : leastSquaresResidual;
 		}
@@ -779,7 +809,7 @@ bool CacheIslandBodies(uint4 a_range, uint a_thread)
 	GroupMemoryBarrierWithGroupSync();
 
 	for (uint insertEntry = a_thread; insertEntry < a_range.y; insertEntry += kColoredGroupThreads) {
-		const uint4 header = HairRigidConstraints[HairRigidColoredConstraints[a_range.x + insertEntry]].header;
+		const uint4 header = HairRigidConstraints[HairRigidColoredConstraints[a_range.x + insertEntry] & HairRigidSolver::kColoredIndexMask].header;
 		InsertBody(header.x);
 		InsertBody(header.y);
 	}
@@ -802,7 +832,7 @@ bool CacheIslandBodies(uint4 a_range, uint a_thread)
 		return false;
 
 	for (uint slotEntry = a_thread; slotEntry < a_range.y; slotEntry += kColoredGroupThreads) {
-		const uint4 header = HairRigidConstraints[HairRigidColoredConstraints[a_range.x + slotEntry]].header;
+		const uint4 header = HairRigidConstraints[HairRigidColoredConstraints[a_range.x + slotEntry] & HairRigidSolver::kColoredIndexMask].header;
 		gEntrySlots[slotEntry] = (FindBodySlot(header.x) << kSlotBits) | FindBodySlot(header.y);
 	}
 	for (uint loadSlot = a_thread; loadSlot < gSlotCount; loadSlot += kColoredGroupThreads) {
@@ -844,13 +874,57 @@ bool CacheIslandBodies(uint4 a_range, uint a_thread)
 		for (uint color = 0u; color < colorCount; ++color) {
 			const uint first = HairRigidColorOffsets[offsetBase + color];
 			const uint last = color + 1u < colorCount ? HairRigidColorOffsets[offsetBase + color + 1u] : range.y;
+			const uint hubSide = first < last ? HairRigidColoredConstraints[range.x + first] >> HairRigidSolver::kColoredHubShift : 0u;
+			if (hubSide != 0u) {
+				// A hub class holds one busy body's joints: each is solved against its own share of the body, then the shares are averaged.
+				float3 hubLinear = 0.0f;
+				float3 hubAngular = 0.0f;
+				const uint hubSlot = cached ? (hubSide == 1u ? gEntrySlots[first] >> kSlotBits : gEntrySlots[first] & kSlotMask) : 0u;
+				if (!converged) {
+					if (cached) {
+						const uint entry = first + a_threadIndex;
+						if (entry < last) {
+							const uint packed = HairRigidColoredConstraints[range.x + entry];
+							hubLinear = gDeltaLinear[hubSlot].xyz;
+							hubAngular = gDeltaAngular[hubSlot].xyz;
+							const float3 startLinear = hubLinear;
+							const float3 startAngular = hubAngular;
+							residual2 = max(residual2, SolveConstraintCached(packed & HairRigidSolver::kColoredIndexMask, gEntrySlots[entry] >> kSlotBits, gEntrySlots[entry] & kSlotMask,
+								packed >> HairRigidSolver::kColoredHubShift, (float)(last - first), hubLinear, hubAngular));
+							hubLinear -= startLinear;
+							hubAngular -= startAngular;
+						}
+					} else if (a_threadIndex == 0u) {
+						for (uint serial = first; serial < last; ++serial)
+							residual2 = max(residual2, SolveConstraint(HairRigidColoredConstraints[range.x + serial] & HairRigidSolver::kColoredIndexMask));
+					}
+				}
+				gHubLinear[a_threadIndex] = float4(hubLinear, 0.0f);
+				gHubAngular[a_threadIndex] = float4(hubAngular, 0.0f);
+				IterationBarrier(cached);
+				if (cached && !converged && a_threadIndex == 0u) {
+					float3 sumLinear = 0.0f;
+					float3 sumAngular = 0.0f;
+					for (uint share = 0u; share < last - first; ++share) {
+						sumLinear += gHubLinear[share].xyz;
+						sumAngular += gHubAngular[share].xyz;
+					}
+					gDeltaLinear[hubSlot] += float4(sumLinear / (float)(last - first), 0.0f);
+					gDeltaAngular[hubSlot] += float4(sumAngular / (float)(last - first), 0.0f);
+				}
+				IterationBarrier(cached);
+				continue;
+			}
 			if (!converged) {
 				for (uint entry = first + a_threadIndex; entry < last; entry += kColoredGroupThreads) {
 					const uint constraint = HairRigidColoredConstraints[range.x + entry];
-					if (cached)
-						residual2 = max(residual2, SolveConstraintCached(constraint, gEntrySlots[entry] >> kSlotBits, gEntrySlots[entry] & kSlotMask));
-					else
+					if (cached) {
+						float3 unusedLinear = 0.0f;
+						float3 unusedAngular = 0.0f;
+						residual2 = max(residual2, SolveConstraintCached(constraint, gEntrySlots[entry] >> kSlotBits, gEntrySlots[entry] & kSlotMask, 0u, 1.0f, unusedLinear, unusedAngular));
+					} else {
 						residual2 = max(residual2, SolveConstraint(constraint));
+					}
 				}
 			}
 			IterationBarrier(cached);
@@ -869,6 +943,9 @@ bool CacheIslandBodies(uint4 a_range, uint a_thread)
 			for (uint color = 0u; color < colorCount; ++color) {
 				const uint first = HairRigidColorOffsets[offsetBase + color];
 				const uint last = color + 1u < colorCount ? HairRigidColorOffsets[offsetBase + color + 1u] : range.y;
+				// A hub class holds joints only, and a joint has no push.
+				if (first < last && (HairRigidColoredConstraints[range.x + first] >> HairRigidSolver::kColoredHubShift) != 0u)
+					continue;
 				if (!converged) {
 					for (uint entry = first + a_threadIndex; entry < last; entry += kColoredGroupThreads) {
 						const uint constraint = HairRigidColoredConstraints[range.x + entry];

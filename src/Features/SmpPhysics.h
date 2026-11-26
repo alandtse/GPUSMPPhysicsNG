@@ -4,6 +4,7 @@
 #include "Features/SmpPhysics/CrowdHairParts.h"
 #include "Features/SmpPhysics/CrowdWigs.h"
 #include "Features/SmpPhysics/HairTarget.h"
+#include "Features/SmpPhysics/HdtSolverConfig.h"
 
 #include "Feature.h"
 #include "d3d/GpuSolver.h"
@@ -14,6 +15,7 @@
 #include "smp/Collision.h"
 #include "smp/CollisionOverride.h"
 #include "smp/ItemStats.h"
+#include "smp/NodeWriters.h"
 #include "smp/PhysicsHealth.h"
 #include "smp/RefitGuard.h"
 #include "smp/RepairLog.h"
@@ -106,6 +108,7 @@ struct SmpPhysicsFeature final : Feature
 		bool GrabStrands = true;         ///< In VR, closing a hand on hair holds that strand to the hand.
 		bool BatchSkinPalette = true;    ///< Builds every skinned mesh's matrices once per frame after the solver step, instead of one dispatch per draw.
 		bool FlushAfterSubmit = false;   ///< Sends the solver's commands to the GPU as soon as they are recorded; otherwise the driver holds them until the game flushes, which left the GPU idle for several milliseconds.
+		bool TriangleContacts = true;    ///< Collides a cloth's triangles with the body proxy's vertices as hdtSMP64 does, instead of the cloth's vertices with the proxy's faces; read when a claim is built.
 	};
 
 	Settings settings;
@@ -252,6 +255,8 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] json WindProbeResult() const;
 	/** @brief Runs a queued windProbe; called from StepClaims on the game thread. */
 	void RunWindProbe();
+	/** @brief Gives the solver hdtSMP64's fixed step, substep cap, iteration count and erp, read from its configuration files. */
+	void ApplyHdtSolverConfig();
 	[[nodiscard]] static json SkinProbeJson(const json& a_args);
 	/** @brief Compares the skinning matrices bound for a claimed mesh against the engine's own, bone by bone. Args: actorFormID, mesh. Asks for a fresh capture each call, so the first answer is empty. */
 	[[nodiscard]] json SkinPaletteCheckJson(const json& a_args) const;
@@ -259,6 +264,10 @@ struct SmpPhysicsFeature final : Feature
 	[[nodiscard]] json KinematicCheckJson(const json& a_args) const;
 	/** @brief Reports, on demand, the collision proxies this feature built for an actor and how deep its hair mesh sinks into a target mesh. Args: actorFormID, optionally with hairMesh and targetMesh together. */
 	[[nodiscard]] json CollisionAuditJson(const json& a_args) const;
+	/** @brief Lists a claim's posed collision-surface vertices in world space, as flat x, y, z values. Args: actorFormID, optionally surface (default Colision). */
+	[[nodiscard]] json SurfacePointsJson(const json& a_args) const;
+	/** @brief Lists, per rig bone whose name matches, the bone's world position and its contact spheres' world centres and radii. Args: actorFormID, optionally bones (a substring of the bone name, default empty for all). */
+	[[nodiscard]] json SpherePointsJson(const json& a_args) const;
 	/** @brief Moves a test character so a strand of its hair lies in the cast HIGGS makes from a player hand's palm, for grab tests with injected controllers. */
 	void PlaceCrowdHairAtHand(const json& a_args);
 	/** @brief Arms a per-frame capture of the solver's poses, taken right after the claims are stepped. Args: actorFormID, prefix, frames. */
@@ -346,6 +355,7 @@ private:
 
 		std::vector<std::vector<SmpPhysics::BoneSphere>> spheres;  ///< one list per rig bone
 		std::vector<std::uint32_t> boneSurfaceMask;                ///< per rig bone, the first 32 surfaces its spheres may touch; empty when every bone may touch every surface
+		SmpPhysics::ClothTriangleSet clothTriangles;               ///< the triangles of the rig's cloth shapes, which collide with its per-vertex surfaces; empty unless TriangleContacts is on
 		std::size_t layerExempted{};                               ///< bone and surface pairs left out because the bone's spheres were authored behind that surface
 		std::vector<SmpPhysics::Collider> colliders;
 		std::vector<ColliderFit> colliderFits;               ///< one per collider, in the same order as colliders
@@ -380,6 +390,8 @@ private:
 		std::vector<RE::NiPointer<RE::NiAVObject>> nodes;             ///< One per rig bone, owned past the claim call.
 		std::vector<RE::NiPointer<RE::NiSkinInstance>> skins;         ///< The skin instances of the claimed model that use at least one rig bone.
 		std::vector<RE::NiPointer<RE::NiAVObject>> cardGeometries;    ///< The geometry of each entry of skins, in the same order.
+		std::uint64_t skinsWriters{};                                 ///< nodeWriterSerial when the skins were bound.
+		std::uint64_t skinsSiblings{};                                ///< SiblingSignature when the skins were bound; a change rebinds them.
 		bool skinsBound{};                                            ///< Whether those skin instances were handed to the GPU skinning pass.
 		std::vector<std::pair<int, int>> driverAnchor;                ///< Per collision driver, its own dynamic bone and the kinematic bone its joint chain ends at; -1 when the driver is not a dynamic bone of this claim.
 		std::vector<SmpPhysics::Transform> kinematicInput;            ///< Rebuilt in place each frame; dynamic entries stay the identity.
@@ -445,6 +457,7 @@ private:
 		[[nodiscard]] SmpPhysics::Transform BoneWorld(std::size_t a_bone) const;
 		/** @brief BoneWorld's position of every bone, empty where the bone has no node. */
 		[[nodiscard]] std::vector<std::optional<SmpPhysics::Vec3>> BonePositions() const;
+		std::uint64_t gpuAppliedFrame{};                  ///< The solver frame the held pose was computed in.
 		std::vector<SmpPhysics::Transform> gpuLastBones;  ///< The last pose the GPU returned, held while the next readback is not ready.
 		std::vector<float> boneReach;                     ///< Per rig bone, how far from its kinematic root a strand can place it, for diagnostics only; see GpuRig::BuildBoneReach.
 		int firstKinematicBone{ -1 };
@@ -623,6 +636,10 @@ private:
 	[[nodiscard]] bool RegisterClaimForGpu(Claim& a_claim);
 	/** @brief Maps a_claim's skin instances onto its solver slots and registers them with the skinning pass. */
 	void BindClaimSkins(Claim& a_claim);
+	/** @brief Identifies the set of the actor's other claims the GPU solver holds, so a change in it is noticed. */
+	[[nodiscard]] std::uint64_t SiblingSignature(const Claim& a_claim) const;
+	/** @brief Folds this frame's node writes into nodeWriter. Called with stateMutex held. */
+	void NoteNodeWriters();
 	void StepClaims();
 	/** @brief Advances the flutter clock and samples the Wind feature's field at each claim's head, outdoors only. */
 	void UpdateWind(float a_frameDelta);
@@ -631,6 +648,11 @@ private:
 	/** @brief Measures the mesh surface each of a_claim's bones drives, for the wind drag. */
 	void MeasureWindAreas(Claim& a_claim);
 	void RecordBoneFrame();
+	struct PatchProbeState;
+	/** @brief Starts measuring, once per frame, how far an actor's worn skin shape lies in front of its cloth shape around the hips. */
+	json StartPatchProbe(const json& a_args);
+	void SamplePatchProbe();
+	[[nodiscard]] json PatchProbeRowsJson() const;
 	/** @brief Adds the angles of the recording's claim's simulated joints, in the frames the solver limits them in, to a recorded frame. */
 	void RecordJointFrame(json& a_frame);
 	/** @brief Reuses a cached parse for a_path, or reads and parses the file once. */
@@ -664,7 +686,12 @@ private:
 	mutable std::mutex windProbeMutex;
 	std::optional<WindProbeRequest> windProbeRequest;
 	json windProbeResult = json::object();
-	mutable std::mutex stateMutex;  ///< Guards everything below, and nothing is called into hdtSMP64 while it is held.
+	std::shared_ptr<PatchProbeState> patchProbe;  ///< Guarded by stateMutex.
+	SmpPhysics::NodeWriters nodeWriter;           ///< Guarded by stateMutex.
+	std::uint64_t claimSetSerial{};               ///< Raised when a claim is added, replaced or removed. Guarded by stateMutex.
+	std::uint64_t simulatedNodesSerial{ ~0ull };  ///< claimSetSerial that simulatedNodes was built from.
+	std::uint64_t nodeWriterSerial{};             ///< Raised when nodeWriter changes. Guarded by stateMutex.
+	mutable std::mutex stateMutex;                ///< Guards everything below, and nothing is called into hdtSMP64 while it is held.
 	std::string linkStatus;
 	SmpPhysics::BodyScanWindows bodyScanWindows;  ///< The actors an equip or load event has just touched.
 	SmpPhysics::RefitGuard refitGuard;            ///< Spaces out the soft reloads each actor asks for.
@@ -695,7 +722,7 @@ private:
 	std::vector<RE::FormID> bodyShapeActors;                                  ///< actors whose hair must be offered again because a body shape appeared
 	double totalStepMicroseconds{};
 	std::uint32_t registrationsThisFrame{};                    ///< Claims registered with the GPU solver so far this frame, capped at kRegistrationsPerFrame.
-	std::unordered_set<const RE::NiAVObject*> simulatedNodes;  ///< Every node a claim simulates, rebuilt each frame; write-back leaves these to their own claim.
+	std::unordered_set<const RE::NiAVObject*> simulatedNodes;  ///< Every node a claim simulates; write-back leaves these to their own claim.
 
 	struct BoneRecording
 	{

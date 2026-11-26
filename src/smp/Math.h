@@ -211,6 +211,12 @@ namespace SmpPhysics
 		return translation + rotation.Rotate(a_point);
 	}
 
+	/** @brief A point through a skin transform whose rotated part is scaled: the bone's world scale times the bind scale, which a Transform cannot hold. */
+	[[nodiscard]] inline Vec3 ScaledSkinPoint(const Transform& a_skin, const Vec3& a_point, float a_scale) noexcept
+	{
+		return a_skin.translation + (a_skin.TransformPoint(a_point) - a_skin.translation) * a_scale;
+	}
+
 	/** @brief Composes so that (a * b).TransformPoint(p) equals a.TransformPoint(b.TransformPoint(p)). */
 	inline Transform operator*(const Transform& a_left, const Transform& a_right) noexcept
 	{

@@ -73,7 +73,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	DebugMaxActors,
 	ShowSkeletonDebug,
 	BatchSkinPalette,
-	FlushAfterSubmit)
+	FlushAfterSubmit,
+	TriangleContacts)
 
 using namespace SmpPhysicsLimits;
 
@@ -171,6 +172,8 @@ namespace
 		0x21EDBu, 0x1E49Du, 0x2B101u, 0x2A9D8u, 0x20BFEu };
 	/** Translation jump above which the kinematic root is moved by teleport, so the solver is reset instead of dragged after it. */
 	constexpr float kTeleportDistance = 150.0f;
+	/** Turn of the skeleton in one frame, in radians, that restarts the solver the same way: dragged through it the joints flip past their range and settle inside the body. */
+	constexpr float kTeleportTurn = 1.0f;
 	/** A bone's reach from its kinematic root is its rest strand length times this plus kBoneReachMargin; the solverBones query reports a pose past it. */
 	constexpr float kBoneReachSlack = 2.0f;
 	constexpr float kBoneReachMargin = 5.0f;
@@ -352,6 +355,7 @@ void SmpPhysicsFeature::OnPluginMessage(const SKSE::MessagingInterface::Message*
 	}
 	linked.store(true, std::memory_order_release);
 	logger::info("{} {}", kLogPrefix, status);
+	ApplyHdtSolverConfig();
 }
 
 void SmpPhysicsFeature::LoadSettings(json& a_json)
@@ -474,6 +478,10 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](Feature* a_self, const json&) { static_cast<SmpPhysicsFeature*>(a_self)->SimulateGpuFailure(); });
 	FEATURE_COMMAND("recordBones", "Capture, once per frame right after hair is stepped, the head-frame pose of an actor's nodes whose names start with a prefix. Args: actorFormID (number), prefix (string), frames (number, default 300), world (bool, also record each node's world position and rotation matrix, for the tuning bench), extraNodes (array of exact node names to record as well, e.g. the head), joints (bool, also record each simulated joint's angles, Euler XYZ in radians in the joint frame the solver limits, of the claim whose physics file contains jointFilter, a string, default the first claim of the actor).",
 		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->StartBoneRecording(a_args); });
+	FEATURE_COMMAND("patchProbe", "Start (or with stop true, end) measuring once per frame how far an actor's skin shape (skinMesh, default 3BA) lies in front of its cloth shape (clothMesh, default dress), over the vertices whose dominant bone name contains one of bones (default Butt, Pelvis) and the cloth faces within near units (default 8) of them at start. Skinned from the nodes' current world transforms after the solver wrote its pose back. Args: actorFormID, skinMesh, clothMesh, bones (array), near, reach (default 6), threshold (default 0.05), stride (default 1: measure every Nth skin vertex, so the probe costs less per frame). Read the rows with patchProbeRows.",
+		[](Feature* a_self, const json& a_args) { static_cast<SmpPhysicsFeature*>(a_self)->StartPatchProbe(a_args); });
+	FEATURE_QUERY("patchProbeRows", "The frames measured by patchProbe as rows [presented frame, skin points measured, points in front of the cloth, greatest distance in front, index of that point], oldest first, plus the probe's setup.",
+		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->PatchProbeRowsJson(); });
 	FEATURE_QUERY("recordedBones", "Return the frames captured by recordBones: active flag, node names, and per frame the time, head world position and node head-frame positions; with joints, jointInfo (the claim's file, each joint's child and parent bone and its lower and upper limits) and per frame the joint angles in the same order.",
 		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->RecordedBonesJson(); });
 	FEATURE_COMMAND("probeBodyContact", "Hang a test capsule below a claimed actor's first kinematic hair bone, as if another body stood there, so hair contact with other bodies can be checked without arranging two actors. Args: actorFormID (number), enabled (bool, default true), offset ([x, y, z] game units from the bone, default zero), length (number, how far the capsule reaches straight down, default 40), radius (number, default 6). The claim status lists the capsules in use under externalCapsules.",
@@ -657,6 +665,10 @@ void SmpPhysicsFeature::RegisterUxActions()
 		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->SkinPaletteCheckJson(a_args); });
 	FEATURE_QUERY("collisionAudit", "Report, on demand, the collision proxies this feature built for an actor: per claim, how many spheres it has and how many of those start inside a collider and are exempt from it, then every collider's type, its driver node, its radius, whether it was fitted to the worn meshes or left at a default, and how many skinned body vertices the fit used; per claim, spheresBehindFace counts the spheres whose centre sits behind the nearest one-sided armor face by more than the allowance and skin, deepestBehindFace is the deepest of them, retargetBehindSpheres, retargetResidualSpheres, retargetedJoints, retargetKeptAuthored, retargetMaxAngle, retargetMaxBoneMove and retargetSagMaxMove say what the claim-time rest retarget did about spheres that settle behind a worn surface once the rest sags under gravity, and spheresInsideShell (with insideShellBones per hair bone) counts the spheres now inside a worn shell by the retarget's own measure, the distance straight out from the body axis to the face the hair would exit through, so the two agree when the hair settled where the retarget predicted; spheresBehindOutwardFace how many of those faces point away from the body axis (an outer plate rather than an inner lining), behindFaceDepthBuckets counts them at up to 1, 2, 4, 8, 16 and more units behind, behindFaceBones counts them per hair bone, behindFaceSurfaces counts them per surface as [outward-facing, inward-facing] lists over the same depth buckets, and behindBySphere lists each sphere's distance behind its nearest face, so a run before and after a pull shows which spheres ended up under the armor; every posed collision surface adds its triangle count, margin, penetration allowances and world-space bounds next to the head driver. Args: actorFormID (number), optionally with hairMesh and targetMesh together, which also measures how deep the hair mesh sinks into the target mesh, skinning both with the nodes' current world transforms so hdtSMP64-driven and claimed hair can be compared, with the GPU solver's pose for the bones it moves unless pose is \"engine\"; overlaps true, with neither mesh given, measures every ordered pair of the claim's own shapes whose tags let them collide and lists, per pair, how many vertices of the first sit behind the second and how deep. When any hair vertex lies behind the target it also reports insideBounds (low/high corners in the head frame), insideByHeight (counts per 10 unit bucket of head-frame height) and insideByBone (the hair bones owning most of those vertices, with their mean depth).",
 		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->CollisionAuditJson(a_args); });
+	FEATURE_QUERY("surfacePoints", "List a claim's posed collision-surface vertices (default surface Colision) in world space as flat x, y, z values, for comparing the body proxy with another solver's.",
+		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->SurfacePointsJson(a_args); });
+	FEATURE_QUERY("spherePoints", "List the rig bones of an actor's claims whose name contains a substring, each with its world position and its contact spheres' world centres and radii.",
+		[](const Feature* a_self, const json& a_args) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->SpherePointsJson(a_args); });
 	FEATURE_QUERY("surfaceCheck", "Copy back a submitted frame's GPU collision-surface pass and compare it with the CPU reference for the same driver poses, answering with the check the previous call requested (call twice, a frame apart), reporting how many triangle and node records were compared, the largest component error of each and how many records, node boxes and node topologies differ; no mismatches and a zero error means the GPU pass reproduces the reference exactly up to float rounding, and the check needs a submitted frame with the GPU backend active.",
 		[](const Feature* a_self, const json&) -> json { return static_cast<const SmpPhysicsFeature*>(a_self)->SurfaceCheckJson(); });
 }
@@ -891,6 +903,8 @@ json SmpPhysicsFeature::BuildStatusJson() const
 		result["gpuAvailable"] = gpuSolver.Available();
 		result["gpuClaimCount"] = gpuSolver.ClaimCount();
 		result["gpuRigidClaimCount"] = gpuSolver.Rigid().ClaimCount();
+		const SmpPhysics::GpuSolver::ContactWork work = gpuSolver.Work();
+		result["gpuContactWork"] = { { "spheres", work.spheres }, { "clothVertices", work.clothVertices }, { "clothTriangles", work.clothTriangles }, { "clothBoneEntries", work.clothBoneEntries } };
 		result["gpuRigidAvailable"] = gpuSolver.Rigid().Available();
 		result["heldStrands"] = HeldStrandsJson();
 		result["grip"] = GripReportJson();
@@ -1436,6 +1450,7 @@ RE::BSEventNotifyControl SmpPhysicsFeature::FrameSyncListener::ProcessEvent(
 		feature.hairTarget.Tick(feature.crowdWigs);
 		feature.StepClaims();
 		feature.RecordBoneFrame();
+		feature.SamplePatchProbe();
 	} catch (const std::exception& error) {
 		logger::error("{} the frame step failed: {}", kLogPrefix, error.what());
 	}
@@ -1596,6 +1611,19 @@ bool SmpPhysicsFeature::ResolveRestPose(const SmpPhysics::SmpRig& a_rig, const s
 	return true;
 }
 
+void SmpPhysicsFeature::ApplyHdtSolverConfig()
+{
+	const auto read = [](const char* a_path) {
+		std::ifstream stream(a_path, std::ios::binary);
+		return std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+	};
+	const SmpPhysics::HdtSolverConfig config = SmpPhysics::ParseHdtSolverConfig(read("Data/SKSE/Plugins/hdtSkinnedMeshConfigs/configs.json"),
+		read("Data/SKSE/Plugins/hdtSkinnedMeshConfigs/userConfigs.json"));
+	gpuSolver.SetStepSettings(1.0f / static_cast<float>(config.minFps), config.maxSubSteps, config.iterations, config.erp);
+	logger::info("{} Following hdtSMP64's solver settings: {} iterations, {} Hz fixed step, {} substeps at most, erp {}", kLogPrefix, config.iterations, config.minFps,
+		config.maxSubSteps, config.erp);
+}
+
 void SmpPhysicsFeature::ReadViewRules(Claim& a_claim)
 {
 	std::ifstream configStream("Data\\SKSE\\Plugins\\hdtSkinnedMeshConfigs\\configs.json");
@@ -1621,6 +1649,7 @@ void SmpPhysicsFeature::InstallClaimCollision(Claim& a_claim, ClaimCollision& a_
 	a_claim.driverWorld.assign(a_collision.drivers.size(), SmpPhysics::Transform{});
 	a_claim.gpuCollision = SmpPhysics::GpuRig::PackCollision(a_collision.spheres, solverColliders,
 		static_cast<std::uint32_t>(a_collision.drivers.size()), a_collision.boneSurfaceMask);
+	SmpPhysics::GpuRig::PackClothTriangles(a_claim.gpuCollision, a_collision.clothTriangles);
 	a_claim.spheres = std::move(a_collision.spheres);
 	a_claim.retargetBehind = a_collision.retargetBehind;
 	a_claim.retargetSagMaxMove = a_collision.retargetSagMaxMove;
@@ -1807,6 +1836,7 @@ bool SmpPhysicsFeature::ClaimMesh(const hdt::IMeshClaimContext& a_context, std::
 		if (claim.cloth)
 			RegisterClothMeshes(claim.actorFormID, claim.cardGeometries);
 		claims.insert_or_assign(a_token, std::move(claim));
+		++claimSetSerial;
 	}
 	logger::info("{} Claimed '{}' for token {} ({} of the file's {} bones kept, {} missing from the skeleton, {} in groups no joint holds; {} dynamic, {} extra joints, {} collision spheres, {} of {} start inside a collider and are exempt, {} colliders, {} fitted, {} defaulted, {} layer pairs exempt) in {} ms",
 		kLogPrefix, path, a_token, boneCount, bonesInFile, bonesInFile - bonesOnSkeleton, bonesOnSkeleton - boneCount, dynamicCount, additionalJoints, sphereCount,
@@ -1934,6 +1964,7 @@ void SmpPhysicsFeature::ReleaseMesh(std::uint64_t a_token)
 	gpuSolver.RemoveClaim(a_token);
 	gpuSkinning.RemoveClaim(a_token);
 	claims.erase(a_token);
+	++claimSetSerial;
 }
 
 json SmpPhysicsFeature::QueueWindProbe(const json& a_args)
@@ -3376,10 +3407,13 @@ void SmpPhysicsFeature::StepClaims()
 		}
 
 		registrationsThisFrame = 0u;
-		simulatedNodes.clear();
-		for (const auto& entry : claims) {
-			for (const auto& node : entry.second.nodes)
-				simulatedNodes.insert(node.get());
+		if (simulatedNodesSerial != claimSetSerial) {
+			simulatedNodesSerial = claimSetSerial;
+			simulatedNodes.clear();
+			for (const auto& entry : claims) {
+				for (const auto& node : entry.second.nodes)
+					simulatedNodes.insert(node.get());
+			}
 		}
 		std::vector<SmpPhysics::GpuSolver::FrameClaim> submissions;
 		{
@@ -3406,6 +3440,7 @@ void SmpPhysicsFeature::StepClaims()
 			gpuSolver.RemoveClaim(claim->first);
 			gpuSkinning.RemoveClaim(claim->first);
 			claim = claims.erase(claim);
+			++claimSetSerial;
 		}
 
 		for (auto claim = claims.begin(); claim != claims.end();) {
@@ -3419,6 +3454,7 @@ void SmpPhysicsFeature::StepClaims()
 			gpuSolver.RemoveClaim(claim->first);
 			gpuSkinning.RemoveClaim(claim->first);
 			claim = claims.erase(claim);
+			++claimSetSerial;
 		}
 		smpInterface = linkedInterface;
 
@@ -3441,6 +3477,7 @@ void SmpPhysicsFeature::StepClaims()
 			                       gpuSolver.PoseReady(entry.first);
 			gpuSkinning.SetClaimState(entry.first, poseReady, worldsView, gpuSolver.Frame());
 		}
+		NoteNodeWriters();
 		gpuSkinning.BuildBatch();
 		totalStepMicroseconds = totalMicroseconds;
 	}
@@ -3535,11 +3572,38 @@ void SmpPhysicsFeature::MeasureWindAreas(Claim& a_claim)
 	a_claim.windAreas = SmpPhysics::EstimateBoneWindAreas(rig, cards);
 }
 
+void SmpPhysicsFeature::NoteNodeWriters()
+{
+	const auto alive = [this](std::uint64_t a_token) { return claims.contains(a_token); };
+	const auto forEachNode = [this](std::uint64_t a_token, auto&& a_visit) {
+		const Claim& claim = claims.find(a_token)->second;
+		for (std::size_t index = 0; claim.parsed && index < claim.parsed->rig.bones.size(); ++index) {
+			if (!claim.parsed->rig.bones[index].kinematic && claim.nodes[index])
+				a_visit(claim.nodes[index].get());
+		}
+	};
+	if (nodeWriter.EndFrame(claimSetSerial, alive, forEachNode))
+		++nodeWriterSerial;
+}
+
+std::uint64_t SmpPhysicsFeature::SiblingSignature(const Claim& a_claim) const
+{
+	std::uint64_t signature = 0;
+	for (const auto& entry : claims) {
+		const Claim& sibling = entry.second;
+		if (sibling.token != a_claim.token && sibling.actorFormID == a_claim.actorFormID && sibling.gpuRegistered)
+			signature += sibling.token * 0x9E3779B97F4A7C15ull + 1u;
+	}
+	return signature;
+}
+
 void SmpPhysicsFeature::BindClaimSkins(Claim& a_claim)
 {
 	ZoneScopedN("SmpPhysics::BindClaimSkins");
 	const auto bindStart = std::chrono::steady_clock::now();
 	a_claim.skinsBound = true;
+	a_claim.skinsSiblings = SiblingSignature(a_claim);
+	a_claim.skinsWriters = nodeWriterSerial;
 	const auto offset = gpuSolver.BoneOffset(a_claim.token);
 	if (!offset || !a_claim.parsed)
 		return;
@@ -3554,11 +3618,20 @@ void SmpPhysicsFeature::BindClaimSkins(Claim& a_claim)
 		std::vector<std::uint32_t> slots(count, SmpPhysics::GpuSkinning::kStaticBone);
 		std::vector<SmpPhysics::SkinRows> skinToBone(count);
 		bool anyDynamic = false;
+		std::vector<std::uint64_t> others;
 		for (std::uint32_t index = 0; index < count; ++index) {
-			for (std::size_t bone = 0; bone < a_claim.nodes.size(); ++bone) {
-				if (a_claim.nodes[bone].get() == skin->bones[index] && !rig.bones[bone].kinematic) {
-					slots[index] = *offset + static_cast<std::uint32_t>(bone);
+			// Several of an actor's claims can simulate one node and the last to write it wins, so the bone is drawn from that claim's pose.
+			const std::uint64_t* writer = nodeWriter.Find(skin->bones[index]);
+			const auto owner = !writer || *writer == a_claim.token ? claims.end() : claims.find(*writer);
+			const bool sibling = owner != claims.end() && owner->second.actorFormID == a_claim.actorFormID && owner->second.gpuRegistered && owner->second.parsed;
+			const Claim& source = sibling ? owner->second : a_claim;
+			const auto sourceOffset = sibling ? gpuSolver.BoneOffset(source.token) : offset;
+			for (std::size_t bone = 0; sourceOffset && (sibling || owner == claims.end()) && bone < source.nodes.size(); ++bone) {
+				if (source.nodes[bone].get() == skin->bones[index] && !source.parsed->rig.bones[bone].kinematic) {
+					slots[index] = *sourceOffset + static_cast<std::uint32_t>(bone);
 					anyDynamic = true;
+					if (sibling && std::ranges::find(others, source.token) == others.end())
+						others.push_back(source.token);
 					break;
 				}
 			}
@@ -3566,7 +3639,7 @@ void SmpPhysicsFeature::BindClaimSkins(Claim& a_claim)
 			skinToBone[index] = SmpPhysics::PackSkinToBone(transform.rotate.entry, transform.scale,
 				transform.translate.x, transform.translate.y, transform.translate.z);
 		}
-		if (anyDynamic && gpuSkinning.Register(skin, a_claim.token, std::move(slots), std::move(skinToBone)))
+		if (anyDynamic && gpuSkinning.Register(skin, a_claim.token, std::move(slots), std::move(skinToBone), std::move(others)))
 			++bound;
 	}
 	logger::info("{} '{}': {} of {} skinned meshes will be drawn from the GPU solver ({} ms)", kLogPrefix, a_claim.physicsFile, bound, a_claim.skins.size(),
@@ -3679,14 +3752,20 @@ void SmpPhysicsFeature::GatherSolverInput(Claim& a_claim)
 bool SmpPhysicsFeature::RootTeleported(const Claim& a_claim) const
 {
 	const SmpPhysics::SmpRig& rig = a_claim.parsed->rig;
+	std::size_t kinematic = 0;
+	std::size_t turned = 0;
 	for (std::size_t index = 0; index < rig.bones.size(); ++index) {
 		if (!rig.bones[index].kinematic)
 			continue;
 		const SmpPhysics::Vec3 moved = a_claim.kinematicInput[index].translation - a_claim.previousKinematic[index].translation;
 		if (SmpPhysics::Dot(moved, moved) > kTeleportDistance * kTeleportDistance)
 			return true;
+		++kinematic;
+		if (SmpPhysics::TurnAngle(a_claim.previousKinematic[index].rotation, a_claim.kinematicInput[index].rotation) > kTeleportTurn)
+			++turned;
 	}
-	return false;
+	// One animated bone can swing this far in a frame; the skeleton turning takes most of them with it.
+	return turned * 2 > kinematic;
 }
 
 void SmpPhysicsFeature::SubmitGpuFrame(Claim& a_claim, float a_frameDelta, std::vector<SmpPhysics::GpuSolver::FrameClaim>& a_submissions)
@@ -3711,6 +3790,7 @@ void SmpPhysicsFeature::SubmitGpuFrame(Claim& a_claim, float a_frameDelta, std::
 void SmpPhysicsFeature::WriteBackPose(Claim& a_claim)
 {
 	const SmpPhysics::SmpRig& rig = a_claim.parsed->rig;
+	nodeWriter.Wrote(a_claim.token);
 	for (std::size_t index = 0; index < rig.bones.size(); ++index) {
 		if (rig.bones[index].kinematic)
 			continue;
@@ -3774,6 +3854,8 @@ bool SmpPhysicsFeature::StepClaim(Claim& a_claim, const RE::NiPoint3& a_cameraPo
 		a_claim.gpuRegistrationFailed = !a_claim.gpuRegistered;
 		if (a_claim.gpuRegistered && !a_claim.skinsBound)
 			BindClaimSkins(a_claim);
+	} else if (a_claim.gpuRegistered && a_claim.skinsBound && (a_claim.skinsWriters != nodeWriterSerial || a_claim.skinsSiblings != SiblingSignature(a_claim))) {
+		BindClaimSkins(a_claim);
 	}
 
 	const bool teleported = RootTeleported(a_claim);
@@ -3793,8 +3875,10 @@ bool SmpPhysicsFeature::StepClaim(Claim& a_claim, const RE::NiPoint3& a_cameraPo
 
 	const bool applyGpu = gpuDrives && a_gpuResult && a_gpuResult->bones.size() == boneCount;
 	if (applyGpu && !a_gpuResult->failed) {
-		if (SmpPhysics::GpuRig::PoseIsFinite(a_claim.parsed->rig, a_gpuResult->bones))
+		if (SmpPhysics::GpuRig::PoseIsFinite(a_claim.parsed->rig, a_gpuResult->bones)) {
 			a_claim.gpuLastBones = a_gpuResult->bones;
+			a_claim.gpuAppliedFrame = a_gpuResult->frame;
+		}
 	}
 	const bool holdGpu = gpuDrives && a_claim.gpuLastBones.size() == boneCount;
 

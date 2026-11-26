@@ -1,6 +1,7 @@
 #include "Common/HairCollision.hlsli"
 
-// Per rigid substep ContactCull, ContactSpheres and ContactReduce build each bone's merged contact.
+// Per rigid substep ContactCull, ContactSpheres and ContactReduce build each bone's merged contact; ClothVertices and
+// ClothTriangles run between the first two when a claim collides its cloth's triangles with a body proxy's vertices.
 // The record layouts mirror src/Features/SmpPhysics/GpuRigPacking.h; keep them in step.
 
 struct HairTreeStatic
@@ -18,8 +19,14 @@ struct HairBoneSphere
 struct HairSphereRecord
 {
 	float4 centreRadius;  // xyz = centre in the bone's rest frame, w = radius
-	uint4 exempt;         // x = rest-exemption mask, y = the slot of the bone the sphere belongs to
+	uint4 exempt;         // x = rest-exemption mask, y = the slot of the bone the sphere belongs to, z = 1 when it leaves per-vertex surfaces to its shape's triangles
+	float4 other[4];      // per other skin bone: xyz = the vertex in that bone's rest frame, w = its weight
+	uint4 otherBone;      // the other bones' slots, kNoSphereBone when unused
+	float4 weights;       // x = the owning bone's weight, y = hdtSMP64's flexible, the depth scale
 };
+static const uint kNoSphereBone = 0xFFFFFFFFu;  // mirrors kNoSphereBone in GpuRigPacking.h
+static const float kPruneSlack = 1.0e-3f;        // keeps a face tied with the best one inside the shrunken search box
+static const uint kFarSearchNodeBudget = 256u;  // most BVH nodes the search past a one-sided surface's allowance visits
 
 struct HairCollider
 {
@@ -47,7 +54,7 @@ struct HairTreeInput
 struct HairSurfaceMeta
 {
 	uint4 dimensions;   // w = face count
-	uint4 base;         // x = first face, y = first node, z = node count
+	uint4 base;         // x = first face, y = first node, z = node count, w = 1 when built from a per-vertex shape
 	float4 contact;     // x = the surface margin, y = its contact penetration allowance, z = how far behind a one-sided face it holds a sphere
 };
 
@@ -93,12 +100,53 @@ StructuredBuffer<uint> HairBoneTrees : register(t13);  // per bone slot: its tre
 static const uint kNoTree = 0xFFFFFFFFu;  // mirrors kNoTree in GpuRigPacking.h
 static const uint kNoTriangle = 0xFFFFFFFFu;  // no face has offered itself yet
 
+struct HairClothTriangle
+{
+	uint4 corners;   // xyz = the corners in the cloth vertex list, w = the slot of a simulated bone that owns the triangle
+	float4 contact;  // x = the margin, y = the signed penetration, z = the surfaces it may touch as the bits of a uint
+};
+
+struct HairClothBoneEntry
+{
+	uint clothTriangle;
+	float flexible;  // scales the depth
+	uint corners;    // how many times the contact is added; 0 marks padding
+	uint pad;
+};
+
+StructuredBuffer<HairSphereRecord> HairClothVertices : register(t0);  // a cloth vertex in a sphere's blend layout; its radius is unused
+StructuredBuffer<HairClothTriangle> HairClothTriangleList : register(t3);
+StructuredBuffer<uint4> HairBoneCloth : register(t4);  // per bone slot: x = first entry in the cloth bone list, y = how many
+StructuredBuffer<HairClothBoneEntry> HairClothBoneList : register(t11);
+
+/** @brief A body surface's vertex, bone and face as SurfacePrepCS.hlsl holds them; unbound when the surfaces are posed on the CPU. */
+struct HairBodyVertex
+{
+	float4 position;
+	uint4 bones;  // one global skin-bone slot per weight, or 0xFFFFFFFF
+	float4 weights;
+};
+
+struct HairBodyBone
+{
+	float4 rotation;
+	float4 translation;
+	uint4 driver;  // x = the global driver slot, or 0xFFFFFFFF; y = the bits of the bone's weight threshold
+};
+
+StructuredBuffer<HairBodyVertex> HairBodyVertices : register(t15);
+StructuredBuffer<HairBodyBone> HairBodyBones : register(t16);
+StructuredBuffer<uint4> HairBodyFaces : register(t17);  // per posed face slot: xyz = its corners' global vertex slots
+
+RWStructuredBuffer<float4> HairClothPosed : register(u0);  // per cloth vertex, its world position this substep
 RWStructuredBuffer<HairBoneWorld> HairBoneWorlds : register(u1);
 
 cbuffer HairContactParams : register(b0)
 {
-	uint HairBoneCount;    // one past the highest bone slot any claim uses
-	uint HairSphereCount;  // entries in the sphere list
+	uint HairBoneCount;           // one past the highest bone slot any claim uses
+	uint HairSphereCount;         // entries in the sphere list
+	uint HairClothVertexCount;    // entries in the cloth vertex list
+	uint HairClothTriangleCount;  // entries in the cloth triangle list; 0 leaves the cloth buffers unread
 };
 
 /** @brief Unpacks one collider, whose radius and penetration ride in the spare lanes of two of its vectors. */
@@ -145,8 +193,10 @@ HairCollision::Contact QueryColliders(HairTreeStatic a_tree, float3 a_point, flo
 			continue;
 		const float depthBefore = best.depth;
 		HairCollision::MergeContact(best, LoadCollider(raw), world, a_point, a_radius, (int)index);
-		if (best.depth > depthBefore)
+		if (best.depth > depthBefore) {
 			best.driver = raw.kind.y + 1u;
+			best.driverOther = 0u;
+		}
 	}
 	return best;
 }
@@ -196,12 +246,14 @@ void OfferSurfaceFace(HairSurfaceTriangle a_face, uint a_id, float3 a_point, flo
 	a_best.depth = depth;
 	a_best.normal = normal;
 	a_best.driver = asuint(a_face.b.w);
+	a_best.driverOther = asuint(a_face.c.w);
 	a_bestRank = rank;
 	a_bestId = a_id;
 }
 
 /**
  * @brief The deepest contact a sphere makes with one posed surface, the port of TriangleGrid::Query in TriangleGrid.cpp, enumerating through a BVH.
+ *        Only its second, deep search is capped by kFarSearchNodeBudget; TriangleGrid::Query and ProbeSpheres are not.
  * @param a_reach The sphere's radius plus the surface margin.
  */
 HairCollision::Contact QuerySurface(HairSurfaceMeta a_meta, float3 a_point, float a_reach)
@@ -210,30 +262,43 @@ HairCollision::Contact QuerySurface(HairSurfaceMeta a_meta, float3 a_point, floa
 	float penetration = a_meta.contact.y;
 	bool flipped = penetration < 0.0f;
 	float allowance = abs(penetration);
-	// Only a one-sided face has an inside a sphere can be stuck in, so only it reaches past its allowance.
-	float behind = penetration > 0.0f ? allowance + a_meta.contact.z : allowance;
-	float extent = max(a_reach, behind);
-	float3 low = a_point - float3(extent, extent, extent);
-	float3 high = a_point + float3(extent, extent, extent);
+	// Only a one-sided face has an inside a sphere can be stuck in, so only it is searched again past its allowance.
+	bool deep = penetration > 0.0f && a_meta.contact.z > 0.0f;
 	uint bestId = kNoTriangle;
 	float bestRank = -1.0e30f;
-	uint node = 0u;
-	while (node < a_meta.base.z) {
-		HairBvhNode current = HairSurfaceNodes[a_meta.base.y + node];
-		if (!BoxOverlapsNode(current, low, high)) {
-			node = current.skip;
-			continue;
-		}
-		if (current.leaf != 0u) {
-			uint first = current.leaf >> 3;
-			uint count = current.leaf & 7u;
-			for (uint index = 0u; index < count; ++index) {
-				HairSurfaceTriangle face = HairSurfaceTriangles[a_meta.base.x + first + index];
-				OfferSurfaceFace(face, asuint(face.a.w), a_point, a_reach, flipped, allowance, behind, best, bestRank, bestId);
+	for (uint turn = 0u; turn < (deep ? 2u : 1u) && bestId == kNoTriangle; ++turn) {
+		float behind = turn == 0u ? allowance : allowance + a_meta.contact.z;
+		float extent = max(a_reach, behind);
+		float3 low = a_point - float3(extent, extent, extent);
+		float3 high = a_point + float3(extent, extent, extent);
+		// A sphere in front of the surface accepts no face and would walk the whole deep box; one behind a face accepts early and the box shrink ends its walk.
+		uint budget = turn == 0u ? 0xFFFFFFFFu : kFarSearchNodeBudget;
+		uint visited = 0u;
+		uint node = 0u;
+		while (node < a_meta.base.z && visited < budget) {
+			visited = visited + 1u;
+			HairBvhNode current = HairSurfaceNodes[a_meta.base.y + node];
+			if (!BoxOverlapsNode(current, low, high)) {
+				node = current.skip;
+				continue;
 			}
-			node = current.skip;
-		} else {
-			node = node + 1u;
+			if (current.leaf != 0u) {
+				uint first = current.leaf >> 3;
+				uint count = current.leaf & 7u;
+				for (uint index = 0u; index < count; ++index) {
+					HairSurfaceTriangle face = HairSurfaceTriangles[a_meta.base.x + first + index];
+					OfferSurfaceFace(face, asuint(face.a.w), a_point, a_reach, flipped, allowance, behind, best, bestRank, bestId);
+				}
+				// A face can only replace the best one by lying no further from the point, so the search box shrinks to that distance.
+				if (-bestRank < extent) {
+					extent = -bestRank + kPruneSlack;
+					low = a_point - float3(extent, extent, extent);
+					high = a_point + float3(extent, extent, extent);
+				}
+				node = current.skip;
+			} else {
+				node = node + 1u;
+			}
 		}
 	}
 	return best;
@@ -243,7 +308,8 @@ HairCollision::Contact QuerySurface(HairSurfaceMeta a_meta, float3 a_point, floa
  * @brief The deepest contact a sphere makes with the claim's colliders and posed surfaces, the port of
  *        the CPU contact query. A surface's contact index is the collider count plus its record's position.
  */
-HairCollision::Contact QueryContacts(HairTreeStatic a_tree, uint4 a_surface, uint a_surfaceMask, uint a_colliderMask, float3 a_point, float a_radius, uint a_exemptMask)
+HairCollision::Contact QueryContacts(HairTreeStatic a_tree, uint4 a_surface, uint a_surfaceMask, uint a_colliderMask, float3 a_point, float a_radius, uint a_exemptMask,
+	bool a_skipVertexSurfaces)
 {
 	HairCollision::Contact best = QueryColliders(a_tree, a_point, a_radius, a_exemptMask, a_colliderMask);
 	if (!HairCollision::IsFiniteVector(a_point) || !isfinite(a_radius))
@@ -252,6 +318,8 @@ HairCollision::Contact QueryContacts(HairTreeStatic a_tree, uint4 a_surface, uin
 		if (index < HairCollision::kMaskedSurfaceLimit && (a_surfaceMask & (1u << index)) == 0u)
 			continue;
 		HairSurfaceMeta meta = HairSurfaces[a_surface.x + index];
+		if (a_skipVertexSurfaces && meta.base.w != 0u)
+			continue;
 		HairCollision::Contact contact = QuerySurface(meta, a_point, a_radius + meta.contact.x);
 		if (contact.depth > best.depth) {
 			best = contact;
@@ -273,7 +341,9 @@ struct HairBoneContact
 	uint velocityValid;
 };
 
-RWStructuredBuffer<HairBoneContact> HairBoneContactsOut : register(u3);  // Contact's write view: per bone slot, its merged contact at the start of the substep
+static const uint kContactLanes = 4u;  // mirrors kContactLanes in Collision.h
+
+RWStructuredBuffer<HairBoneContact> HairBoneContactsOut : register(u3);  // Contact's write view: kContactLanes per bone slot, its contacts at the start of the substep, one per contacted driver
 
 /** @brief The sphere sums of one bone, so that the serial and the cooperative merge finish the same arithmetic. */
 struct HairContactPartial
@@ -332,6 +402,8 @@ struct HairSphereHit
 	float3 centre;
 	int collider;
 	float4 velocityValid;  // xyz the contacted surface point's velocity, w 1 when its driver is known
+	uint key;              // the contacted driver's slot plus one, 0 when unknown; hits of one key merge into one lane
+	uint keyOther;         // a second driver the hit face is weighted to, 0 when none: hdtSMP64 credits a hit to every bone of the body vertex
 };
 
 /** @brief The velocity of a point a driver carries, w 1 when the driver is known and has a delta. */
@@ -346,6 +418,10 @@ float4 DriverPointVelocity(uint a_driverPlusOne, float3 a_point)
 	return float4((map.translation + HairCollision::QuatRotate(map.rotation, a_point) - a_point) * delta.translation.w, 1.0f);
 }
 
+static const uint kClothTriangleHits = 4u;  // mirrors kClothTriangleHits in ClothTriangles.h
+
+RWStructuredBuffer<HairSphereHit> HairClothHits : register(u2);   // kClothTriangleHits per cloth triangle: centre is the contact point on the triangle
+RWStructuredBuffer<uint> HairClothHitCounts : register(u4);      // per cloth triangle, how many of its hit slots hold a hit, so the merge skips the rest unread
 RWStructuredBuffer<HairSphereHit> HairSphereHits : register(u5);  // per sphere list entry
 RWStructuredBuffer<uint4> HairBoneCull : register(u6);            // per bone slot: x the surfaces its bound reaches, y a kCull state, z the colliders it touches
 
@@ -412,6 +488,29 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 	return a_surfaceMask != 0u || anyCollider || a_surface.y > HairCollision::kMaskedSurfaceLimit;
 }
 
+/** @brief A record's vertex at the weight blend of its bones: hdtSMP64 collides the skinned vertex, not a copy riding one bone. */
+float3 BlendedCentre(HairSphereRecord a_record)
+{
+	HairBoneWorld world = HairBoneWorlds[a_record.exempt.y];
+	HairCollision::Transform pose = HairCollision::LoadTransform(world.rotation, world.translation);
+	float3 centre = pose.translation + HairCollision::QuatRotate(pose.rotation, a_record.centreRadius.xyz);
+	float total = a_record.weights.x;
+	float3 blended = centre * total;
+	for (uint other = 0u; other < 4u; ++other) {
+		uint otherSlot = a_record.otherBone[other];
+		if (otherSlot == kNoSphereBone)
+			continue;
+		HairBoneWorld otherWorld = HairBoneWorlds[otherSlot];
+		HairCollision::Transform otherPose = HairCollision::LoadTransform(otherWorld.rotation, otherWorld.translation);
+		float weight = a_record.other[other].w;
+		blended += (otherPose.translation + HairCollision::QuatRotate(otherPose.rotation, a_record.other[other].xyz)) * weight;
+		total += weight;
+	}
+	if (total > 0.0f && all(isfinite(blended)))
+		centre = blended / total;
+	return centre;
+}
+
 	/**
  * @brief Decides, per bone, whether its spheres can touch anything this substep and which surfaces they can reach.
  * @details The sphere pass reads the verdict, so a bone nothing can touch costs one thread rather than a thread per sphere.
@@ -459,21 +558,376 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 		return;
 	uint tree = HairBoneTrees[bone];
 	HairTreeInput input = HairTreeInputs[tree];
-	HairBoneWorld world = HairBoneWorlds[bone];
-	HairCollision::Transform pose = HairCollision::LoadTransform(world.rotation, world.translation);
-	float3 centre = pose.translation + HairCollision::QuatRotate(pose.rotation, sphere.centreRadius.xyz);
+	float3 centre = BlendedCentre(sphere);
 	HairCollision::Contact contact = QueryContacts(HairTrees[tree], input.surface, cull.x, cull.z, centre,
-		sphere.centreRadius.w + input.contact.z, sphere.exempt.x);
+		sphere.centreRadius.w + input.contact.z, sphere.exempt.x, sphere.exempt.z != 0u);
 	HairSphereHit hit;
-	hit.depth = contact.depth > 0.0f ? contact.depth : 0.0f;
+	hit.depth = contact.depth > 0.0f ? contact.depth * sphere.weights.y : 0.0f;
 	hit.normal = contact.normal;
 	hit.centre = centre;
 	hit.collider = contact.collider;
 	hit.velocityValid = contact.depth > 0.0f ? DriverPointVelocity(contact.driver, centre) : float4(0.0f, 0.0f, 0.0f, 0.0f);
+	hit.key = contact.driver;
+	hit.keyOther = contact.depth > 0.0f && contact.driverOther != contact.driver ? contact.driverOther : 0u;
 	HairSphereHits[index] = hit;
 }
 
-	/** @brief Merges each bone's sphere hits into the one contact the rigid solver reads, the port of the CPU BoneContact. */
+/** @brief Poses one cloth vertex, a thread per vertex, for the triangles that share it. */
+[numthreads(64, 1, 1)] void ClothVertices(uint3 a_dispatchThreadId : SV_DispatchThreadID) {
+	uint index = a_dispatchThreadId.x;
+	if (index >= HairClothVertexCount)
+		return;
+	HairClothPosed[index] = float4(BlendedCentre(HairClothVertices[index]), 1.0f);
+}
+
+static const float kTriangleContactEpsilon = 1.1920929e-7f;  // mirrors kTriangleContactEpsilon in ClothTriangles.h
+
+/**
+ * @brief hdtSMP64's sphere-against-triangle test, the port of TestVertexAgainstTriangle in ClothTriangles.cpp.
+ * @param a_normal Receives the way the cloth is pushed: along the triangle's normal, away from the vertex.
+ * @param a_point Receives the vertex projected onto the triangle's plane.
+ * @param a_bodyPoint Receives the point of the vertex's sphere nearest the plane.
+ */
+bool ClothTriangleContact(float3 a_vertex, float a_radius, float3 a_a, float3 a_b, float3 a_c, float a_margin, float a_penetration,
+	out float a_depth, out float3 a_normal, out float3 a_point, out float3 a_bodyPoint)
+{
+	a_depth = 0.0f;
+	a_normal = float3(0.0f, 0.0f, 0.0f);
+	a_point = float3(0.0f, 0.0f, 0.0f);
+	a_bodyPoint = float3(0.0f, 0.0f, 0.0f);
+	float3 raw = cross(a_b - a_a, a_c - a_a);
+	float twiceArea = length(raw);
+	if (!(twiceArea >= kTriangleContactEpsilon))
+		return false;
+	float3 normal = raw / twiceArea;
+	float penetration = abs(a_penetration) < kTriangleContactEpsilon ? 0.0f : a_penetration;
+	if (penetration < 0.0f) {
+		normal = -normal;
+		penetration = -penetration;
+	}
+
+	float distance = dot(a_vertex - a_a, normal);
+	float3 projection = a_vertex - normal * distance;
+	float reach = a_radius + a_margin;
+	if (penetration >= kTriangleContactEpsilon) {
+		if (!(distance < reach && distance >= -penetration))
+			return false;
+	} else {
+		if (distance < 0.0f) {
+			distance = -distance;
+			normal = -normal;
+		}
+		if (!(distance < reach))
+			return false;
+	}
+
+	float3 toA = projection - a_a;
+	float3 toB = projection - a_b;
+	float3 toC = projection - a_c;
+	float areaA = length(cross(toB, toC));
+	float areaB = length(cross(toC, toA));
+	float areaC = length(cross(toA, toB));
+	if (areaA + areaB > twiceArea || areaB + areaC > twiceArea || areaC + areaA > twiceArea)
+		return false;
+
+	float depth = reach - distance;
+	if (!(depth > kTriangleContactEpsilon))
+		return false;
+	a_depth = depth;
+	a_normal = -normal;
+	a_point = projection;
+	a_bodyPoint = a_vertex - normal * a_radius;
+	return true;
+}
+
+HairSphereHit NoSphereHit()
+{
+	HairSphereHit hit;
+	hit.depth = 0.0f;
+	hit.normal = float3(0.0f, 0.0f, 0.0f);
+	hit.centre = float3(0.0f, 0.0f, 0.0f);
+	hit.collider = -1;
+	hit.velocityValid = float4(0.0f, 0.0f, 0.0f, 0.0f);
+	hit.key = 0u;
+	hit.keyOther = 0u;
+	return hit;
+}
+
+/** @brief Keeps a triangle's deepest hit on each driver in a_slots, the deepest drivers first; a hit no deeper than its driver's is dropped. */
+void OfferClothHit(inout HairSphereHit a_slots[kClothTriangleHits], HairSphereHit a_hit)
+{
+	uint held = kClothTriangleHits;
+	for (uint seen = 0u; seen < kClothTriangleHits; ++seen) {
+		if (held == kClothTriangleHits && a_slots[seen].depth > 0.0f && a_slots[seen].key == a_hit.key)
+			held = seen;
+	}
+	if (held != kClothTriangleHits) {
+		if (!(a_hit.depth > a_slots[held].depth))
+			return;
+		for (uint close = held; close + 1u < kClothTriangleHits; ++close)
+			a_slots[close] = a_slots[close + 1u];
+		a_slots[kClothTriangleHits - 1u] = NoSphereHit();
+	}
+	uint place = kClothTriangleHits;
+	for (uint slot = 0u; slot < kClothTriangleHits; ++slot) {
+		if (place == kClothTriangleHits && a_hit.depth > a_slots[slot].depth)
+			place = slot;
+	}
+	if (place == kClothTriangleHits)
+		return;
+	for (uint open = kClothTriangleHits - 1u; open > place; --open)
+		a_slots[open] = a_slots[open - 1u];
+	a_slots[place] = a_hit;
+}
+
+/**
+ * @brief Tests one cloth triangle against the vertices of its claim's per-vertex surfaces, a thread per triangle.
+ * @details A surface's vertices are reached through its posed faces, so one shared by several faces is tested once for each.
+ *          Nothing is searched for past the triangle's window, so a vertex that has gone through the cloth is let go, as hdtSMP64 lets it.
+ */
+[numthreads(64, 1, 1)] void ClothTriangles(uint3 a_dispatchThreadId : SV_DispatchThreadID) {
+	uint index = a_dispatchThreadId.x;
+	if (index >= HairClothTriangleCount)
+		return;
+	HairClothTriangle cloth = HairClothTriangleList[index];
+	HairSphereHit slots[kClothTriangleHits];
+	for (uint clear = 0u; clear < kClothTriangleHits; ++clear)
+		slots[clear] = NoSphereHit();
+	uint tree = cloth.corners.w < HairBoneCount ? HairBoneTrees[cloth.corners.w] : kNoTree;
+	if (tree != kNoTree) {
+		HairTreeInput input = HairTreeInputs[tree];
+		float3 a = HairClothPosed[cloth.corners.x].xyz;
+		float3 b = HairClothPosed[cloth.corners.y].xyz;
+		float3 c = HairClothPosed[cloth.corners.z].xyz;
+		if (input.surface.z != 0u && all(isfinite(a)) && all(isfinite(b)) && all(isfinite(c))) {
+			uint surfaceMask = asuint(cloth.contact.z);
+			float margin = cloth.contact.x;
+			float3 low = min(a, min(b, c));
+			float3 high = max(a, max(b, c));
+			uint colliderCount = HairTrees[tree].contact.y;
+			for (uint surface = 0u; surface < input.surface.y; ++surface) {
+				if (surface < HairCollision::kMaskedSurfaceLimit && (surfaceMask & (1u << surface)) == 0u)
+					continue;
+				HairSurfaceMeta meta = HairSurfaces[input.surface.x + surface];
+				if (meta.base.w == 0u)
+					continue;
+				float radius = meta.contact.x;
+				float extent = max(radius + margin, abs(cloth.contact.y));
+				float3 boxLow = low - float3(extent, extent, extent);
+				float3 boxHigh = high + float3(extent, extent, extent);
+				uint node = 0u;
+				// Each node is visited once at most, so the count only ends a walk over a hierarchy whose skips do not advance.
+				uint visited = 0u;
+				while (node < meta.base.z && visited < meta.base.z) {
+					visited = visited + 1u;
+					HairBvhNode current = HairSurfaceNodes[meta.base.y + node];
+					if (!BoxOverlapsNode(current, boxLow, boxHigh)) {
+						node = current.skip;
+						continue;
+					}
+					if (current.leaf == 0u) {
+						node = node + 1u;
+						continue;
+					}
+					uint first = current.leaf >> 3;
+					uint count = current.leaf & 7u;
+					for (uint slot = 0u; slot < count; ++slot) {
+						HairSurfaceTriangle face = HairSurfaceTriangles[meta.base.x + first + slot];
+						if (face.normalArea.w <= 0.0f)
+							continue;
+						float3 corners[3] = { face.a.xyz, face.b.xyz, face.c.xyz };
+						for (uint corner = 0u; corner < 3u; ++corner) {
+							HairSphereHit hit = NoSphereHit();
+							float3 bodyPoint;
+							if (!ClothTriangleContact(corners[corner], radius, a, b, c, margin, cloth.contact.y, hit.depth, hit.normal, hit.centre, bodyPoint))
+								continue;
+							hit.collider = (int)(colliderCount + surface);
+							hit.velocityValid = float4(bodyPoint, 0.0f);
+							// hdtSMP64 gives the cloth a contact with every bone of the body vertex above the shape's threshold, each moving as that bone does.
+							uint vertex = HairBodyFaces[meta.base.x + first + slot][corner];
+							HairBodyVertex body = HairBodyVertices[vertex];
+							bool credited = false;
+							for (uint influence = 0u; influence < 4u; ++influence) {
+								uint bodyBone = body.bones[influence];
+								float weight = body.weights[influence];
+								if (bodyBone == 0xFFFFFFFFu || !(weight > kTriangleContactEpsilon))
+									continue;
+								HairBodyBone skinBone = HairBodyBones[bodyBone];
+								if (skinBone.driver.x == 0xFFFFFFFFu || !(weight > asfloat(skinBone.driver.y)))
+									continue;
+								hit.key = skinBone.driver.x + 1u;
+								OfferClothHit(slots, hit);
+								credited = true;
+							}
+							if (!credited) {
+								hit.key = asuint(face.b.w);
+								OfferClothHit(slots, hit);
+							}
+						}
+					}
+					node = current.skip;
+				}
+			}
+		}
+	}
+	// Until here velocityValid holds the body point the velocity is taken at.
+	uint held = 0u;
+	for (uint write = 0u; write < kClothTriangleHits; ++write) {
+		if (slots[write].depth > 0.0f) {
+			slots[write].velocityValid = DriverPointVelocity(slots[write].key, slots[write].velocityValid.xyz);
+			HairClothHits[index * kClothTriangleHits + held] = slots[write];
+			held = held + 1u;
+		}
+	}
+	HairClothHitCounts[index] = held;
+}
+
+/**
+ * @brief Adds one hit to the lane of a_key, the port of the CPU ContactLanes::Add.
+ * @param a_count How many times the hit is added: hdtSMP64 adds a triangle's contact once per corner weight of the bone.
+ */
+void FoldLaneHit(inout HairContactPartial a_lanes[kContactLanes], inout uint a_keys[kContactLanes], inout uint a_used, HairSphereHit a_hit, uint a_key, float a_count)
+{
+	uint lane = a_used;
+	for (uint seen = 0u; seen < kContactLanes; ++seen) {
+		if (seen < a_used && lane == a_used && a_keys[seen] == a_key)
+			lane = seen;
+	}
+	if (lane == a_used) {
+		if (a_used < kContactLanes) {
+			a_keys[a_used] = a_key;
+			a_used = a_used + 1u;
+		} else {
+			lane = 0u;
+			float bestAligned = -2.0f;
+			for (uint candidate = 0u; candidate < kContactLanes; ++candidate) {
+				float sumLength = sqrt(dot(a_lanes[candidate].normalSum, a_lanes[candidate].normalSum));
+				float aligned = sumLength > 0.0f ? dot(a_lanes[candidate].normalSum, a_hit.normal) / sumLength : -1.0f;
+				if (aligned > bestAligned) {
+					bestAligned = aligned;
+					lane = candidate;
+				}
+			}
+		}
+	}
+	HairContactPartial partial = a_lanes[lane];
+	if (partial.weight > 0.0f && dot(partial.normalSum, a_hit.normal) < 0.0f)
+		return;
+	float squared = a_hit.depth * a_hit.depth * a_count;
+	partial.weight += squared;
+	partial.normalSum += a_hit.normal * (squared * a_hit.depth);
+	partial.positionSum += a_hit.centre * squared;
+	if (a_hit.velocityValid.w > 0.5f)
+		partial.velocitySum += a_hit.velocityValid.xyz * squared;
+	else
+		partial.velocityMissing = true;
+	if (a_hit.depth > partial.deepest) {
+		partial.deepest = a_hit.depth;
+		partial.collider = a_hit.collider;
+	}
+	a_lanes[lane] = partial;
+}
+
+static const uint kClothFoldChunk = 64u;  // mirrors kClothFoldChunk in GpuRigPacking.h
+
+/** @brief One lane of one chunk of a bone's cloth triangles, folded by ClothFold for ContactReduce to merge. */
+struct HairClothFold
+{
+	float weight;
+	float3 normalSum;
+	float3 positionSum;
+	float3 velocitySum;
+	uint velocityMissing;
+	float deepest;
+	int collider;
+	uint key;
+};
+
+RWStructuredBuffer<HairClothFold> HairClothFolds : register(u7);  // kContactLanes per chunk of the cloth bone list
+
+/**
+ * @brief Folds one chunk of a bone's cloth triangles into lanes, a thread per chunk.
+ * @details A bone can own thousands of triangles and one thread reading them all is the slowest in the frame, so the
+ *          list is folded in chunks side by side and ContactReduce merges a bone's chunks.
+ */
+[numthreads(64, 1, 1)] void ClothFold(uint3 a_dispatchThreadId : SV_DispatchThreadID) {
+	uint chunk = a_dispatchThreadId.x;
+	HairContactPartial lanes[kContactLanes];
+	uint keys[kContactLanes];
+	uint used = 0u;
+	for (uint clearLane = 0u; clearLane < kContactLanes; ++clearLane) {
+		lanes[clearLane] = EmptyContactPartial();
+		keys[clearLane] = 0u;
+	}
+	for (uint index = 0u; index < kClothFoldChunk; ++index) {
+		HairClothBoneEntry entry = HairClothBoneList[chunk * kClothFoldChunk + index];
+		if (entry.corners == 0u)
+			continue;
+		uint held = HairClothHitCounts[entry.clothTriangle];
+		for (uint slot = 0u; slot < held; ++slot) {
+			HairSphereHit hit = HairClothHits[entry.clothTriangle * kClothTriangleHits + slot];
+			if (!(hit.depth > 0.0f))
+				continue;
+			hit.depth *= entry.flexible;
+			FoldLaneHit(lanes, keys, used, hit, hit.key, (float)entry.corners);
+		}
+	}
+	for (uint lane = 0u; lane < kContactLanes; ++lane) {
+		HairClothFold fold;
+		fold.weight = lanes[lane].weight;
+		fold.normalSum = lanes[lane].normalSum;
+		fold.positionSum = lanes[lane].positionSum;
+		fold.velocitySum = lanes[lane].velocitySum;
+		fold.velocityMissing = lanes[lane].velocityMissing ? 1u : 0u;
+		fold.deepest = lanes[lane].deepest;
+		fold.collider = lanes[lane].collider;
+		fold.key = keys[lane];
+		HairClothFolds[chunk * kContactLanes + lane] = fold;
+	}
+}
+
+/** @brief Adds one folded chunk lane to the lane of its driver, by FoldLaneHit's rules with the chunk's summed normal standing for a hit's. */
+void MergeLaneFold(inout HairContactPartial a_lanes[kContactLanes], inout uint a_keys[kContactLanes], inout uint a_used, HairClothFold a_fold)
+{
+	uint lane = a_used;
+	for (uint seen = 0u; seen < kContactLanes; ++seen) {
+		if (seen < a_used && lane == a_used && a_keys[seen] == a_fold.key)
+			lane = seen;
+	}
+	if (lane == a_used) {
+		if (a_used < kContactLanes) {
+			a_keys[a_used] = a_fold.key;
+			a_used = a_used + 1u;
+		} else {
+			lane = 0u;
+			float bestAligned = -2.0f;
+			float foldLength = sqrt(dot(a_fold.normalSum, a_fold.normalSum));
+			for (uint candidate = 0u; candidate < kContactLanes; ++candidate) {
+				float sumLength = sqrt(dot(a_lanes[candidate].normalSum, a_lanes[candidate].normalSum));
+				float aligned = sumLength > 0.0f && foldLength > 0.0f ? dot(a_lanes[candidate].normalSum, a_fold.normalSum) / (sumLength * foldLength) : -1.0f;
+				if (aligned > bestAligned) {
+					bestAligned = aligned;
+					lane = candidate;
+				}
+			}
+		}
+	}
+	HairContactPartial partial = a_lanes[lane];
+	if (partial.weight > 0.0f && dot(partial.normalSum, a_fold.normalSum) < 0.0f)
+		return;
+	partial.weight += a_fold.weight;
+	partial.normalSum += a_fold.normalSum;
+	partial.positionSum += a_fold.positionSum;
+	partial.velocitySum += a_fold.velocitySum;
+	partial.velocityMissing = partial.velocityMissing || a_fold.velocityMissing != 0u;
+	if (a_fold.deepest > partial.deepest) {
+		partial.deepest = a_fold.deepest;
+		partial.collider = a_fold.collider;
+	}
+	a_lanes[lane] = partial;
+}
+
+	/** @brief Merges each bone's sphere hits and folded cloth chunks into one contact per contacted driver, kContactLanes at most, the port of the CPU ContactLanes. */
 	[numthreads(64, 1, 1)] void ContactReduce(uint3 a_dispatchThreadId : SV_DispatchThreadID)
 {
 	uint bone = a_dispatchThreadId.x;
@@ -482,28 +936,39 @@ bool BoneBoundReaches(HairTreeStatic a_tree, uint4 a_surface, HairBoneSphere a_b
 	uint4 cull = HairBoneCull[bone];
 	if (cull.y == kCullSkip)
 		return;
-	HairContactPartial partial = EmptyContactPartial();
+	HairContactPartial lanes[kContactLanes];
+	uint keys[kContactLanes];
+	uint used = 0u;
+	for (uint clearLane = 0u; clearLane < kContactLanes; ++clearLane) {
+		lanes[clearLane] = EmptyContactPartial();
+		keys[clearLane] = 0u;
+	}
 	if (cull.y == kCullWork) {
 		HairBoneSphere sphereRange = HairBoneSpheres[bone];
 		for (uint index = 0u; index < sphereRange.range.y; ++index) {
 			HairSphereHit hit = HairSphereHits[sphereRange.range.x + index];
 			if (!(hit.depth > 0.0f))
 				continue;
-			if (partial.weight > 0.0f && dot(partial.normalSum, hit.normal) < 0.0f)
-				continue;
-			float squared = hit.depth * hit.depth;
-			partial.weight += squared;
-			partial.normalSum += hit.normal * (squared * hit.depth);
-			partial.positionSum += hit.centre * squared;
-			if (hit.velocityValid.w > 0.5f)
-				partial.velocitySum += hit.velocityValid.xyz * squared;
-			else
-				partial.velocityMissing = true;
-			if (hit.depth > partial.deepest) {
-				partial.deepest = hit.depth;
-				partial.collider = hit.collider;
+			for (uint turn = 0u; turn < 2u; ++turn) {
+				uint key = turn == 0u ? hit.key : hit.keyOther;
+				if (turn == 1u && key == 0u)
+					break;
+				FoldLaneHit(lanes, keys, used, hit, key, 1.0f);
 			}
 		}
 	}
-	HairBoneContactsOut[bone] = FinishBoneContact(partial);
+	if (HairClothTriangleCount != 0u) {
+		uint4 cloth = HairBoneCloth[bone];
+		uint firstChunk = cloth.x / kClothFoldChunk;
+		uint chunkCount = (cloth.y + kClothFoldChunk - 1u) / kClothFoldChunk;
+		for (uint chunk = 0u; chunk < chunkCount; ++chunk) {
+			for (uint foldLane = 0u; foldLane < kContactLanes; ++foldLane) {
+				HairClothFold fold = HairClothFolds[(firstChunk + chunk) * kContactLanes + foldLane];
+				if (fold.weight > 0.0f)
+					MergeLaneFold(lanes, keys, used, fold);
+			}
+		}
+	}
+	for (uint lane = 0u; lane < kContactLanes; ++lane)
+		HairBoneContactsOut[bone * kContactLanes + lane] = FinishBoneContact(lanes[lane]);
 }
