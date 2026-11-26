@@ -107,7 +107,7 @@ Dragonsreach, the player in the Tara dress (five physics files) and five other c
 
 With hdtSMP64's throttles lifted in both of its config files (`userConfigs.json` overrides `configs.json`) and a test crowd, standing,
 15 s windows: no crowd 20.3 ms against 18.2 ms; ten extra characters 30.1 ms against 21.7 ms (46 physics files on the GPU).
-The same test a day later, after the two solver fixes above and the collision fixes that followed (6ffdadd): no crowd 8.9 ms
+The same test a day later, after the two solver fixes above and the collision fixes that followed (1852d5a): no crowd 8.9 ms
 against 7.1 ms; ten extra characters 13.6 to 14.1 ms against 10.1 ms (47 physics files). The release this branch started
 from (f56246c) gave 14.2 ms with ten extra characters in the same hour. Clearing the test crowd can crash the game on any
 of these builds, the release included, so a run that ends early has to be repeated.
