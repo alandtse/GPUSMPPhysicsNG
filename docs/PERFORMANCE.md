@@ -42,6 +42,10 @@ throttle lifted (one launch per crowd size, 15 s windows, two per arm):
 
 The ratios above (0.67, 0.32, 0.36) still hold. At 60 the frame is long enough for two solver steps.
 
+The Yue Qingshu Dress crowd of 30, measured the same way: hdtSMP64 52.5 to 55.4 ms a frame against the plugin's 19.1 ms
+(1.5 ms of CPU and 5.1 ms of GPU, two solver steps a frame); added over no crowd 12.0 against about 45 ms, 0.27, where
+0.29 was measured at release.
+
 ## Where the plugin's time goes
 
 Per call on SE, 10/20/30 characters: `ContactSpheres` 0.64/1.18/1.13 ms and `RigidSolve` 0.74/0.77/0.82 ms. On VR
