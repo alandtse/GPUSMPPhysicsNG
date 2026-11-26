@@ -11,6 +11,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <utility>
 #include <vector>
 
@@ -416,6 +417,12 @@ namespace SmpPhysics::GpuRig
 
 	/** @brief One collider packed for the compute shader; a collider with no driver packs as one the shader skips. */
 	[[nodiscard]] ColliderPacked PackCollider(const Collider& a_collider);
+
+	/** @brief Whether two packed collider lists hold the same bytes, so the second need not be uploaded over the first. */
+	[[nodiscard]] inline bool SameColliders(const std::vector<ColliderPacked>& a_left, const std::vector<ColliderPacked>& a_right) noexcept
+	{
+		return a_left.size() == a_right.size() && (a_left.empty() || std::memcmp(a_left.data(), a_right.data(), a_left.size() * sizeof(ColliderPacked)) == 0);
+	}
 
 	/**
 	 * @brief Installs a claim's collision proxies, giving every tree the range of them it shares with the claim.

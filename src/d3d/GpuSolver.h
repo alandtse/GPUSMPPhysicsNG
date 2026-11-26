@@ -199,16 +199,17 @@ namespace SmpPhysics
 			std::uint32_t sphereBase{};  ///< where this claim's spheres start in the shared sphere list
 			GpuRig::RigData rig;         ///< Every stored range is already shifted into the shared slot space.
 			std::vector<SkinnedSurface> surfaces;
-			std::vector<int> surfaceDrivers;                 ///< the drivers the surfaces are skinned to
-			std::vector<GpuRig::SurfaceFrame> surfaceCache;  ///< one per surface, as last built
-			std::vector<TriangleBvh> surfaceBvhs;            ///< one per surface, refitted whenever its surface is rebuilt
-			std::vector<Transform> cachedDrivers;            ///< the driver list surfaceCache was posed from; empty until built
-			bool surfaceTopologyReady{};                     ///< the surfaceBvhs were built from the claim's first supplied drivers
-			std::uint32_t surfaceFirst{};                    ///< this claim's first record in the GPU surface metas
-			std::uint32_t surfaceCount{};                    ///< how many records the claim added to them
-			std::vector<GpuRig::TreeInput> inputs;           ///< One per tree, refreshed every submitted frame.
-			bool steppedDriversValid{};                      ///< The claim's driver slots in steppedDrivers hold its pose from the last frame the solver stepped.
-			std::uint64_t firstFrame{};                      ///< The first frame this claim's output is in the output buffer; zero until then.
+			std::vector<int> surfaceDrivers;                        ///< the drivers the surfaces are skinned to
+			std::vector<GpuRig::SurfaceFrame> surfaceCache;         ///< one per surface, as last built
+			std::vector<TriangleBvh> surfaceBvhs;                   ///< one per surface, refitted whenever its surface is rebuilt
+			std::vector<Transform> cachedDrivers;                   ///< the driver list surfaceCache was posed from; empty until built
+			bool surfaceTopologyReady{};                            ///< the surfaceBvhs were built from the claim's first supplied drivers
+			std::uint32_t surfaceFirst{};                           ///< this claim's first record in the GPU surface metas
+			std::uint32_t surfaceCount{};                           ///< how many records the claim added to them
+			std::vector<GpuRig::TreeInput> inputs;                  ///< One per tree, refreshed every submitted frame.
+			std::vector<GpuRig::ColliderPacked> uploadedExternals;  ///< The external colliders the collider buffer holds for this claim; empty when its slots were rewritten.
+			bool steppedDriversValid{};                             ///< The claim's driver slots in steppedDrivers hold its pose from the last frame the solver stepped.
+			std::uint64_t firstFrame{};                             ///< The first frame this claim's output is in the output buffer; zero until then.
 		};
 
 		struct Readback

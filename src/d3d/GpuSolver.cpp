@@ -644,6 +644,7 @@ namespace SmpPhysics
 				std::ranges::copy(packed.boneTrees, boneTreeData.begin() + claim.boneOffset);
 				std::ranges::copy(packed.boneCloth, boneClothData.begin() + claim.boneOffset);
 				std::ranges::copy(packed.colliders, colliderData.begin() + claim.colliderOffset);
+				claim.uploadedExternals.clear();
 				sphereListShadow.insert(sphereListShadow.end(), packed.sphereList.begin(), packed.sphereList.end());
 				appendCloth(packed);
 			}
@@ -665,6 +666,7 @@ namespace SmpPhysics
 				Util::UpdateBufferSlots(boneTrees->resource.get(), claim.boneOffset, packed.boneTrees);
 				Util::UpdateBufferSlots(boneCloth->resource.get(), claim.boneOffset, packed.boneCloth);
 				Util::UpdateBufferSlots(colliders->resource.get(), claim.colliderOffset, packed.colliders);
+				claim.uploadedExternals.clear();
 				sphereListShadow.insert(sphereListShadow.end(), packed.sphereList.begin(), packed.sphereList.end());
 				appendCloth(packed);
 			}
@@ -1071,9 +1073,12 @@ namespace SmpPhysics
 					if (external.kind.y != GpuRig::kInvalidDriverSlot)
 						external.kind.y += claim.driverOffset;
 				}
-				const UINT first = static_cast<UINT>((claim.colliderOffset + staticColliders - kExternalColliderSlots) * sizeof(GpuRig::ColliderPacked));
-				const D3D11_BOX region{ first, 0, 0, first + static_cast<UINT>(externals.size() * sizeof(GpuRig::ColliderPacked)), 1, 1 };
-				context->UpdateSubresource(colliders->resource.get(), 0, &region, externals.data(), 0, 0);
+				if (!GpuRig::SameColliders(claim.uploadedExternals, externals)) {
+					const UINT first = static_cast<UINT>((claim.colliderOffset + staticColliders - kExternalColliderSlots) * sizeof(GpuRig::ColliderPacked));
+					const D3D11_BOX region{ first, 0, 0, first + static_cast<UINT>(externals.size() * sizeof(GpuRig::ColliderPacked)), 1, 1 };
+					context->UpdateSubresource(colliders->resource.get(), 0, &region, externals.data(), 0, 0);
+					claim.uploadedExternals = std::move(externals);
+				}
 			}
 			RigidGpuSolver::FrameClaim& rigid = a_pack.rigidClaims.emplace_back();
 			rigid.token = frameClaim.token;

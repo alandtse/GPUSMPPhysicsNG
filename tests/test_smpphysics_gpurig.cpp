@@ -1336,3 +1336,19 @@ TEST_CASE("A driver delta does not depend on the substep fraction a pose is blen
 	CHECK(first[0].translation.x == second[0].translation.x);
 	CHECK(first[0].translation.w == second[0].translation.w);
 }
+
+TEST_CASE("Packed collider lists compare equal only when every byte matches", "[smpphysics][gpurig]")
+{
+	std::vector<GpuRig::ColliderPacked> first(2, GpuRig::PackCollider(Collider{}));
+	std::vector<GpuRig::ColliderPacked> second = first;
+	CHECK(GpuRig::SameColliders(first, second));
+	CHECK(GpuRig::SameColliders({}, {}));
+	second[1].kind.y += 1u;
+	CHECK_FALSE(GpuRig::SameColliders(first, second));
+	second = first;
+	second[0].segmentA.x += 0.5f;
+	CHECK_FALSE(GpuRig::SameColliders(first, second));
+	second = first;
+	second.pop_back();
+	CHECK_FALSE(GpuRig::SameColliders(first, second));
+}
