@@ -1139,7 +1139,6 @@ struct SmpPhysicsFeature::PatchProbeState
 	std::uint32_t drawnEvery{ 1 };
 	std::uint32_t sampleIndex{};
 	std::chrono::steady_clock::time_point lastSample{};
-	std::uint32_t lastSkinCapture{};
 	std::uint32_t lastClothCapture{};
 	std::vector<Row> rows;
 	std::size_t next{};
