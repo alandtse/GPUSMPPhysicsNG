@@ -30,6 +30,18 @@ Qingshu Dress crowd of 30 costs hdtSMP64 36.6 ms against the plugin's 10.8 ms (a
 At default throttles (30 characters, hdtSMP64 simulating about 5 skeletons) hdtSMP64 costs 2.9 ms and the plugin 4.1 ms,
 because the plugin simulates all 72 claims. The advantage is per character, not at defaults.
 
+Checked again at 1852d5a, after cloth began to collide triangle against vertex, as frame time with the same crowd and every
+throttle lifted (one launch per crowd size, 15 s windows, two per arm):
+
+| Crowd | hdtSMP64 frame | Plugin frame | Plugin cpu + gpu     | Added over no crowd, plugin against hdtSMP64 |
+| ----- | -------------- | ------------ | -------------------- | -------------------------------------------- |
+| 0     | 8.9 ms         | 7.1 ms       |                      |                                              |
+| 10    | 13.6 to 14.1   | 10.1 ms      | 0.32 + 3.58 = 3.9 ms | 3.0 against 5.0 ms (0.59)                    |
+| 30    | 30.3 ms        | 14.0 ms      | 0.72 + 4.0 = 4.7 ms  | 6.9 against 21.4 ms (0.32)                   |
+| 60    | 52.1 to 53.2   | 19.3 ms      | 1.35 + 5.5 = 6.8 ms  | 12.2 against 43.8 ms (0.28)                  |
+
+The ratios above (0.67, 0.32, 0.36) still hold. At 60 the frame is long enough for two solver steps.
+
 ## Where the plugin's time goes
 
 Per call on SE, 10/20/30 characters: `ContactSpheres` 0.64/1.18/1.13 ms and `RigidSolve` 0.74/0.77/0.82 ms. On VR

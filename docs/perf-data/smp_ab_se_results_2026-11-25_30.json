@@ -1,0 +1,86 @@
+[
+  {
+    "arm": "hdt",
+    "crowd": 30,
+    "frameMs": 30.349,
+    "claims": 0,
+    "gpuClaims": null,
+    "stepUs": null
+  },
+  {
+    "arm": "port",
+    "crowd": 30,
+    "frameMs": 14.007,
+    "claims": 97,
+    "gpuClaims": 65,
+    "stepUs": 681.0999999999998,
+    "gpuPasses": {
+      "SmpPhysics::ClothFold": 0.0257,
+      "SmpPhysics::ClothTriangles": 0.0076,
+      "SmpPhysics::ClothVertices": 0.005,
+      "SmpPhysics::ContactCull": 0.016,
+      "SmpPhysics::ContactPasses": 0.1925,
+      "SmpPhysics::ContactReduce": 0.0415,
+      "SmpPhysics::ContactSpheres": 0.0948,
+      "SmpPhysics::RigidContact": 1.8971,
+      "SmpPhysics::RigidExport": 0.0064,
+      "SmpPhysics::RigidFrameBegin": 0.075,
+      "SmpPhysics::RigidIntegrate": 0.0052,
+      "SmpPhysics::RigidPredict": 0.0058,
+      "SmpPhysics::RigidSetup": 0.0343,
+      "SmpPhysics::RigidSolve": 2.1474,
+      "SmpPhysics::SP_Bones": 0.0073,
+      "SmpPhysics::SP_Leaves": 0.0078,
+      "SmpPhysics::SP_Pose": 0.0066,
+      "SmpPhysics::SP_Refit": 1.6617,
+      "SmpPhysics::SP_Triangles": 0.0138,
+      "SmpPhysics::SkinPaletteBatch": 0.0073,
+      "SmpPhysics::SurfacePrep": 1.6973
+    },
+    "calls": {
+      "SmpPhysics::RigidSolve": 1.1
+    }
+  },
+  {
+    "arm": "hdt",
+    "crowd": 30,
+    "frameMs": 30.297,
+    "claims": 0,
+    "gpuClaims": null,
+    "stepUs": null
+  },
+  {
+    "arm": "port",
+    "crowd": 30,
+    "frameMs": 13.955,
+    "claims": 97,
+    "gpuClaims": 65,
+    "stepUs": 762.3000000000003,
+    "gpuPasses": {
+      "SmpPhysics::ClothFold": 0.0263,
+      "SmpPhysics::ClothTriangles": 0.0079,
+      "SmpPhysics::ClothVertices": 0.0048,
+      "SmpPhysics::ContactCull": 0.0174,
+      "SmpPhysics::ContactPasses": 0.1991,
+      "SmpPhysics::ContactReduce": 0.0512,
+      "SmpPhysics::ContactSpheres": 0.0897,
+      "SmpPhysics::RigidContact": 1.8176,
+      "SmpPhysics::RigidExport": 0.0063,
+      "SmpPhysics::RigidFrameBegin": 0.0754,
+      "SmpPhysics::RigidIntegrate": 0.0052,
+      "SmpPhysics::RigidPredict": 0.006,
+      "SmpPhysics::RigidSetup": 0.0402,
+      "SmpPhysics::RigidSolve": 2.1347,
+      "SmpPhysics::SP_Bones": 0.0068,
+      "SmpPhysics::SP_Leaves": 0.0084,
+      "SmpPhysics::SP_Pose": 0.0072,
+      "SmpPhysics::SP_Refit": 1.5748,
+      "SmpPhysics::SP_Triangles": 0.0136,
+      "SmpPhysics::SkinPaletteBatch": 0.0074,
+      "SmpPhysics::SurfacePrep": 1.6117
+    },
+    "calls": {
+      "SmpPhysics::RigidSolve": 1.11
+    }
+  }
+]
