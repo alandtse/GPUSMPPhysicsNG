@@ -24,14 +24,19 @@ namespace SmpPhysics
 		return a_vertexShapes == 0 || a_clothRig || a_triangleShapesOnSimulatedBones > 0;
 	}
 
+	/** @brief The penetration a rig's own per-triangle shape must allow before it holds a sphere deep behind it, in Skyrim units. */
+	inline constexpr float kDeepPushPenetration = 0.5f;
+
 	/**
 	 * @brief Whether a rig surface also holds a sphere that rests deep behind it (kDeepPushReach): in a rig of several sphere shapes, for
-	 *        every surface but the rig's own per-triangle shapes.
-	 * @details hdtSMP64 collides a per-vertex shape as spheres, which push from any side, and a per-triangle shape as a thin one-sided
-	 *          window: a sphere a file rests behind such a triangle is left there, and pushing it out fights the rig's joints for good.
+	 *        every surface but the rig's own per-triangle shapes that allow less than kDeepPushPenetration.
+	 * @details hdtSMP64 collides a per-vertex shape as spheres, which push from any side, and a per-triangle shape as a one-sided window
+	 *          as deep as its penetration. A file that gives a thin one rests spheres behind it (a soft body over its rigid body), and
+	 *          pushing them out fights the rig's joints for good; one a unit deep is the body under a skirt, which has to push a bone
+	 *          back out.
 	 */
-	[[nodiscard]] constexpr bool HoldsDeepSpheres(std::size_t a_sphereShapes, bool a_ownTriangleShape) noexcept
+	[[nodiscard]] constexpr bool HoldsDeepSpheres(std::size_t a_sphereShapes, bool a_ownTriangleShape, float a_penetration) noexcept
 	{
-		return a_sphereShapes > 1 && !a_ownTriangleShape;
+		return a_sphereShapes > 1 && (!a_ownTriangleShape || a_penetration >= kDeepPushPenetration);
 	}
 }

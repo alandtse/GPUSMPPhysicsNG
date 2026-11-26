@@ -2071,7 +2071,7 @@ void SmpPhysicsFeature::BuildRigSurfaces(CollisionBuildState& s) const
 		surface.contactPenetration = shape.penetration;
 		surface.clothOnly = !hairAllows;
 		const auto shapeIndex = static_cast<std::size_t>(&shape - surfaceShapes.data());
-		surface.deepPush = SmpPhysics::HoldsDeepSpheres(s.sphereShapes.size(), shapeIndex < shapes.triangleShapes.size());
+		surface.deepPush = SmpPhysics::HoldsDeepSpheres(s.sphereShapes.size(), shapeIndex < shapes.triangleShapes.size(), shape.penetration);
 		surface.perVertex = shapeIndex >= shapes.triangleShapes.size() && shapeIndex < vertexShapesEnd;
 		surface.vertices.reserve(skinned.positions.size());
 		for (std::size_t vertex = 0; vertex < skinned.positions.size(); ++vertex)
