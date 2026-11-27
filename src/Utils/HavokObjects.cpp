@@ -2,6 +2,7 @@
 
 #include "Globals.h"
 #include "Utils/ActorUtils.h"
+#include "Utils/ObjectCapsule.h"
 
 #include <algorithm>
 #include <chrono>
@@ -14,7 +15,6 @@ namespace Util::HavokObjects
 	{
 		constexpr float kCandidateRadius = 1500.0f;
 		constexpr std::chrono::milliseconds kCandidateRefresh{ 250 };
-		constexpr float kMinCapsuleRadius = 1.0f;
 
 		std::mutex candidateMutex;
 		std::vector<RE::FormID> candidates;
@@ -45,9 +45,7 @@ namespace Util::HavokObjects
 			const auto* body = FindRigidBody(a_reference->Get3D());
 			if (!body)
 				return false;
-			const auto motion = body->motion.type.get();
-			return motion != RE::hkpMotion::MotionType::kInvalid && motion != RE::hkpMotion::MotionType::kFixed &&
-			       motion != RE::hkpMotion::MotionType::kCharacter;
+			return ObjectCapsule::IsLoose(static_cast<ObjectCapsule::Motion>(body->motion.type.get()));
 		}
 
 		void RefreshCandidates()
@@ -83,26 +81,17 @@ namespace Util::HavokObjects
 			if (!(half.x > 0.0f) || !(half.y > 0.0f) || !(half.z > 0.0f) || !std::isfinite(half.x + half.y + half.z))
 				return false;
 
-			const float extents[3] = { half.x, half.y, half.z };
-			const int longest = extents[0] >= extents[1] && extents[0] >= extents[2] ? 0 : (extents[1] >= extents[2] ? 1 : 2);
-			float radius = 0.0f;
-			for (int axis = 0; axis < 3; ++axis) {
-				if (axis != longest)
-					radius = std::max(radius, extents[axis]);
-			}
-			radius = std::max(radius, kMinCapsuleRadius);
-			const float boundRadius = object->worldBound.radius;
-			if (boundRadius > 0.0f)
-				radius = std::min(radius, boundRadius);
-			const float halfLength = std::max(extents[longest] - radius, 0.0f);
+			const ObjectCapsule::Shape shape = ObjectCapsule::Fit({ half.x, half.y, half.z }, object->worldBound.radius);
+			if (!(shape.radius > 0.0f) || !std::isfinite(shape.halfLength))
+				return false;
 
 			const RE::NiPoint3 centre = object->world.translate + object->world.rotate * localCentre;
 			RE::NiPoint3 axis{};
-			(&axis.x)[longest] = 1.0f;
-			const RE::NiPoint3 along = object->world.rotate * axis * halfLength;
+			(&axis.x)[shape.axis] = 1.0f;
+			const RE::NiPoint3 along = object->world.rotate * axis * shape.halfLength;
 			a_capsule.pointA = ToFloat3(centre - along);
 			a_capsule.pointB = ToFloat3(centre + along);
-			a_capsule.radius = radius;
+			a_capsule.radius = shape.radius;
 			a_capsule.owner = a_reference->GetFormID();
 			return true;
 		}
