@@ -2,6 +2,7 @@
 
 #include "Globals.h"
 #include "Utils/D3D.h"
+#include "d3d/ContextLock.h"
 
 #include <array>
 #include <atomic>
@@ -135,6 +136,9 @@ namespace GpuPassTimer
 	{
 		auto& state = detail::GetState();
 		if (!globals::d3d::device || !globals::d3d::context)
+			return;
+		const SmpPhysics::ContextLock::Guard guard;
+		if (!guard.Admitted())
 			return;
 		if (!state.enabled.load(std::memory_order_relaxed)) {
 			if (!state.hasOpenFrame.exchange(false))

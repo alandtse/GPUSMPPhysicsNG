@@ -79,7 +79,8 @@ TEST_CASE("The GPU solver steps a rigid hair claim on a WARP device", "[smpphysi
 
 	GpuSolver solver;
 	std::string reason;
-	const bool added = solver.AddClaim(1, parsed.rig, rest, SolverParams{}, {}, {}, {}, reason);
+	bool retryable = false;
+	const bool added = solver.AddClaim(1, parsed.rig, rest, SolverParams{}, {}, {}, {}, reason, retryable);
 	INFO("reason: " << reason << " unavailable: " << solver.UnavailableReason());
 	REQUIRE(added);
 
@@ -145,7 +146,8 @@ namespace
 		const std::vector<Transform> rest(parsed.rig.bones.size());
 		GpuSolver solver;
 		std::string reason;
-		REQUIRE(solver.AddClaim(1, parsed.rig, rest, SolverParams{}, {}, {}, {}, reason));
+		bool retryable = false;
+		REQUIRE(solver.AddClaim(1, parsed.rig, rest, SolverParams{}, {}, {}, {}, reason, retryable));
 
 		std::vector<GpuSolver::FrameClaim> frame(1);
 		frame[0].token = 1;
@@ -248,7 +250,8 @@ namespace
 
 		GpuSolver solver;
 		std::string reason;
-		REQUIRE(solver.AddClaim(1, parsed.rig, rest, SolverParams{}, collision, { body }, {}, reason));
+		bool retryable = false;
+		REQUIRE(solver.AddClaim(1, parsed.rig, rest, SolverParams{}, collision, { body }, {}, reason, retryable));
 		const std::vector<Transform> drivers(1);
 		std::vector<GpuSolver::FrameClaim> frame(1);
 		frame[0].token = 1;
@@ -295,7 +298,8 @@ TEST_CASE("A blocking poll returns the result of the frame just submitted", "[sm
 	const std::vector<Transform> rest(parsed.rig.bones.size());
 	GpuSolver solver;
 	std::string reason;
-	REQUIRE(solver.AddClaim(1, parsed.rig, rest, SolverParams{}, {}, {}, {}, reason));
+	bool retryable = false;
+	REQUIRE(solver.AddClaim(1, parsed.rig, rest, SolverParams{}, {}, {}, {}, reason, retryable));
 
 	std::vector<GpuSolver::FrameClaim> frame(1);
 	frame[0].token = 1;

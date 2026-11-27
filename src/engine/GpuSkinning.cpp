@@ -4,6 +4,7 @@
 #include "Globals.h"
 #include "GpuPass.h"
 #include "Utils/D3D.h"
+#include "d3d/ContextLock.h"
 #include "smp/GpuViews.h"
 
 #include <algorithm>
@@ -397,6 +398,10 @@ namespace SmpPhysics
 		++batchSerial;
 		if (!enabled || !batched || batchFailed || entries.empty() || !globals::d3d::context)
 			return;
+		// A refused frame rebuilds no palette; Apply then falls back to the engine's own path per skin instance.
+		const ContextLock::Guard guard;
+		if (!guard.Admitted())
+			return;
 
 		ID3D11ShaderResourceView* worlds = nullptr;
 		std::vector<Entry*> candidates;
@@ -736,6 +741,10 @@ namespace SmpPhysics
 		if (found == entries.end())
 			return;
 		Entry& entry = found->second;
+		// Everything below binds or dispatches on the context; the mesh is drawn from the engine's matrices instead.
+		const ContextLock::Guard guard;
+		if (!guard.Admitted())
+			return;
 		if (entry.kinematicCheck.armed)
 			MeasureKinematicBones(entry, a_skin);
 		if (batched && entry.batchable && entry.batchSlot >= 0 && entry.batchSerial == batchSerial && batch && batch->context1 && !entry.captureRequested) {

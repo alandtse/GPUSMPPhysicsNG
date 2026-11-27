@@ -4,6 +4,7 @@
 #include "Globals.h"
 #include "GpuPass.h"
 #include "Utils/D3D.h"
+#include "d3d/ContextLock.h"
 #include "smp/GpuViews.h"
 
 #include <algorithm>
@@ -164,6 +165,13 @@ namespace SmpPhysics
 		auto* context = globals::d3d::context;
 		if (segments.empty() || !context || stats.failed) {
 			stats.requested = 0;
+			stats.drawn = 0;
+			return;
+		}
+		// Debug output: a refused frame is simply not drawn.
+		const ContextLock::Guard guard;
+		if (!guard.Admitted()) {
+			stats.requested = static_cast<std::uint32_t>(segments.size());
 			stats.drawn = 0;
 			return;
 		}

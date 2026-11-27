@@ -19,6 +19,7 @@
 #include "Utils/StringUtils.h"
 #include "Utils/TestBench/ItemRows.h"
 #include "Utils/TestBench/TestCrowd.h"
+#include "d3d/ContextLock.h"
 #include "d3d/TracyGpu.h"
 #include "engine/ReadyWeaponGate.h"
 #include "plugin/Settings.h"
@@ -918,6 +919,10 @@ json SmpPhysicsFeature::BuildStatusJson() const
 				{ "developerMode", globals::state->IsDeveloperMode() } };
 		}
 		result["gpuSkinning"] = { { "enabled", settings.GpuSkinning }, { "skinInstances", gpuSkinning.SkinCount() }, { "appliedSinceLastStatus", gpuSkinning.TakeAppliedCount() }, { "batched", settings.BatchSkinPalette }, { "batchedSkinInstances", gpuSkinning.BatchedSkinCount() } };
+		{
+			const SmpPhysics::ContextLock::Stats lockStats = SmpPhysics::ContextLock::GetStats();
+			result["rendererLock"] = { { "installed", SmpPhysics::ContextLock::Configured() }, { "acquired", lockStats.acquired }, { "busy", lockStats.busy }, { "unlocked", lockStats.unlocked } };
+		}
 
 		result["claims"] = json::array();
 		gpuSolver.RequestContactStats();
@@ -3534,11 +3539,14 @@ bool SmpPhysicsFeature::RegisterClaimForGpu(Claim& a_claim)
 		a_claim.boneReach = SmpPhysics::GpuRig::BuildBoneReach(a_claim.parsed->rig, a_claim.restPose, kBoneReachSlack, kBoneReachMargin, a_claim.solverParams.bodyScale);
 	}
 	std::string reason;
+	bool retryable = false;
 	if (!gpuSolver.AddClaim(a_claim.token, a_claim.parsed->rig, a_claim.restPose, a_claim.solverParams,
-			a_claim.gpuCollision, a_claim.surfaces, a_claim.windAreas, reason)) {
-		logger::info("{} '{}' stays at the engine's pose: {}", kLogPrefix, a_claim.physicsFile, reason);
+			a_claim.gpuCollision, a_claim.surfaces, a_claim.windAreas, reason, retryable)) {
+		a_claim.gpuRegistrationRetry = retryable;
+		logger::info("{} '{}' stays at the engine's pose{}: {}", kLogPrefix, a_claim.physicsFile, retryable ? " this frame" : "", reason);
 		return false;
 	}
+	a_claim.gpuRegistrationRetry = false;
 	a_claim.previousKinematic = a_claim.kinematicInput;
 	return true;
 }
@@ -3871,7 +3879,8 @@ bool SmpPhysicsFeature::StepClaim(Claim& a_claim, const RE::NiPoint3& a_cameraPo
 	if (registering) {
 		++registrationsThisFrame;
 		a_claim.gpuRegistered = RegisterClaimForGpu(a_claim);
-		a_claim.gpuRegistrationFailed = !a_claim.gpuRegistered;
+		// A lock another mod held for the moment is not the solver failing to take the rig.
+		a_claim.gpuRegistrationFailed = SmpPhysics::RegistrationFailed(a_claim.gpuRegistered, a_claim.gpuRegistrationRetry);
 		if (a_claim.gpuRegistered && !a_claim.skinsBound)
 			BindClaimSkins(a_claim);
 	} else if (a_claim.gpuRegistered && a_claim.skinsBound && (a_claim.skinsWriters != nodeWriterSerial || a_claim.skinsSiblings != SiblingSignature(a_claim))) {
