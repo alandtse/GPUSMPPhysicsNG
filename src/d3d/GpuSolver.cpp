@@ -789,6 +789,12 @@ namespace SmpPhysics
 			store(std::move(result));
 			return;
 		}
+		// This copies and maps on the immediate context, so it may run only on the thread that holds the renderer lock.
+		if (!ContextLock::HeldByCurrentThread()) {
+			result.reason = "the surface check needs the renderer lock, so it runs on the thread that submits the frame";
+			store(std::move(result));
+			return;
+		}
 
 		const auto read = [device, context](ID3D11Buffer* a_source, std::uint32_t a_bytes, const char* a_name, void* a_destination) {
 			if (a_bytes == 0u)
@@ -1397,6 +1403,8 @@ namespace SmpPhysics
 		const ContextLock::Guard guard;
 		if (!guard.Admitted())
 			return false;
+		// A blocking Map would wait for the GPU while the renderer lock is held, so a lock installs the non-blocking read.
+		const bool wait = waitForReadback && !ContextLock::Configured();
 
 		if (contactStagingPending) {
 			D3D11_MAPPED_SUBRESOURCE mapped{};
@@ -1437,7 +1445,7 @@ namespace SmpPhysics
 			if (!readback.pending)
 				continue;
 			D3D11_MAPPED_SUBRESOURCE mapped{};
-			const HRESULT result = context->Map(readback.buffer.get(), 0, D3D11_MAP_READ, waitForReadback ? 0 : D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
+			const HRESULT result = context->Map(readback.buffer.get(), 0, D3D11_MAP_READ, wait ? 0 : D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
 			if (result == DXGI_ERROR_WAS_STILL_DRAWING)
 				continue;
 			if (FAILED(result)) {

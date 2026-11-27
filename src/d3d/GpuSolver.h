@@ -146,7 +146,7 @@ namespace SmpPhysics
 		void RemoveClaim(std::uint64_t a_token);
 		/** @brief Uploads every claim's inputs and steps them with the rigid-body solver, then copies the output for readback. */
 		[[nodiscard]] bool SubmitFrame(const std::vector<FrameClaim>& a_claims);
-		bool waitForReadback{};  ///< Poll blocks until the pending readbacks are done instead of taking only the finished ones.
+		bool waitForReadback{};  ///< Poll blocks until the pending readbacks are done instead of taking only the finished ones; ignored, and the non-blocking read taken, while a renderer lock is installed.
 		void SetFlushAfterSubmit(bool a_flush) noexcept { flushAfterSubmit = a_flush; }
 		/** @copydoc RigidGpuSolver::SetStepSettings */
 		void SetStepSettings(float a_tick, int a_maxTicks, int a_iterations, float a_erp) noexcept { rigidSolver.SetStepSettings(a_tick, a_maxTicks, a_iterations, a_erp); }

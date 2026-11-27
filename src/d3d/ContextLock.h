@@ -31,6 +31,14 @@ namespace SmpPhysics::ContextLock
 	[[nodiscard]] Stats GetStats();
 
 	/**
+	 * @brief Whether the calling thread is inside a Guard that took the lock, or no lock is installed.
+	 *
+	 * For context work that has no Guard of its own and must know whether the caller already holds the lock, such as a
+	 * check that copies and maps on the immediate context.
+	 */
+	[[nodiscard]] bool HeldByCurrentThread() noexcept;
+
+	/**
 	 * @brief Takes the lock without waiting for it, so a frame can never hold up the game.
 	 *
 	 * While the guard lives the caller owns the context; not admitted means another thread is submitting and the
@@ -52,6 +60,7 @@ namespace SmpPhysics::ContextLock
 	private:
 		void* lock{ nullptr };
 		LeaveProc leave{ nullptr };
+		const void* previousHeld{ nullptr };
 		bool admitted{ false };
 	};
 }

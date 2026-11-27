@@ -143,6 +143,61 @@ TEST_CASE("Nesting on the owning thread is admitted, as the engine's recursive s
 	REQUIRE(SmpPhysics::ContextLock::GetStats().acquired == 2);
 }
 
+TEST_CASE("HeldByCurrentThread sees the guard this thread took and not one taken elsewhere", "[contextlock]")
+{
+	ScopedLock scoped;
+	SmpPhysics::ContextLock::ResetStats();
+	REQUIRE_FALSE(SmpPhysics::ContextLock::HeldByCurrentThread());
+	// A nested call such as the surface check may copy and map on the context because the submit already holds the lock.
+	{
+		const SmpPhysics::ContextLock::Guard guard;
+		REQUIRE(guard.Admitted());
+		REQUIRE(SmpPhysics::ContextLock::HeldByCurrentThread());
+		// Another thread's guard is not this thread's, even while it holds the lock.
+		std::atomic<bool> otherSees{ true };
+		std::thread worker([&] { otherSees.store(SmpPhysics::ContextLock::HeldByCurrentThread()); });
+		worker.join();
+		REQUIRE_FALSE(otherSees.load());
+		REQUIRE(SmpPhysics::ContextLock::HeldByCurrentThread());
+		// The inner guard restoring the thread's state still leaves the outer one in place.
+		{
+			const SmpPhysics::ContextLock::Guard inner;
+			REQUIRE(inner.Admitted());
+			REQUIRE(SmpPhysics::ContextLock::HeldByCurrentThread());
+		}
+		REQUIRE(SmpPhysics::ContextLock::HeldByCurrentThread());
+	}
+	REQUIRE_FALSE(SmpPhysics::ContextLock::HeldByCurrentThread());
+	// With no lock installed everything runs unguarded, so the context is free to use.
+	SmpPhysics::ContextLock::ClearLock();
+	REQUIRE(SmpPhysics::ContextLock::HeldByCurrentThread());
+}
+
+TEST_CASE("A guard that could not take the lock does not report the lock as held", "[contextlock]")
+{
+	ScopedLock scoped;
+	SmpPhysics::ContextLock::ResetStats();
+	std::atomic<bool> held{ false };
+	std::atomic<bool> release{ false };
+	std::thread worker([&] {
+		TryEnter(&scoped.lock);
+		held.store(true);
+		while (!release.load())
+			std::this_thread::yield();
+		Leave(&scoped.lock);
+	});
+	while (!held.load())
+		std::this_thread::yield();
+	{
+		const SmpPhysics::ContextLock::Guard guard;
+		REQUIRE_FALSE(guard.Admitted());
+		REQUIRE_FALSE(SmpPhysics::ContextLock::HeldByCurrentThread());
+	}
+	release.store(true);
+	worker.join();
+	REQUIRE_FALSE(SmpPhysics::ContextLock::HeldByCurrentThread());
+}
+
 TEST_CASE("An incomplete lock triple leaves everything unlocked", "[contextlock]")
 {
 	FakeLock lock;

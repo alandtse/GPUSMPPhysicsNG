@@ -1,7 +1,9 @@
 // Smoke test for the D3D11 layer (src/d3d): a hair rig is added to the GPU solver on a WARP device and stepped
 // through the rigid path, which proves the shader root, runtime compile, buffer helpers and dispatch wiring.
 
+#include "GpuPassTimer.h"
 #include "Utils/D3D.h"
+#include "d3d/ContextLock.h"
 #include "d3d/GpuSolver.h"
 #include "shader_cache_dir.h"
 #include "smp/SmpRig.h"
@@ -12,6 +14,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -318,6 +321,67 @@ TEST_CASE("A blocking poll returns the result of the frame just submitted", "[sm
 		for (const Transform& bone : results[0].bones)
 			CHECK(std::isfinite(bone.translation.x));
 	}
+}
+
+TEST_CASE("A refused timer frame closes its slot instead of leaving it open", "[smpphysics][d3d][contextlock]")
+{
+	WarpDevice gpu;
+	// A stand-in for the engine's recursive section, held by another thread to make the next NextFrame refuse.
+	std::atomic<std::thread::id> owner{};
+	std::atomic<int> recursion{ 0 };
+	std::atomic<bool> held{ false };
+	std::atomic<bool> release{ false };
+	const auto tryEnter = [](void* a_lock) noexcept {
+		auto& state = *static_cast<std::pair<std::atomic<std::thread::id>*, std::atomic<int>*>*>(a_lock);
+		const std::thread::id self = std::this_thread::get_id();
+		if (state.first->load() == std::thread::id{}) {
+			state.first->store(self);
+			state.second->store(1);
+			return true;
+		}
+		if (state.first->load() == self) {
+			state.second->fetch_add(1);
+			return true;
+		}
+		return false;
+	};
+	const auto leave = [](void* a_lock) noexcept {
+		auto& state = *static_cast<std::pair<std::atomic<std::thread::id>*, std::atomic<int>*>*>(a_lock);
+		if (state.second->fetch_sub(1) == 1)
+			state.first->store(std::thread::id{});
+	};
+	std::pair<std::atomic<std::thread::id>*, std::atomic<int>*> handle{ &owner, &recursion };
+	SmpPhysics::ContextLock::SetLock(&handle, tryEnter, leave);
+
+	GpuPassTimer::SetEnabled(true);
+	GpuPassTimer::Reset();
+	GpuPassTimer::NextFrame();
+	// The open frame takes pass samples, so a refused frame has a slot to retire.
+	CHECK(GpuPassTimer::Begin("SmpPhysics::Test") != GpuPassTimer::detail::kNoToken);
+
+	std::thread worker([&] {
+		tryEnter(&handle);
+		held.store(true);
+		while (!release.load())
+			std::this_thread::yield();
+		leave(&handle);
+	});
+	while (!held.load())
+		std::this_thread::yield();
+
+	GpuPassTimer::NextFrame();
+	// The frame was refused, so no slot is open and a pass must not write into the one the refused frame left behind.
+	CHECK(GpuPassTimer::Begin("SmpPhysics::Test") == GpuPassTimer::detail::kNoToken);
+
+	release.store(true);
+	worker.join();
+	GpuPassTimer::NextFrame();
+	CHECK(GpuPassTimer::Begin("SmpPhysics::Test") != GpuPassTimer::detail::kNoToken);
+
+	GpuPassTimer::SetEnabled(false);
+	GpuPassTimer::NextFrame();
+	GpuPassTimer::Reset();
+	SmpPhysics::ContextLock::ClearLock();
 }
 
 TEST_CASE("Resource names are stored under the narrow debug-name GUID so RenderDoc reads them as text", "[smpphysics][d3d]")

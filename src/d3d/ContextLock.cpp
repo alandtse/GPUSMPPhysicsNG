@@ -13,6 +13,9 @@ namespace SmpPhysics::ContextLock
 		std::atomic<std::uint64_t> g_acquired{ 0 };
 		std::atomic<std::uint64_t> g_busy{ 0 };
 		std::atomic<std::uint64_t> g_unlocked{ 0 };
+
+		// The guard the calling thread holds, so work nested inside a guarded region can see that it may record.
+		thread_local const void* g_held{ nullptr };
 	}
 
 	void SetLock(void* a_lock, TryEnterProc a_tryEnter, LeaveProc a_leave)
@@ -37,6 +40,11 @@ namespace SmpPhysics::ContextLock
 		return g_lock.load(std::memory_order_acquire) != nullptr;
 	}
 
+	bool HeldByCurrentThread() noexcept
+	{
+		return !Configured() || g_held != nullptr;
+	}
+
 	void ResetStats()
 	{
 		g_acquired.store(0, std::memory_order_relaxed);
@@ -55,8 +63,8 @@ namespace SmpPhysics::ContextLock
 
 	Guard::Guard()
 	{
-		void* const lock = g_lock.load(std::memory_order_acquire);
-		if (!lock) {
+		void* const installed = g_lock.load(std::memory_order_acquire);
+		if (!installed) {
 			admitted = true;
 			g_unlocked.fetch_add(1, std::memory_order_relaxed);
 			return;
@@ -68,19 +76,23 @@ namespace SmpPhysics::ContextLock
 			g_unlocked.fetch_add(1, std::memory_order_relaxed);
 			return;
 		}
-		if (!enter(lock)) {
+		if (!enter(installed)) {
 			g_busy.fetch_add(1, std::memory_order_relaxed);
 			return;
 		}
-		this->lock = lock;
+		this->lock = installed;
 		this->leave = exit;
+		previousHeld = g_held;
 		admitted = true;
+		g_held = installed;
 		g_acquired.fetch_add(1, std::memory_order_relaxed);
 	}
 
 	Guard::~Guard()
 	{
-		if (lock && leave)
+		if (lock && leave) {
+			g_held = previousHeld;
 			leave(lock);
+		}
 	}
 }
