@@ -105,7 +105,7 @@ Needs xmake and MSVC (run from PowerShell; xmake picks MinGW under Git Bash).
 
 ```
 git submodule update --init --recursive
-xmake f -m releasedbg --toolchain=msvc -y
+xmake f -a x64 -m releasedbg --toolchain=msvc --tests=y -y
 xmake build GPUSMPPhysicsNG
 xmake build GPUSMPPhysicsNG-Tests
 xmake run GPUSMPPhysicsNG-Tests

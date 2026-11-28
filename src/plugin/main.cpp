@@ -6,6 +6,7 @@
 #include "Globals.h"
 #include "Utils/D3D.h"
 #include "Utils/TestBench/IdleCache.h"
+#include "d3d/ContextLock.h"
 #include "d3d/GpuSolver.h"
 #include "engine/GpuSkinning.h"
 #include "plugin/BoneUploadHook.h"
@@ -25,6 +26,21 @@ SmpPhysicsFeature& Instance()
 
 namespace
 {
+	/**
+	 * @brief Points the solver at the engine's own renderer lock, which mods submitting from worker threads also take.
+	 */
+	void BindContextLock()
+	{
+		static_assert(sizeof(REX::W32::CRITICAL_SECTION) == sizeof(::CRITICAL_SECTION));
+		const auto tryEnter = [](void* a_lock) noexcept {
+			return ::TryEnterCriticalSection(reinterpret_cast<::CRITICAL_SECTION*>(a_lock)) != FALSE;
+		};
+		const auto leave = [](void* a_lock) noexcept {
+			::LeaveCriticalSection(reinterpret_cast<::CRITICAL_SECTION*>(a_lock));
+		};
+		SmpPhysics::ContextLock::SetLock(&globals::game::renderer->GetLock(), tryEnter, leave);
+	}
+
 	void BindGameGlobals()
 	{
 		using namespace globals::game;
@@ -37,6 +53,7 @@ namespace
 		deltaTime = reinterpret_cast<float*>(REL::RelocationID(523660, 410199).address());
 		globals::d3d::device = Util::AsReal(renderer->GetRuntimeData().forwarder);
 		globals::d3d::context = Util::AsReal(renderer->GetRuntimeData().context);
+		BindContextLock();
 	}
 
 	void OnMessage(SKSE::MessagingInterface::Message* a_message)

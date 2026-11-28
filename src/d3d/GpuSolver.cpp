@@ -4,6 +4,7 @@
 #include "Globals.h"
 #include "GpuPass.h"
 #include "Utils/D3D.h"
+#include "d3d/ContextLock.h"
 #include "smp/GpuViews.h"
 #include "smp/RigidRigBuilder.h"
 
@@ -448,15 +449,23 @@ namespace SmpPhysics
 
 	bool GpuSolver::AddClaim(std::uint64_t a_token, const SmpRig& a_rig, const std::vector<Transform>& a_restWorld,
 		const SolverParams& a_params, const GpuRig::CollisionData& a_collision, const std::vector<SkinnedSurface>& a_surfaces,
-		const std::vector<float>& a_windAreas, std::string& a_reason)
+		const std::vector<float>& a_windAreas, std::string& a_reason, bool& a_retryable)
 	{
 		ZoneScopedN("SmpPhysics::GpuAddClaim");
+		a_retryable = false;
 		if (!available) {
 			a_reason = unavailableReason;
 			return false;
 		}
 		if (claimIndex.contains(a_token))
 			return true;
+		// Writes the contact and surface-prep buffers on its own, outside the submit path's guard.
+		const ContextLock::Guard guard;
+		if (!guard.Admitted()) {
+			a_reason = "another mod is submitting on the renderer's context";
+			a_retryable = true;
+			return false;
+		}
 		if (!Util::GetShaderPrewarmStatus().running && !EnsureShaders()) {
 			a_reason = unavailableReason;
 			return false;
@@ -777,6 +786,12 @@ namespace SmpPhysics
 		auto* context = globals::d3d::context;
 		if (!device || !context) {
 			result.reason = "the D3D11 device or context is unavailable";
+			store(std::move(result));
+			return;
+		}
+		// This copies and maps on the immediate context, so it may run only on the thread that holds the renderer lock.
+		if (!ContextLock::HeldByCurrentThread()) {
+			result.reason = "the surface check needs the renderer lock, so it runs on the thread that submits the frame";
 			store(std::move(result));
 			return;
 		}
@@ -1258,6 +1273,10 @@ namespace SmpPhysics
 		auto* context = globals::d3d::context;
 		if (!context)
 			return false;
+		// Nothing is recorded before this point, so a refused frame leaves every claim at the engine's pose.
+		const ContextLock::Guard guard;
+		if (!guard.Admitted())
+			return false;
 
 		UploadStatics();
 
@@ -1380,6 +1399,12 @@ namespace SmpPhysics
 		auto* context = globals::d3d::context;
 		if (!context)
 			return false;
+		// The readbacks map on the same context, so a refused frame leaves its snapshots pending.
+		const ContextLock::Guard guard;
+		if (!guard.Admitted())
+			return false;
+		// A blocking Map would wait for the GPU while the renderer lock is held, so a lock installs the non-blocking read.
+		const bool wait = waitForReadback && !ContextLock::Configured();
 
 		if (contactStagingPending) {
 			D3D11_MAPPED_SUBRESOURCE mapped{};
@@ -1420,7 +1445,7 @@ namespace SmpPhysics
 			if (!readback.pending)
 				continue;
 			D3D11_MAPPED_SUBRESOURCE mapped{};
-			const HRESULT result = context->Map(readback.buffer.get(), 0, D3D11_MAP_READ, waitForReadback ? 0 : D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
+			const HRESULT result = context->Map(readback.buffer.get(), 0, D3D11_MAP_READ, wait ? 0 : D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
 			if (result == DXGI_ERROR_WAS_STILL_DRAWING)
 				continue;
 			if (FAILED(result)) {

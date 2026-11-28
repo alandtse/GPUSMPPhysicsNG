@@ -4,6 +4,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+using SmpPhysics::RegistrationFailed;
 using SmpPhysics::ShouldHandBack;
 
 TEST_CASE("Only claims the GPU cannot simulate go back to hdtSMP64", "[smpphysics][handback]")
@@ -12,4 +13,13 @@ TEST_CASE("Only claims the GPU cannot simulate go back to hdtSMP64", "[smpphysic
 	REQUIRE(ShouldHandBack(true, true));
 	REQUIRE(ShouldHandBack(false, false));
 	REQUIRE(ShouldHandBack(false, true));
+}
+
+TEST_CASE("A registration refused only because the renderer lock was busy is not a failure", "[smpphysics][handback]")
+{
+	// Another mod holding the renderer lock for a frame must not cost the claim its GPU solver; it is tried again next frame.
+	REQUIRE(RegistrationFailed(false, false));
+	REQUIRE_FALSE(RegistrationFailed(false, true));
+	REQUIRE_FALSE(RegistrationFailed(true, false));
+	REQUIRE_FALSE(RegistrationFailed(true, true));
 }

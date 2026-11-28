@@ -8,7 +8,7 @@ the GPU. Open Shaders is not a dependency; it is an optional source of wind only
 ## Build and test
 
 ```powershell
-xmake f -m releasedbg --toolchain=msvc -y
+xmake f -a x64 -m releasedbg --toolchain=msvc --tests=y -y
 xmake build
 xmake run GPUSMPPhysicsNG-Tests
 ```

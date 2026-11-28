@@ -435,6 +435,7 @@ private:
 		std::vector<SmpPhysics::GpuRig::ColliderPacked> externalPacked;  ///< The same, padded to the reserved slots for the compute shader.
 		bool gpuRegistered{};
 		bool gpuRegistrationFailed{};  ///< A rig the GPU backend cannot pack stays at the engine's pose for good.
+		bool gpuRegistrationRetry{};   ///< The last attempt was refused because another mod held the renderer lock, so it is not a failure.
 		bool gpuResetRequested{};
 		float lastCameraDistance{};       ///< Distance from the camera to the claim's first kinematic bone at the last check.
 		bool headPart{};                  ///< Offered as a head part, which hdtSMP64 deactivates under a hair-slot item.

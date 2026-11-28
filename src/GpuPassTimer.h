@@ -2,6 +2,7 @@
 
 #include "Globals.h"
 #include "Utils/D3D.h"
+#include "d3d/ContextLock.h"
 
 #include <array>
 #include <atomic>
@@ -136,6 +137,21 @@ namespace GpuPassTimer
 		auto& state = detail::GetState();
 		if (!globals::d3d::device || !globals::d3d::context)
 			return;
+		const SmpPhysics::ContextLock::Guard guard;
+		if (!guard.Admitted()) {
+			// The context belongs to another thread this frame, so the open frame is closed and retired unread; its samples
+			// are dropped, because Begin and End would otherwise write into a slot this frame never opened.
+			const std::scoped_lock lock(state.mutex);
+			for (auto& slot : state.slots) {
+				if (!slot.open)
+					continue;
+				slot.open = false;
+				slot.pending = false;
+				slot.used = 0;
+			}
+			state.hasOpenFrame.store(false, std::memory_order_relaxed);
+			return;
+		}
 		if (!state.enabled.load(std::memory_order_relaxed)) {
 			if (!state.hasOpenFrame.exchange(false))
 				return;

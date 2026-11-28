@@ -7,4 +7,10 @@ namespace SmpPhysics
 	{
 		return !a_gpuAvailable || a_registrationFailed;
 	}
+
+	/** @brief Whether a refused registration is the solver failing to take the rig; only a retryable refusal is not. */
+	[[nodiscard]] constexpr bool RegistrationFailed(bool a_registered, bool a_retryable) noexcept
+	{
+		return !a_registered && !a_retryable;
+	}
 }

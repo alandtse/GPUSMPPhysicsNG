@@ -37,3 +37,38 @@ outfit suites pass except the checks below.
 - **Not covered by any suite:** the settings page, the Ready Weapon gate, haptic feel, real controller mappings.
 
 Before running `pose_e2e.py`, clear the test crowd, set the cloak index to `-1` (0 is a real cloak) and toggle `Enabled`.
+
+## The renderer's context lock
+
+The plugin records on the game's immediate `ID3D11DeviceContext`, which Microsoft documents as single-threaded. Mods that
+submit from their own workers - RaceMenu, CommunityShaders' flowmap, and MuDynamicNormalMap, whose TBB workers update
+normal maps on the main GPU - take the engine's own renderer lock (`RenderData::lock`) around their calls; this plugin used
+to record without it. Two threads in that context corrupt the driver's internal bookkeeping, which then trips on a later
+call from either of them: the crash lands inside `nvwgf2umx.dll` with no plugin frame on the stack, so it reads as a
+driver fault rather than a race. MuDynamicNormalMap made it reproducible on an RTX 5090 pair (`GPUDeviceIndex = -1` finds
+no second GPU there and falls back to the main one); with its GPU path off the same scene does not crash.
+
+Every entry point that touches the context now takes the same lock, and takes it by `TryEnterCriticalSection` rather than
+waiting, so the plugin can never hold up a frame:
+
+| Entry point               | On a busy lock                                                              |
+| ------------------------- | --------------------------------------------------------------------------- |
+| `GpuSolver::SubmitFrame`  | the frame is not recorded, so every claim keeps the engine's pose           |
+| `GpuSolver::Poll`         | the readbacks stay pending and are resolved by the next admitted frame      |
+| `GpuSolver::AddClaim`     | the claim is declined for this frame only and is registered on the next one |
+| `GpuSkinning::BuildBatch` | no palette is rebuilt, and `Apply` falls back to the engine's matrices      |
+| `GpuSkinning::Apply`      | the mesh is drawn from the engine's matrices                                |
+| `DebugLines::Render`      | the overlay skips the frame                                                 |
+| `GpuPassTimer::NextFrame` | the open timing frame stays open and is closed by the next admitted frame   |
+
+Windows critical sections are recursive per owning thread, so the two entry points that run inside the engine's world
+render (`DebugLines::Render` from `OnDeferredGeometryEnd`, `GpuSkinning::Apply` from the bone-upload hook) nest inside a
+lock the render thread already holds instead of being refused. `GpuPassTimer` is not measured on such a frame while a
+submission is refused, so the reported per-pass cost covers the frames that recorded.
+
+A refusal of `AddClaim` is marked retryable and does not set the claim's `gpuRegistrationFailed`, which is what sends a
+claim back to hdtSMP64 for good; the claim is registered on the next frame instead.
+
+The counters are in the `status` query under `rendererLock`: `installed`, `acquired`, `busy` and `unlocked`. A non-zero
+`busy` means another mod was submitting on the context during a frame this plugin would have recorded; `unlocked` means
+the plugin never reached `kDataLoaded` and is recording without a lock.

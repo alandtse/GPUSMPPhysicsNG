@@ -137,15 +137,16 @@ namespace SmpPhysics
 		 * @param a_surfaces The claim's posed collision meshes; boneDriver indexes the driver list every FrameClaim supplies.
 		 * @param a_reason Set to why the claim was refused; a rig the pool or the rigid-body solver cannot hold is not
 		 *                 simulated without disabling the backend for the claims that do fit.
+		 * @param a_retryable Set when the next frame may try again; the caller must not count such a refusal as final.
 		 * @return false, registering nothing, when the backend is unavailable or the rig cannot be packed.
 		 */
 		[[nodiscard]] bool AddClaim(std::uint64_t a_token, const SmpRig& a_rig, const std::vector<Transform>& a_restWorld,
 			const SolverParams& a_params, const GpuRig::CollisionData& a_collision, const std::vector<SkinnedSurface>& a_surfaces,
-			const std::vector<float>& a_windAreas, std::string& a_reason);
+			const std::vector<float>& a_windAreas, std::string& a_reason, bool& a_retryable);
 		void RemoveClaim(std::uint64_t a_token);
 		/** @brief Uploads every claim's inputs and steps them with the rigid-body solver, then copies the output for readback. */
 		[[nodiscard]] bool SubmitFrame(const std::vector<FrameClaim>& a_claims);
-		bool waitForReadback{};  ///< Poll blocks until the pending readbacks are done instead of taking only the finished ones.
+		bool waitForReadback{};  ///< Poll blocks until the pending readbacks are done instead of taking only the finished ones; ignored, and the non-blocking read taken, while a renderer lock is installed.
 		void SetFlushAfterSubmit(bool a_flush) noexcept { flushAfterSubmit = a_flush; }
 		/** @copydoc RigidGpuSolver::SetStepSettings */
 		void SetStepSettings(float a_tick, int a_maxTicks, int a_iterations, float a_erp) noexcept { rigidSolver.SetStepSettings(a_tick, a_maxTicks, a_iterations, a_erp); }
