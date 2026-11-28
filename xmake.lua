@@ -10,7 +10,7 @@ includes("lib/commonlibsse-ng")
 set_project("GPUSMPPhysicsNG")
 set_license("GPL-3.0")
 
-local version = "1.5.2"
+local version = "1.5.3"
 set_version(version)
 
 set_languages("c++23")
